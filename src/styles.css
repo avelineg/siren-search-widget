@@ -1,0 +1,50 @@
+.container {
+  max-width: 700px;
+  margin: 2rem auto;
+  padding: 2rem;
+  background: #f8f9fa;
+  border-radius: 10px;
+  box-shadow: 0 2px 10px #0001;
+}
+.input {
+  padding: 0.5em;
+  margin-right: 0.5em;
+  width: 280px;
+  border-radius: 4px;
+  border: 1px solid #bbb;
+}
+.btn {
+  padding: 0.5em 1em;
+  background: #2864f0;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.btn[disabled] {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.titre {
+  margin-bottom: 1rem;
+}
+.resultat {
+  list-style: none;
+  padding: 0;
+}
+.warning {
+  color: #e74c3c;
+}
+.etabs-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 1rem;
+}
+.etabs-table th, .etabs-table td {
+  border: 1px solid #ddd;
+  padding: 6px 10px;
+  font-size: 0.95em;
+}
+.etabs-table th {
+  background: #f3f6fa;
+}
