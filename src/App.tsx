@@ -5,18 +5,15 @@ import "./styles.css";
 import nafNomenclatureRaw from './naf.json';
 import formeJuridiqueRaw from './formeJuridique.json';
 
-const API_KEY = "4f8742f4-0882-466c-8742-f40882466c6c";
 const nafNomenclature: Record<string, string> = nafNomenclatureRaw;
 const formeJuridique: Record<string, string> = formeJuridiqueRaw;
 
 function getApeLabel(code: string) {
   return nafNomenclature[code] || "";
 }
-
 function getFormeJuridiqueLabel(code: string) {
   return formeJuridique[code] || code || "Non renseigné";
 }
-
 function formatAdresse(adresse: any) {
   if (!adresse) return "Adresse non renseignée";
   const champs = [
@@ -36,7 +33,7 @@ function formatAdresse(adresse: any) {
     .join(" ");
 }
 
-// Fallback INPI sur les champs manquants
+// Fallback INPI sur les champs manquants et récupération brute INPI pour complément
 async function fetchInpiFallback(siren: string, infos: any): Promise<{ infosCompletes: any, inpiRaw: any }> {
   try {
     const champsFallback = [
@@ -46,9 +43,6 @@ async function fetchInpiFallback(siren: string, infos: any): Promise<{ infosComp
       ["codeApe", "codeApe"],
       ["adresseSiege", "adresse"],
     ];
-    const incomplets = champsFallback.filter(([champ]) => !infos[champ] || infos[champ] === "Non renseigné");
-    if (incomplets.length === 0) return { infosCompletes: infos, inpiRaw: undefined };
-
     const resp = await fetch(`/inpi/entreprise/${siren}`);
     if (!resp.ok) return { infosCompletes: infos, inpiRaw: undefined };
     const inpi = await resp.json();
@@ -66,10 +60,8 @@ async function fetchInpiFallback(siren: string, infos: any): Promise<{ infosComp
 }
 
 function prettifyKey(key: string) {
-  // Optionnel: renommer certains champs INPI si besoin
   return key.replace(/_/g, " ").replace(/\b\w/g, (l) => l.toUpperCase());
 }
-
 function formatValue(value: any) {
   if (value === null || value === undefined || value === "") return "Non renseigné";
   if (Array.isArray(value)) return value.join(", ");
@@ -85,6 +77,8 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [verification, setVerification] = useState<string | null>(null);
   const [inpiRaw, setInpiRaw] = useState<any | undefined>(undefined);
+  const [suggestions, setSuggestions] = useState<any[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
 
   const getType = (val: string) => {
     if (/^\d{9}$/.test(val)) return "siren";
@@ -99,20 +93,24 @@ export default function App() {
     return `FR${key.toString().padStart(2, "0")}${sirenStr}`;
   };
 
-  const handleSearch = async () => {
+  // Recherche principale
+  const handleSearch = async (selectedSiren?: string) => {
     setInfos(null);
     setEtabs([]);
     setErreur(null);
     setVerification(null);
     setInpiRaw(undefined);
+    setSuggestions([]);
+    setShowSuggestions(false);
     setLoading(true);
 
-    const type = getType(input.trim());
+    const searchInput = selectedSiren || input.trim();
+    const type = getType(searchInput);
+
     try {
       let siren = "";
       let infosToSet: any = {};
       let adresseSiege = "";
-      let etablissements: any[] = [];
       let codeApe = "";
       let libelleApe = "";
       let codeFormeJuridique = "";
@@ -120,8 +118,8 @@ export default function App() {
 
       if (type === "siren") {
         const resp = await fetch(
-          `https://api.insee.fr/api-sirene/3.11/siren/${input}`,
-          { headers: { "X-INSEE-Api-Key-Integration": API_KEY } }
+          `https://api.insee.fr/api-sirene/3.11/siren/${searchInput}`,
+          { headers: { "X-INSEE-Api-Key-Integration": process.env.REACT_APP_INSEE_API_KEY } }
         );
         if (!resp.ok) throw new Error("SIREN non trouvé");
         const data = await resp.json();
@@ -154,8 +152,8 @@ export default function App() {
         };
       } else if (type === "siret") {
         const resp = await fetch(
-          `https://api.insee.fr/api-sirene/3.11/siret/${input}`,
-          { headers: { "X-INSEE-Api-Key-Integration": API_KEY } }
+          `https://api.insee.fr/api-sirene/3.11/siret/${searchInput}`,
+          { headers: { "X-INSEE-Api-Key-Integration": process.env.REACT_APP_INSEE_API_KEY } }
         );
         if (!resp.ok) throw new Error("SIRET non trouvé");
         const data = await resp.json();
@@ -190,44 +188,15 @@ export default function App() {
           trancheEffectif: period.trancheEffectifsUniteLegale || "",
         };
       } else {
-        const resp = await fetch(
-          `https://api.insee.fr/api-sirene/3.11/etablissements?denominationUniteLegale=${encodeURIComponent(
-            input
-          )}&nombre=1&tri=desc`,
-          { headers: { "X-INSEE-Api-Key-Integration": API_KEY } }
-        );
-        if (!resp.ok) throw new Error("Aucun résultat");
-        const data = await resp.json();
-        if (!data.etablissements?.[0]) throw new Error("Aucun résultat");
-        const etab = data.etablissements[0];
-        const uniteLegale = etab.uniteLegale;
-        const period = uniteLegale?.periodesUniteLegale?.[0] || {};
-        siren = etab.siren;
-        adresseSiege = formatAdresse(etab.adresseEtablissement);
-
-        codeApe = period.activitePrincipaleUniteLegale || "";
-        libelleApe = getApeLabel(codeApe);
-
-        codeFormeJuridique = period.categorieJuridiqueUniteLegale || "";
-        libelleFormeJuridique = getFormeJuridiqueLabel(codeFormeJuridique);
-
-        infosToSet = {
-          nom: period.denominationUniteLegale || period.nomUniteLegale || "",
-          siren,
-          siret: etab.siret,
-          formeJuridique: libelleFormeJuridique,
-          natureJuridique: period.natureJuridiqueUniteLegale || "",
-          activitePrincipale: libelleApe,
-          codeApe: codeApe,
-          categorieEntreprise: period.categorieEntreprise || "",
-          dateCreation: period.dateCreationUniteLegale || "",
-          capital: period.capitalSocialUniteLegale || "",
-          statut: period.etatAdministratifUniteLegale === "A" ? "Active" : "Inconnue",
-          adresseSiege,
-          sigle: period.sigleUniteLegale || "",
-          anneeEffectif: period.anneeEffectifsUniteLegale || "",
-          trancheEffectif: period.trancheEffectifsUniteLegale || "",
-        };
+        // Recherche floue INPI (suggestions)
+        const resp = await fetch(`/inpi/entreprises?raisonSociale=${encodeURIComponent(searchInput)}`);
+        if (!resp.ok) throw new Error("Aucun résultat INPI");
+        const entreprises = await resp.json();
+        if (!entreprises || entreprises.length === 0) throw new Error("Aucun résultat");
+        setSuggestions(entreprises);
+        setShowSuggestions(true);
+        setLoading(false);
+        return;
       }
 
       // Complétion INPI & récupération brute pour affichage complet
@@ -238,7 +207,7 @@ export default function App() {
 
         const respEtabs = await fetch(
           `https://api.insee.fr/api-sirene/3.11/etablissements?siren=${siren}&nombre=100`,
-          { headers: { "X-INSEE-Api-Key-Integration": API_KEY } }
+          { headers: { "X-INSEE-Api-Key-Integration": process.env.REACT_APP_INSEE_API_KEY } }
         );
         if (respEtabs.ok) {
           const dataEtabs = await respEtabs.json();
@@ -253,8 +222,17 @@ export default function App() {
       setInfos(null);
       setEtabs([]);
       setInpiRaw(undefined);
+      setSuggestions([]);
+      setShowSuggestions(false);
     }
     setLoading(false);
+  };
+
+  // Lors du clic sur une suggestion INPI (recherche par SIREN)
+  const handleSuggestionClick = (siren: string) => {
+    setInput(siren);
+    setShowSuggestions(false);
+    handleSearch(siren);
   };
 
   const handleVerifyTva = async () => {
@@ -322,9 +300,27 @@ export default function App() {
         placeholder="SIREN (9 chiffres), SIRET (14 chiffres) ou Nom"
         className="input"
       />
-      <button onClick={handleSearch} className="btn" disabled={loading}>
+      <button onClick={() => handleSearch()} className="btn" disabled={loading}>
         Rechercher
       </button>
+
+      {showSuggestions && suggestions.length > 0 && (
+        <div className="suggestions">
+          <h4>Suggestions d'entreprises INPI :</h4>
+          <ul>
+            {suggestions.map((s) => (
+              <li key={s.siren || s.siret || s.denomination || s.raisonSociale}>
+                <button className="suggestion-btn" onClick={() => handleSuggestionClick(s.siren)}>
+                  <b>{s.denomination || s.raisonSociale}</b>
+                  {" – "}
+                  SIREN : {s.siren}
+                  {s.siret ? ` / SIRET : ${s.siret}` : null}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       <ul className="resultat">
         {erreur && <li className="warning">⚠️ {erreur}</li>}
