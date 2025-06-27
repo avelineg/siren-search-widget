@@ -37,7 +37,7 @@ function formatAdresse(adresse: any) {
 }
 
 // Fallback INPI sur les champs manquants
-async function fetchInpiFallback(siren: string, infos: any): Promise<any> {
+async function fetchInpiFallback(siren: string, infos: any): Promise<{ infosCompletes: any, inpiRaw: any }> {
   try {
     const champsFallback = [
       ["nom", "denomination"],
@@ -47,10 +47,10 @@ async function fetchInpiFallback(siren: string, infos: any): Promise<any> {
       ["adresseSiege", "adresse"],
     ];
     const incomplets = champsFallback.filter(([champ]) => !infos[champ] || infos[champ] === "Non renseigné");
-    if (incomplets.length === 0) return infos;
+    if (incomplets.length === 0) return { infosCompletes: infos, inpiRaw: undefined };
 
     const resp = await fetch(`/inpi/entreprise/${siren}`);
-    if (!resp.ok) return infos;
+    if (!resp.ok) return { infosCompletes: infos, inpiRaw: undefined };
     const inpi = await resp.json();
 
     const infosCompletes = { ...infos };
@@ -59,10 +59,22 @@ async function fetchInpiFallback(siren: string, infos: any): Promise<any> {
         if (inpi[champInpi]) infosCompletes[champFront] = inpi[champInpi];
       }
     }
-    return infosCompletes;
+    return { infosCompletes, inpiRaw: inpi };
   } catch {
-    return infos;
+    return { infosCompletes: infos, inpiRaw: undefined };
   }
+}
+
+function prettifyKey(key: string) {
+  // Optionnel: renommer certains champs INPI si besoin
+  return key.replace(/_/g, " ").replace(/\b\w/g, (l) => l.toUpperCase());
+}
+
+function formatValue(value: any) {
+  if (value === null || value === undefined || value === "") return "Non renseigné";
+  if (Array.isArray(value)) return value.join(", ");
+  if (typeof value === "object") return JSON.stringify(value, null, 2);
+  return value;
 }
 
 export default function App() {
@@ -72,6 +84,7 @@ export default function App() {
   const [erreur, setErreur] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [verification, setVerification] = useState<string | null>(null);
+  const [inpiRaw, setInpiRaw] = useState<any | undefined>(undefined);
 
   const getType = (val: string) => {
     if (/^\d{9}$/.test(val)) return "siren";
@@ -91,6 +104,7 @@ export default function App() {
     setEtabs([]);
     setErreur(null);
     setVerification(null);
+    setInpiRaw(undefined);
     setLoading(true);
 
     const type = getType(input.trim());
@@ -216,9 +230,11 @@ export default function App() {
         };
       }
 
-      // Complétion INPI
+      // Complétion INPI & récupération brute pour affichage complet
       if (siren) {
-        infosToSet = await fetchInpiFallback(siren, infosToSet);
+        const { infosCompletes, inpiRaw } = await fetchInpiFallback(siren, infosToSet);
+        setInfos(infosCompletes);
+        setInpiRaw(inpiRaw);
 
         const respEtabs = await fetch(
           `https://api.insee.fr/api-sirene/3.11/etablissements?siren=${siren}&nombre=100`,
@@ -228,13 +244,15 @@ export default function App() {
           const dataEtabs = await respEtabs.json();
           setEtabs(dataEtabs.etablissements || []);
         }
+      } else {
+        setInfos(infosToSet);
       }
 
-      setInfos(infosToSet);
     } catch (e: any) {
       setErreur(e.message || "Erreur lors de la récupération des données");
       setInfos(null);
       setEtabs([]);
+      setInpiRaw(undefined);
     }
     setLoading(false);
   };
@@ -278,6 +296,23 @@ export default function App() {
     }
   };
 
+  // Détection des champs déjà affichés dans la fiche principale
+  const usedFields = infos
+    ? Object.keys(infos).map((k) => k.toLowerCase())
+    : [];
+
+  // Sélection des champs INPI non déjà utilisés, pour affichage complémentaire
+  const inpiComplementFields = inpiRaw
+    ? Object.entries(inpiRaw).filter(
+        ([k, v]) =>
+          !usedFields.includes(k.toLowerCase()) &&
+          v !== null &&
+          v !== undefined &&
+          v !== "" &&
+          !(Array.isArray(v) && v.length === 0)
+      )
+    : [];
+
   return (
     <div className="container">
       <h2 className="titre">🔍 Recherche entreprise (SIREN, SIRET ou Raison sociale)</h2>
@@ -319,6 +354,21 @@ export default function App() {
         )}
         {verification && <li>{verification}</li>}
       </ul>
+
+      {/* Bloc complément INPI */}
+      {inpiComplementFields.length > 0 && (
+        <div className="inpi-complement">
+          <h4>Informations complémentaires INPI</h4>
+          <ul>
+            {inpiComplementFields.map(([k, v]) => (
+              <li key={k}>
+                <b>{prettifyKey(k)} :</b>{" "}
+                {formatValue(v)}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {etabs.length > 0 && (
         <div>
