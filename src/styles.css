@@ -1,50 +1,119 @@
-.container {
-  max-width: 700px;
-  margin: 2rem auto;
+.App {
+  font-family: sans-serif;
   padding: 2rem;
-  background: #f8f9fa;
-  border-radius: 10px;
-  box-shadow: 0 2px 10px #0001;
 }
-.input {
-  padding: 0.5em;
-  margin-right: 0.5em;
-  width: 280px;
-  border-radius: 4px;
-  border: 1px solid #bbb;
-}
-.btn {
-  padding: 0.5em 1em;
-  background: #2864f0;
-  color: white;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-}
-.btn[disabled] {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-.titre {
-  margin-bottom: 1rem;
-}
-.resultat {
-  list-style: none;
-  padding: 0;
-}
-.warning {
-  color: #e74c3c;
-}
-.etabs-table {
-  width: 100%;
-  border-collapse: collapse;
+
+
+.error {
+  color: red;
   margin-top: 1rem;
 }
-.etabs-table th, .etabs-table td {
-  border: 1px solid #ddd;
-  padding: 6px 10px;
-  font-size: 0.95em;
+
+.result {
+  color: green;
+  margin-top: 1rem;
 }
-.etabs-table th {
-  background: #f3f6fa;
+
+/* styles.css */
+
+:root {
+  --cm-primary: #84C598FF;
+  --cm-bg: #FFFFFFFF;
+  --cm-secondary: #D2D2D2FF;
+  --cm-accent: #B973AFFF;
+  --cm-text: #1a1a1a;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--cm-bg);
+  font-family: "Segoe UI", Tahoma, sans-serif;
+  color: var(--cm-text);
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  min-height: 100vh;
+}
+
+.container {
+  max-width: 600px;
+  width: 90%;
+  margin: 20px auto;
+  padding: 20px;
+  background: var(--cm-bg);
+  border: 1px solid var(--cm-primary);
+  border-radius: 10px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
+}
+
+.titre {
+  font-size: 32px;
+  color: var(--cm-accent);
+  margin-top: 1.2rem;
+  margin-bottom: 0.4rem;
+  font-weight: 600;
+}
+
+.input {
+  width: 200px;
+  margin-right: 8px;
+  padding: 8px;
+  font-size: 1rem;
+  border: 1px solid var(--cm-secondary);
+  border-radius: 5px;
+}
+
+.btn {
+  padding: 8px 12px;
+  font-size: 0.95rem;
+  background-color: var(--cm-primary);
+  border: none;
+  border-radius: 5px;
+  color: white;
+  cursor: pointer;
+}
+
+.btn:hover {
+  background-color: var(--cm-accent);
+}
+
+.resultat {
+  list-style-type: none;
+  padding-left: 0;
+  margin-top: 1rem;
+}
+
+.resultat li {
+  margin-bottom: 8px;
+  font-size: 0.95rem;
+}
+
+.warning {
+  color: red;
+}
+
+.etablissements h3 {
+  margin-top: 1.5rem;
+  color: var(--cm-accent);
+}
+
+.etablissements ul {
+  padding-left: 20px;
+}
+
+.etablissements li {
+  margin-bottom: 6px;
+  font-size: 0.95rem;
+  color: var(--cm-text);
+}
+
+@media (max-width: 600px) {
+  .titre {
+    font-size: 1.2rem;
+  }
+
+  .input, .btn, .resultat li {
+    font-size: 0.9rem;
+  }
 }
