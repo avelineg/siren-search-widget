@@ -9,44 +9,11 @@ const nafNomenclature: Record<string, string> = nafNomenclatureRaw;
 const formeJuridique: Record<string, string> = formeJuridiqueRaw;
 
 // Vite‐exposées dans .env* (préfixe VITE_)
-const BACKEND_URL      = import.meta.env.VITE_API_URL as string;
-const VIES_API_URL     = import.meta.env.VITE_VAT_API_URL as string;
-// Pour OAuth SIRENE : client_id & secret configurés dans .env
-const INSEE_CLIENT_ID     = import.meta.env.VITE_INSEE_CLIENT_ID as string;
-const INSEE_CLIENT_SECRET = import.meta.env.VITE_INSEE_CLIENT_SECRET as string;
+const BACKEND_URL  = import.meta.env.VITE_API_URL as string;
+const VIES_API_URL = import.meta.env.VITE_VAT_API_URL as string;
+const INSEE_KEY     = import.meta.env.VITE_INSEE_API_KEY as string;
 
-// Cache du token pour ne pas le renouveller à chaque appel
-let inseeAccessToken: string | null = null;
-
-/** Récupère (et cache) un token OAuth2 pour l'API SIRENE */
-async function fetchInseeToken(): Promise<string> {
-  if (inseeAccessToken) return inseeAccessToken;
-  console.log("[LOG] Récupération token INSEE…");
-  const creds = btoa(`${INSEE_CLIENT_ID}:${INSEE_CLIENT_SECRET}`);
-  const resp = await fetch("https://api.insee.fr/token", {
-    method: "POST",
-    headers: {
-      "Authorization": `Basic ${creds}`,
-      "Content-Type": "application/x-www-form-urlencoded"
-    },
-    body: "grant_type=client_credentials"
-  });
-  if (!resp.ok) {
-    console.error("[LOG] Échec token INSEE :", resp.status, await resp.text());
-    throw new Error("Impossible d’obtenir le token INSEE");
-  }
-  const data = await resp.json();
-  inseeAccessToken = data.access_token;
-  console.log("[LOG] Token INSEE obtenu");
-  return inseeAccessToken;
-}
-
-/** Prépare l’en-tête d’authentification pour SIRENE */
-async function inseeAuthHeader() {
-  const token = await fetchInseeToken();
-  return { "Authorization": `Bearer ${token}` };
-}
-
+// Helpers pour formater les données
 function getApeLabel(code: string) {
   return nafNomenclature[code] || "";
 }
@@ -67,15 +34,11 @@ function formatAdresse(adresse: any) {
     "libellePaysEtrangerEtablissement"
   ];
   return champs
-    .map((champ) => adresse[champ])
-    .filter((v) => v && String(v).trim())
+    .map(champ => adresse[champ])
+    .filter(v => v && String(v).trim())
     .join(" ");
 }
 
-/**
- * Récupère les compléments INPI via votre backend
- * si l’API SIRENE ne fournit pas tous les champs.
- */
 async function fetchInpiFallback(
   siren: string,
   infos: any
@@ -96,10 +59,7 @@ async function fetchInpiFallback(
     ];
     const infosCompletes = { ...infos };
     for (const [front, back] of champsFallback) {
-      if (
-        !infosCompletes[front] ||
-        infosCompletes[front] === "Non renseigné"
-      ) {
+      if (!infosCompletes[front] || infosCompletes[front] === "Non renseigné") {
         if (inpi[back]) infosCompletes[front] = inpi[back];
       }
     }
@@ -111,7 +71,7 @@ async function fetchInpiFallback(
 }
 
 function prettifyKey(key: string) {
-  return key.replace(/_/g, " ").replace(/\b\w/g, (l) => l.toUpperCase());
+  return key.replace(/_/g, " ").replace(/\b\w/g, l => l.toUpperCase());
 }
 function formatValue(value: any) {
   if (value === null || value === undefined || value === "") return "Non renseigné";
@@ -176,8 +136,9 @@ export default function App() {
       if (type === "siren") {
         const url = `https://api.insee.fr/api-sirene/3.11/unites_legales/${searchInput}`;
         console.log("[LOG] Appel SIRENE unites_legales →", url);
-        const headers = await inseeAuthHeader();
-        const resp = await fetch(url, { headers });
+        const resp = await fetch(url, {
+          headers: { "X-INSEE-Api-Key-Integration": INSEE_KEY }
+        });
         console.log(`[LOG] SIRENE unites_legales statut : ${resp.status} (${resp.ok})`);
         if (!resp.ok) throw new Error("SIREN non trouvé");
         const data = await resp.json();
@@ -185,7 +146,7 @@ export default function App() {
         const period = ul.periodesUniteLegale?.[0] || {};
 
         siren = ul.siren;
-        adresseSiege = formatAdresse(ul.adresseEtablissementSiège || ul.adresseEtablissement);
+        adresseSiege = formatAdresse(ul.adresseEtablissementSiege);
         codeApe = period.activitePrincipaleUniteLegale || "";
         libelleApe = getApeLabel(codeApe);
         codeFormeJuridique = period.categorieJuridiqueUniteLegale || "";
@@ -213,8 +174,9 @@ export default function App() {
       else if (type === "siret") {
         const url = `https://api.insee.fr/api-sirene/3.11/siret/${searchInput}`;
         console.log("[LOG] Appel SIRENE siret →", url);
-        const headers = await inseeAuthHeader();
-        const resp = await fetch(url, { headers });
+        const resp = await fetch(url, {
+          headers: { "X-INSEE-Api-Key-Integration": INSEE_KEY }
+        });
         console.log(`[LOG] SIRENE siret statut : ${resp.status} (${resp.ok})`);
         if (!resp.ok) throw new Error("SIRET non trouvé");
         const data = await resp.json();
@@ -247,7 +209,7 @@ export default function App() {
           trancheEffectif: period.trancheEffectifsUniteLegale || ""
         };
       }
-      // 3) texte → votre backend INPI
+      // 3) texte → recherche floue INPI
       else {
         const url = `${BACKEND_URL}/inpi/entreprises?raisonSociale=${encodeURIComponent(searchInput)}`;
         console.log("[LOG] Appel INPI fuzzy →", url);
@@ -262,7 +224,7 @@ export default function App() {
         return;
       }
 
-      // Injection fallback INPI + établissements
+      // Fallback INPI + établissements
       if (siren) {
         const { infosCompletes, inpiRaw: raw } = await fetchInpiFallback(siren, infosToSet);
         setInfos(infosCompletes);
@@ -270,8 +232,9 @@ export default function App() {
 
         const url = `https://api.insee.fr/api-sirene/3.11/etablissements?siren=${siren}&nombre=100`;
         console.log("[LOG] Appel SIRENE établissements →", url);
-        const headers = await inseeAuthHeader();
-        const respEtabs = await fetch(url, { headers });
+        const respEtabs = await fetch(url, {
+          headers: { "X-INSEE-Api-Key-Integration": INSEE_KEY }
+        });
         console.log(`[LOG] SIRENE établissements statut : ${respEtabs.status} (${respEtabs.ok})`);
         if (respEtabs.ok) {
           const dataEtabs = await respEtabs.json();
@@ -291,6 +254,7 @@ export default function App() {
     handleSearch(siren);
   };
 
+  // Vérification du numéro TVA intracommunautaire
   const handleVerifyTva = async () => {
     setVerification(null);
     if (!infos?.siren) {
@@ -302,17 +266,18 @@ export default function App() {
       setVerification("SIREN invalide pour TVA");
       return;
     }
-    const [country, ...num] = [tva.slice(0, 2), tva.slice(2)];
-    const url = `${VIES_API_URL}/check-vat?countryCode=${country}&vatNumber=${num.join("")}`;
+    const country = tva.slice(0, 2);
+    const number = tva.slice(2);
+    const url = `${VIES_API_URL}/check-vat?countryCode=${country}&vatNumber=${number}`;
     console.log("[LOG] Appel VIES →", url);
-
     try {
       const resp = await fetch(url);
       console.log(`[LOG] VIES statut : ${resp.status} (${resp.ok})`);
       const json = await resp.json();
-      setVerification(json.valid
-        ? `✅ TVA valide : ${json.name || "–"} • ${json.address || "–"}`
-        : "❌ TVA invalide"
+      setVerification(
+        json.valid
+          ? `✅ TVA valide : ${json.name || "–"} • ${json.address || "–"}`
+          : "❌ TVA invalide"
       );
     } catch (e) {
       console.error("[LOG] Erreur VIES :", e);
@@ -320,7 +285,6 @@ export default function App() {
     }
   };
 
-  // Affichage
   return (
     <div className="container">
       <h2>🔍 Recherche (SIREN, SIRET ou raison sociale)</h2>
@@ -328,7 +292,7 @@ export default function App() {
         <input
           placeholder="Entrez SIREN/SIRET/texte"
           value={input}
-          onChange={(e) => setInput(e.target.value)}
+          onChange={e => setInput(e.target.value)}
         />
         <button onClick={() => handleSearch()} disabled={loading}>
           {loading ? "..." : "Rechercher"}
@@ -341,7 +305,7 @@ export default function App() {
 
       {showSuggestions && (
         <ul className="suggestions">
-          {suggestions.map((ent: any) => (
+          {suggestions.map(ent => (
             <li key={ent.siren} onClick={() => handleSuggestionClick(ent.siren)}>
               {ent.denomination}
             </li>
@@ -362,13 +326,14 @@ export default function App() {
               ))}
             </tbody>
           </table>
+
           {inpiRaw && (
             <>
               <h4>Compléments INPI</h4>
               <table>
                 <tbody>
                   {Object.entries(inpiRaw)
-                    .filter(([k, v]) => 
+                    .filter(([k, v]) =>
                       !Object.keys(infos).includes(k) && v != null &&
                       !(Array.isArray(v) && v.length === 0)
                     )
@@ -382,11 +347,12 @@ export default function App() {
               </table>
             </>
           )}
+
           {etabs.length > 0 && (
             <>
               <h4>Établissements</h4>
               <ul>
-                {etabs.map((e) => (
+                {etabs.map(e => (
                   <li key={e.siret}>
                     {e.siret} – {formatAdresse(e.adresseEtablissement)}
                   </li>
@@ -394,6 +360,7 @@ export default function App() {
               </ul>
             </>
           )}
+
           {verification && <p className="vat">{verification}</p>}
         </div>
       )}
