@@ -9,9 +9,9 @@ const nafNomenclature: Record<string, string> = nafNomenclatureRaw;
 const formeJuridique: Record<string, string> = formeJuridiqueRaw;
 
 // Vite‐exposées dans .env* (préfixe VITE_)
-const BACKEND_URL  = import.meta.env.VITE_API_URL as string;
-const VIES_API_URL = import.meta.env.VITE_VAT_API_URL as string;
-const INSEE_KEY     = import.meta.env.VITE_INSEE_API_KEY as string;
+const BACKEND_URL    = import.meta.env.VITE_API_URL as string;
+const VIES_API_URL  = import.meta.env.VITE_VAT_API_URL as string;
+const INSEE_API_KEY = import.meta.env.VITE_INSEE_API_KEY as string;
 
 // Helpers pour formater les données
 function getApeLabel(code: string) {
@@ -80,7 +80,6 @@ function formatValue(value: any) {
   return value;
 }
 
-// Calcul de la clé TVA à partir du SIREN
 const calculateTvaKey = (siren: string): string => {
   if (!siren || siren.length !== 9) return "";
   const key = (12 + 3 * (Number(siren) % 97)) % 97;
@@ -98,14 +97,12 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [verification, setVerification] = useState<string | null>(null);
 
-  // Détecte SIREN (9), SIRET (14) ou texte libre
   const getType = (val: string) => {
     if (/^\d{9}$/.test(val))  return "siren";
     if (/^\d{14}$/.test(val)) return "siret";
     return "texte";
   };
 
-  // Recherche principale
   const handleSearch = async (preset?: string) => {
     const searchInput = preset || input.trim();
     console.log("[LOG] Recherche pour :", searchInput);
@@ -132,12 +129,12 @@ export default function App() {
       let codeFormeJuridique = "";
       let libelleFormeJuridique = "";
 
-      // 1) SI SIREN → SIRENE /unites_legales/{siren}
+      // 1) SIREN → /unites_legales/{siren}
       if (type === "siren") {
         const url = `https://api.insee.fr/api-sirene/3.11/unites_legales/${searchInput}`;
         console.log("[LOG] Appel SIRENE unites_legales →", url);
         const resp = await fetch(url, {
-          headers: { "X-INSEE-Api-Key-Integration": INSEE_KEY }
+          headers: { "X-INSEE-Api-Key-Integration": INSEE_API_KEY }
         });
         console.log(`[LOG] SIRENE unites_legales statut : ${resp.status} (${resp.ok})`);
         if (!resp.ok) throw new Error("SIREN non trouvé");
@@ -170,12 +167,12 @@ export default function App() {
           trancheEffectif: period.trancheEffectifsUniteLegale || ""
         };
       }
-      // 2) SI SIRET → SIRENE /siret/{siret}
+      // 2) SIRET → /siret/{siret}
       else if (type === "siret") {
         const url = `https://api.insee.fr/api-sirene/3.11/siret/${searchInput}`;
         console.log("[LOG] Appel SIRENE siret →", url);
         const resp = await fetch(url, {
-          headers: { "X-INSEE-Api-Key-Integration": INSEE_KEY }
+          headers: { "X-INSEE-Api-Key-Integration": INSEE_API_KEY }
         });
         console.log(`[LOG] SIRENE siret statut : ${resp.status} (${resp.ok})`);
         if (!resp.ok) throw new Error("SIRET non trouvé");
@@ -209,7 +206,7 @@ export default function App() {
           trancheEffectif: period.trancheEffectifsUniteLegale || ""
         };
       }
-      // 3) texte → recherche floue INPI
+      // 3) texte → recherche INPI
       else {
         const url = `${BACKEND_URL}/inpi/entreprises?raisonSociale=${encodeURIComponent(searchInput)}`;
         console.log("[LOG] Appel INPI fuzzy →", url);
@@ -233,7 +230,7 @@ export default function App() {
         const url = `https://api.insee.fr/api-sirene/3.11/etablissements?siren=${siren}&nombre=100`;
         console.log("[LOG] Appel SIRENE établissements →", url);
         const respEtabs = await fetch(url, {
-          headers: { "X-INSEE-Api-Key-Integration": INSEE_KEY }
+          headers: { "X-INSEE-Api-Key-Integration": INSEE_API_KEY }
         });
         console.log(`[LOG] SIRENE établissements statut : ${respEtabs.status} (${respEtabs.ok})`);
         if (respEtabs.ok) {
@@ -254,7 +251,6 @@ export default function App() {
     handleSearch(siren);
   };
 
-  // Vérification du numéro TVA intracommunautaire
   const handleVerifyTva = async () => {
     setVerification(null);
     if (!infos?.siren) {
@@ -270,6 +266,7 @@ export default function App() {
     const number = tva.slice(2);
     const url = `${VIES_API_URL}/check-vat?countryCode=${country}&vatNumber=${number}`;
     console.log("[LOG] Appel VIES →", url);
+
     try {
       const resp = await fetch(url);
       console.log(`[LOG] VIES statut : ${resp.status} (${resp.ok})`);
