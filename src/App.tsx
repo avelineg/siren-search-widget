@@ -6,7 +6,7 @@ import {
 import "./App.css";
 
 // URL de votre backend INPI (Express) publié sur Render
-const BACKEND_URL = process.env.REACT_APP_API_URL || "";
+const BACKEND_URL = process.env.REACT_APP_API_URL || "https://hubshare-cmexpert.fr";
 // Votre clé INSEE (pour SIREN/SIRET)
 const INSEE_KEY = process.env.REACT_APP_INSEE_API_KEY;
 // URL de vérification TVA (intracommunautaire)
