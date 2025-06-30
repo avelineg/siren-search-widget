@@ -10,10 +10,10 @@ const formeJuridique: Record<string, string> = formeJuridiqueRaw;
 
 // Vite‐exposées dans .env* (préfixe VITE_)
 const BACKEND_URL    = import.meta.env.VITE_API_URL as string;
-const VIES_API_URL  = import.meta.env.VITE_VAT_API_URL as string;
-const INSEE_API_KEY = import.meta.env.VITE_INSEE_API_KEY as string;
+const VIES_API_URL   = import.meta.env.VITE_VAT_API_URL as string;
+const INSEE_API_KEY  = import.meta.env.VITE_INSEE_API_KEY as string;
 
-// Helpers pour formater les données
+// Helpers
 function getApeLabel(code: string) {
   return nafNomenclature[code] || "";
 }
@@ -206,7 +206,7 @@ export default function App() {
           trancheEffectif: period.trancheEffectifsUniteLegale || ""
         };
       }
-      // 3) texte → recherche INPI
+      // 3) Texte → recherche floue INPI
       else {
         const url = `${BACKEND_URL}/inpi/entreprises?raisonSociale=${encodeURIComponent(searchInput)}`;
         console.log("[LOG] Appel INPI fuzzy →", url);
@@ -266,7 +266,6 @@ export default function App() {
     const number = tva.slice(2);
     const url = `${VIES_API_URL}/check-vat?countryCode=${country}&vatNumber=${number}`;
     console.log("[LOG] Appel VIES →", url);
-
     try {
       const resp = await fetch(url);
       console.log(`[LOG] VIES statut : ${resp.status} (${resp.ok})`);
