@@ -1,9 +1,9 @@
 import { useState } from "react";
-import {
-  NafNomenclature as nafNomenclature,
-  FormeJuridique as formeJuridique
-} from "./nomenclatures";
-import "./App.css";
+import naf from "./naf.json";
+import forme from "./formeJuridique.json";
+
+export const NafNomenclature = naf;
+export const FormeJuridique = forme;
 
 // URL de votre backend INPI (Express) publié sur Render
 const BACKEND_URL = process.env.REACT_APP_API_URL || "https://hubshare-cmexpert.fr";
