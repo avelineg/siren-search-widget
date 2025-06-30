@@ -8,7 +8,7 @@ import formeJuridiqueRaw from './formeJuridique.json';
 const nafNomenclature: Record<string, string> = nafNomenclatureRaw;
 const formeJuridique: Record<string, string> = formeJuridiqueRaw;
 
-// URL de votre backend INPI (Express) publié sur Render
+// URL de votre backend INPI (Express) publié sur Ionos
 const BACKEND_URL = process.env.REACT_APP_API_URL || "https://hubshare-cmexpert.fr";
 // Votre clé INSEE (pour SIREN/SIRET)
 const INSEE_KEY = process.env.REACT_APP_INSEE_API_KEY;
@@ -307,9 +307,8 @@ export default function App() {
         <button onClick={handleVerifyTva} disabled={!infos}>
           Vérifier TVA
         </button>
+        {erreur && <p className="error">{erreur}</p>}
       </div>
-
-      {erreur && <p className="error">{erreur}</p>}
 
       {showSuggestions && (
         <ul className="suggestions">
