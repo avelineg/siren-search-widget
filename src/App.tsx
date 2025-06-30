@@ -8,13 +8,6 @@ import formeJuridiqueRaw from './formeJuridique.json';
 const nafNomenclature: Record<string, string> = nafNomenclatureRaw;
 const formeJuridique: Record<string, string> = formeJuridiqueRaw;
 
-function getApeLabel(code: string) {
-  return nafNomenclature[code] || "";
-}
-function getFormeJuridiqueLabel(code: string) {
-  return formeJuridique[code] || code || "Non renseigné";
-}
-
 // URL de votre backend INPI (Express) publié sur Render
 const BACKEND_URL = process.env.REACT_APP_API_URL || "https://hubshare-cmexpert.fr";
 // Votre clé INSEE (pour SIREN/SIRET)
