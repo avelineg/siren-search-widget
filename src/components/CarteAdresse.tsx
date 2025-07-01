@@ -1,26 +1,27 @@
 import React from "react";
-import { MapContainer, TileLayer, Marker, Popup } from "react-leaflet";
-import "leaflet/dist/leaflet.css";
 
-type Props = {
-  lat: number | null;
-  lon: number | null;
-  label?: string;
-};
+interface CarteAdresseProps {
+  adresse: string;
+  geo?: { lat?: number; lon?: number };
+}
 
-export default function CarteAdresse({ lat, lon, label }: Props) {
-  if (!lat || !lon) return null;
+export default function CarteAdresse({ adresse, geo }: CarteAdresseProps) {
   return (
-    <div style={{ margin: "1.2em 0", borderRadius: 8, overflow: "hidden", border: "1px solid #D2D2D2" }}>
-      <MapContainer center={[lat, lon]} zoom={16} style={{ height: 220, width: "100%" }}>
-        <TileLayer
-          attribution='&copy; <a href="https://osm.org/copyright">OpenStreetMap</a>'
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-        />
-        <Marker position={[lat, lon]}>
-          <Popup>{label || "Adresse de l’établissement"}</Popup>
-        </Marker>
-      </MapContainer>
+    <div className="carte-adresse">
+      <div>
+        <b>Adresse :</b> {adresse || "Non disponible"}
+      </div>
+      {geo?.lat && geo?.lon && (
+        <div>
+          <a
+            href={`https://www.google.com/maps?q=${geo.lat},${geo.lon}`}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Voir sur la carte
+          </a>
+        </div>
+      )}
     </div>
   );
 }
