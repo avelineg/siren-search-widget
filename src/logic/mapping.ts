@@ -6,14 +6,14 @@ const API_INPI = import.meta.env.VITE_API_URL + "/inpi/entreprise/";
 const API_VIES = import.meta.env.VITE_VAT_API_URL + "/check-vat";
 
 export async function fetchEtablissementData(siretOrSiren: string) {
-  let etab, uniteLegale, secondaires, geo, tvaInfo, inpiInfo;
+  let etab = null, uniteLegale = null, secondaires = [], geo = null, tvaInfo = null, inpiInfo = {};
   let siret = siretOrSiren, siren = "";
 
   const SIRENE_API_KEY = import.meta.env.VITE_SIRENE_API_KEY;
 
-  // 1. Recherche SIRENE
+  // Recherche établissement ou unité légale
   if (/^\d{14}$/.test(siretOrSiren)) {
-    // Recherche par SIRET (établissement)
+    // Recherche par SIRET
     try {
       const { data } = await axios.get(
         `${API_SIRENE}/siret/${siretOrSiren}`,
@@ -22,14 +22,15 @@ export async function fetchEtablissementData(siretOrSiren: string) {
       etab = data.etablissement;
       if (!etab) throw new Error("Aucun établissement trouvé pour ce SIRET.");
       siren = etab.siren;
+      uniteLegale = etab.uniteLegale ?? null;
     } catch (error: any) {
-      if (error.response && error.response.status === 404) {
+      if (error.response?.status === 404) {
         throw new Error("Aucun établissement trouvé pour ce SIRET.");
       }
       throw error;
     }
   } else if (/^\d{9}$/.test(siretOrSiren)) {
-    // Recherche par SIREN (unité légale)
+    // Recherche par SIREN
     try {
       const { data } = await axios.get(
         `${API_SIRENE}/siren/${siretOrSiren}`,
@@ -38,7 +39,7 @@ export async function fetchEtablissementData(siretOrSiren: string) {
       uniteLegale = data.uniteLegale;
       if (!uniteLegale) throw new Error("Aucune unité légale trouvée pour ce SIREN.");
       siren = uniteLegale.siren;
-      // On va chercher l’établissement principal
+      // Prend le siège (établissement principal)
       const { data: dataEtab } = await axios.get(
         `${API_SIRENE}/siren/${siren}/etablissements`,
         {
@@ -46,10 +47,10 @@ export async function fetchEtablissementData(siretOrSiren: string) {
           params: { etatAdministratifEtablissement: "A", limit: 1 }
         }
       );
-      etab = dataEtab.etablissements?.[0] || null;
+      etab = dataEtab.etablissements?.[0] ?? null;
       if (!etab) throw new Error("Aucun établissement principal trouvé pour ce SIREN.");
     } catch (error: any) {
-      if (error.response && error.response.status === 404) {
+      if (error.response?.status === 404) {
         throw new Error("Aucune unité légale trouvée pour ce SIREN.");
       }
       throw error;
@@ -58,24 +59,7 @@ export async function fetchEtablissementData(siretOrSiren: string) {
     throw new Error("Merci de fournir un SIRET ou SIREN valide.");
   }
 
-  // 2. Unité légale si manquante (cas recherche SIRET)
-  if (!uniteLegale && siren) {
-    try {
-      const { data } = await axios.get(
-        `${API_SIRENE}/siren/${siren}`,
-        { headers: { "X-INSEE-Api-Key-Integration": SIRENE_API_KEY } }
-      );
-      uniteLegale = data.uniteLegale;
-      if (!uniteLegale) throw new Error("Unité légale absente.");
-    } catch (error: any) {
-      if (error.response && error.response.status === 404) {
-        throw new Error("Unité légale absente.");
-      }
-      throw error;
-    }
-  }
-
-  // 3. Établissements secondaires
+  // Recherche établissements secondaires (hors principal)
   secondaires = [];
   if (siren) {
     try {
@@ -87,7 +71,7 @@ export async function fetchEtablissementData(siretOrSiren: string) {
         }
       );
       secondaires = (dataSec.etablissements || [])
-        .filter((e: any) => e.siret !== etab.siret)
+        .filter((e: any) => etab && e.siret !== etab.siret)
         .map((e: any) => ({
           siret: e.siret,
           denomination: e.denominationEtablissement || e.uniteLegale?.denominationUniteLegale || "",
@@ -100,19 +84,19 @@ export async function fetchEtablissementData(siretOrSiren: string) {
             e.libelleCommuneEtablissement
           ].filter(Boolean).join(" ")
         }));
-    } catch {
+    } catch (err) {
       secondaires = [];
     }
   }
 
-  // 4. Géocodage adresse principale
+  // Géocodage adresse principale
   let adresse = [
-    etab.numeroVoieEtablissement,
-    etab.typeVoieEtablissement,
-    etab.libelleVoieEtablissement,
-    etab.complementAdresseEtablissement,
-    etab.codePostalEtablissement,
-    etab.libelleCommuneEtablissement
+    etab?.numeroVoieEtablissement,
+    etab?.typeVoieEtablissement,
+    etab?.libelleVoieEtablissement,
+    etab?.complementAdresseEtablissement,
+    etab?.codePostalEtablissement,
+    etab?.libelleCommuneEtablissement
   ].filter(Boolean).join(" ");
   geo = null;
   if (adresse) {
@@ -124,10 +108,10 @@ export async function fetchEtablissementData(siretOrSiren: string) {
           lat: geoData.features[0].geometry.coordinates[1]
         };
       }
-    } catch { /* ignore géocodage si erreur */ }
+    } catch {}
   }
 
-  // 5. Numéro TVA (VIES)
+  // Numéro TVA (VIES)
   tvaInfo = null;
   if (siren) {
     const tvaNum = calculateTvaKey(siren);
@@ -139,9 +123,10 @@ export async function fetchEtablissementData(siretOrSiren: string) {
     }
   }
 
-  // 6. INPI (formalités, dirigeants, historique)
+  // INPI (côté frontend, CORS possible seulement si ton backend fait proxy)
   inpiInfo = {};
   try {
+    // CORS : il faut que ton backend autorise le domaine Render dans Access-Control-Allow-Origin
     const { data: inpi } = await axios.get(`${API_INPI}${siren}`);
     inpiInfo = {
       dirigeants: (inpi.representants || []).map((dir: any) => ({
@@ -156,20 +141,22 @@ export async function fetchEtablissementData(siretOrSiren: string) {
     inpiInfo = { dirigeants: [], formalites: [], historique: [] };
   }
 
-  // 7. Mapping final pour EtablissementView
+  // Résultat final
   return {
-    siret: etab.siret,
-    denomination: etab.denominationEtablissement || uniteLegale.denominationUniteLegale,
+    siret: etab?.siret,
+    denomination: etab?.denominationEtablissement || uniteLegale?.denominationUniteLegale,
     adresse,
-    code_ape: etab.activitePrincipaleEtablissement,
-    libelle_ape: etab.libelleActivitePrincipaleEtablissement,
+    code_ape: etab?.activitePrincipaleEtablissement,
+    libelle_ape: etab?.libelleActivitePrincipaleEtablissement,
     forme_juridique: uniteLegale?.categorieJuridiqueUniteLegale,
-    date_creation: etab.dateCreationEtablissement,
-    unite_legale: {
-      siren: uniteLegale.siren,
-      denomination: uniteLegale.denominationUniteLegale,
-      forme_juridique: uniteLegale.categorieJuridiqueUniteLegale
-    },
+    date_creation: etab?.dateCreationEtablissement,
+    unite_legale: uniteLegale
+      ? {
+          siren: uniteLegale.siren,
+          denomination: uniteLegale.denominationUniteLegale,
+          forme_juridique: uniteLegale.categorieJuridiqueUniteLegale
+        }
+      : undefined,
     etablissements_secondaires: secondaires,
     geo,
     tva: tvaInfo,
