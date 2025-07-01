@@ -17,17 +17,30 @@ export default function EtablissementOnglets({ etab }: { etab: any }) {
           <div><b>Activité principale : </b>{etab.code_ape} – {decodeNaf(etab.code_ape)}</div>
           <div><b>Forme juridique : </b>{decodeFormeJuridique(etab.forme_juridique)}</div>
           <div><b>Date de création : </b>{etab.date_creation}</div>
-          <div><b>Numéro TVA : </b>{etab.tva?.numero} {etab.tva ? (etab.tva.valide ? "✅" : "❌") : null}</div>
+          <div>
+            <b>Numéro TVA : </b>
+            {etab.tva?.numero}
+            {etab.tva ? (etab.tva.valide === true ? " ✅" : etab.tva.valide === false ? " ❌" : "") : null}
+          </div>
         </div>
       )
     },
     {
       label: "Dirigeants",
-      content: etab.representants?.length ? (
+      content: Array.isArray(etab.representants) && etab.representants.length > 0 ? (
         <ul>
-          {etab.representants.map((r: any, i: number) => (
-            <li key={i}>{r.nom} {r.prenom} {r.qualite ? `— ${r.qualite}` : ""}</li>
-          ))}
+          {etab.representants.map((r: any, i: number) => {
+            // Les dirigeants INPI sont souvent dans individu.nom/prenom ou personneMorale/nom
+            const nom = r.individu?.nom || r.personneMorale?.nom || r.nom || "";
+            const prenom = r.individu?.prenom || r.personneMorale?.prenom || r.prenom || "";
+            const qualite = r.roleEntreprise || r.qualite || r.fonction || "";
+            return (
+              <li key={i}>
+                <b>{nom}</b> {prenom}
+                {qualite ? <> — <i>{qualite}</i></> : null}
+              </li>
+            );
+          })}
         </ul>
       ) : <em>Aucun dirigeant trouvé</em>
     },
