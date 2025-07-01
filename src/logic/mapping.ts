@@ -1,9 +1,10 @@
 import axios from "axios";
 
-const API_SIRENE = process.env.REACT_APP_API_SIRENE;
-const SIRENE_API_KEY = process.env.REACT_APP_SIRENE_API_KEY;
-const API_VIES = process.env.REACT_APP_API_VIES;
-const API_INPI = process.env.REACT_APP_API_INPI;
+const API_SIRENE = import.meta.env.REACT_APP_API_SIRENE;
+const SIRENE_API_KEY = import.meta.env.REACT_APP_SIRENE_API_KEY;
+const API_VIES = import.meta.env.REACT_APP_API_VIES;
+const API_INPI = import.meta.env.REACT_APP_API_INPI;
+
 
 function formatAdresseINPI(adresse: any) {
   if (!adresse) return "";
