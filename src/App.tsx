@@ -54,24 +54,30 @@ const calculateTvaKey = (siren: string): string => {
   return `FR${key.toString().padStart(2, "0")}${siren}`;
 };
 
-// --- Affichage récursif d'un objet sous forme de liste ---
-function ObjectListView({ data, level = 0 }: { data: any; level?: number }) {
-  if (data === null || data === undefined) return <span>Non renseigné</span>;
+// --- Nouveau composant récursif filtrant les booléens purs ---
+function FilteredObjectListView({ data, level = 0 }: { data: any; level?: number }) {
+  if (typeof data === "boolean") return null;
+  if (data === null || data === undefined) return null;
   if (typeof data !== "object") return <span>{String(data)}</span>;
   if (Array.isArray(data)) {
+    const filtered = data.filter(item => typeof item !== "boolean");
+    if (filtered.length === 0) return null;
     return (
       <ul style={{ marginLeft: (level + 1) * 16 }}>
-        {data.map((item, idx) => (
-          <li key={idx}><ObjectListView data={item} level={level + 1} /></li>
-        ))}
+        {filtered.map((item, idx) =>
+          <li key={idx}><FilteredObjectListView data={item} level={level + 1} /></li>
+        )}
       </ul>
     );
   }
+  const entries = Object.entries(data).filter(([_, v]) => typeof v !== "boolean");
+  if (entries.length === 0) return null;
   return (
     <ul style={{ marginLeft: (level + 1) * 16 }}>
-      {Object.entries(data).map(([k, v]) => (
+      {entries.map(([k, v]) => (
         <li key={k}>
-          <strong>{prettifyKey(k)}:</strong> <ObjectListView data={v} level={level + 1} />
+          <strong style={{ color: "var(--cm-accent)" }}>{prettifyKey(k)}:</strong>{" "}
+          <FilteredObjectListView data={v} level={level + 1} />
         </li>
       ))}
     </ul>
@@ -232,7 +238,7 @@ export default function App() {
       {infos && (
         <div className="results">
           <h3>Fiche entreprise</h3>
-          <ObjectListView data={infos} />
+          <FilteredObjectListView data={infos} />
           {verification && <p className="vat">{verification}</p>}
         </div>
       )}
