@@ -1,27 +1,26 @@
 import React from "react";
 
-interface CarteAdresseProps {
+export default function CarteAdresse({
+  adresse,
+  geo
+}: {
   adresse: string;
-  geo?: { lat?: number; lon?: number };
-}
-
-export default function CarteAdresse({ adresse, geo }: CarteAdresseProps) {
+  geo: [number, number] | null;
+}) {
   return (
-    <div className="carte-adresse">
+    <div style={{ margin: "0.5em 0" }}>
       <div>
-        <b>Adresse :</b> {adresse || "Non disponible"}
+        <b>Adresse :</b> {adresse}
       </div>
-      {geo?.lat && geo?.lon && (
-        <div>
-          <a
-            href={`https://www.google.com/maps?q=${geo.lat},${geo.lon}`}
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Voir sur la carte
-          </a>
-        </div>
-      )}
+      {geo ? (
+        <a
+          href={`https://www.google.com/maps/search/?api=1&query=${geo[1]},${geo[0]}`}
+          target="_blank"
+          rel="noreferrer"
+        >
+          Voir sur la carte
+        </a>
+      ) : null}
     </div>
   );
 }
