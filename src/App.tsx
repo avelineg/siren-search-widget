@@ -29,7 +29,7 @@ export default function App() {
       <form className="controls" onSubmit={handleSearch}>
         <input
           className="input"
-          placeholder="SIRET/SIREN"
+          placeholder="SIREN ou SIRET"
           value={input}
           onChange={(e) => setInput(e.target.value)}
         />
