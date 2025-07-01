@@ -1,28 +1,29 @@
 import React, { useState } from "react";
-import "./Tabs.css";
 
-export type TabItem = { label: string; content: React.ReactNode };
+type TabItem = {
+  label: string;
+  // on passe data en second paramètre si besoin
+  render: (data: any) => React.ReactNode;
+};
 
-export default function Tabs({ items }: { items: TabItem[] }) {
-  const [activeIdx, setActiveIdx] = useState(0);
-
+export default function Tabs({ items, data }: { items: TabItem[]; data?: any }) {
+  const [active, setActive] = useState(0);
   return (
-    <div className="tabs-widget">
-      <div className="tabs-bar">
-        {items.map((t, i) => (
-          <button
-            key={t.label}
-            className={`tab-btn${activeIdx === i ? " active" : ""}`}
-            onClick={() => setActiveIdx(i)}
-            tabIndex={0}
-            type="button"
+    <div className="tabs">
+      <ul className="tab-list">
+        {items.map((it, i) => (
+          <li
+            key={i}
+            className={i === active ? "active" : ""}
+            onClick={() => setActive(i)}
           >
-            {t.label}
-            {activeIdx === i && <span className="tab-underline" />}
-          </button>
+            {it.label}
+          </li>
         ))}
+      </ul>
+      <div className="tab-content">
+        {items[active].render(data)}
       </div>
-      <div className="tab-content">{items[activeIdx]?.content}</div>
     </div>
   );
 }
