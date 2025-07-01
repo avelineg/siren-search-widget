@@ -1,25 +1,31 @@
 import React, { useState } from "react";
 import "./styles.css";
-import EtablissementOnglets from "./components/EtablissementOnglets";
 import { fetchEtablissementData } from "./logic/mapping";
+import formeJuridique from "./formeJuridique.json";
+import naf from "./naf.json";
+import { decodeNatureJuridique, decodeNAF } from "./logic/decode";
 
 export default function App() {
   const [input, setInput] = useState("");
-  const [etabData, setEtabData] = useState<any | null>(null);
+  const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(false);
-  const [erreur, setErreur] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
 
-  const handleSearch = async (evt?: React.FormEvent) => {
-    if (evt) evt.preventDefault();
-    // Remettre tout à zéro AVANT de lancer la recherche
-    setErreur(null);
-    setEtabData(null);
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setInput(e.target.value);
+    setErr(null);
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
     setLoading(true);
+    setErr(null);
+    setData(null);
     try {
-      const data = await fetchEtablissementData(input.trim());
-      setEtabData(data);
+      const res = await fetchEtablissementData(input.trim());
+      setData(res);
     } catch (e: any) {
-      setErreur(e.message || "Erreur");
+      setErr(e.message);
     } finally {
       setLoading(false);
     }
@@ -27,21 +33,69 @@ export default function App() {
 
   return (
     <div className="container">
-      <h2 className="titre">🔍 Recherche (SIRET ou SIREN)</h2>
-      <form className="controls" onSubmit={handleSearch}>
+      <h2>🔍 Recherche (SIRET ou SIREN)</h2>
+      <form onSubmit={handleSubmit}>
         <input
-          className="input"
-          placeholder="SIRET/SIREN"
+          type="text"
           value={input}
-          onChange={e => setInput(e.target.value)}
+          onChange={handleChange}
+          placeholder="SIRET ou SIREN"
         />
-        <button className="btn" type="submit" disabled={loading || !input.trim()}>
-          {loading ? "..." : "Rechercher"}
+        <button type="submit" disabled={loading}>
+          {loading ? "Recherche..." : "Rechercher"}
         </button>
       </form>
-      {loading && <div className="loading">Chargement…</div>}
-      {erreur && <div className="error">{erreur}</div>}
-      {(!loading && etabData) && <EtablissementOnglets etab={etabData} />}
+      {err && <div className="error">{err}</div>}
+      {data && (
+        <div className="result">
+          <div>
+            <b>SIREN:</b> {data.siren}
+            {data.siret && (
+              <>
+                {" "}
+                <b>SIRET:</b> {data.siret}
+              </>
+            )}
+          </div>
+          <div>
+            <b>Adresse:</b> {data.adresse}
+          </div>
+          <div>
+            <b>Forme juridique:</b>{" "}
+            {decodeNatureJuridique(
+              data.uniteLegale?.categorieJuridiqueUniteLegale,
+              formeJuridique
+            )}
+          </div>
+          <div>
+            <b>Activité principale:</b>{" "}
+            {decodeNAF(data.uniteLegale?.activitePrincipaleUniteLegale, naf)}
+          </div>
+          <div>
+            <b>Numéro TVA:</b> {data.numeroTVA ?? "Non renseigné"}
+            {data.tvaValidity != null && (
+              <span>
+                {" "}
+                ({data.tvaValidity ? "Valide" : "Non valide"})
+              </span>
+            )}
+          </div>
+          <div>
+            <b>Dirigeants:</b>
+            <ul>
+              {data.representants && data.representants.length > 0 ? (
+                data.representants.map((r: any, idx: number) => (
+                  <li key={idx}>
+                    {r.nom} {r.prenom} ({r.qualite})
+                  </li>
+                ))
+              ) : (
+                <li>Non disponible</li>
+              )}
+            </ul>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
