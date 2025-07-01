@@ -7,22 +7,22 @@ const API_VIES = import.meta.env.VITE_VAT_API_URL + "/check-vat";
 
 export async function fetchEtablissementData(siretOrSiren: string) {
   let etab: any = null, uniteLegale: any = null, secondaires: any[] = [], geo = null, tvaInfo = null, inpiInfo: any = {};
-  let siret = siretOrSiren, siren = "";
+  let siret = "", siren = "";
 
   const SIRENE_API_KEY = import.meta.env.VITE_SIRENE_API_KEY;
 
-  // Recherche SIRET ou SIREN
   if (/^\d{14}$/.test(siretOrSiren)) {
-    // Établissement par SIRET
+    // SIRET => fiche établissement
+    siret = siretOrSiren;
     try {
       const { data } = await axios.get(
-        `${API_SIRENE}/siret/${siretOrSiren}`,
+        `${API_SIRENE}/siret/${siret}`,
         { headers: { "X-INSEE-Api-Key-Integration": SIRENE_API_KEY } }
       );
       etab = data.etablissement;
       if (!etab) throw new Error("Aucun établissement trouvé pour ce SIRET.");
       siren = etab.siren;
-      uniteLegale = etab.uniteLegale || null;
+      uniteLegale = etab.uniteLegale ?? null;
     } catch (error: any) {
       if (error.response?.status === 404) {
         throw new Error("Aucun établissement trouvé pour ce SIRET.");
@@ -30,16 +30,16 @@ export async function fetchEtablissementData(siretOrSiren: string) {
       throw error;
     }
   } else if (/^\d{9}$/.test(siretOrSiren)) {
-    // Unité légale par SIREN
+    // SIREN => fiche unité légale
+    siren = siretOrSiren;
     try {
       const { data } = await axios.get(
-        `${API_SIRENE}/siren/${siretOrSiren}`,
+        `${API_SIRENE}/siren/${siren}`,
         { headers: { "X-INSEE-Api-Key-Integration": SIRENE_API_KEY } }
       );
       uniteLegale = data.uniteLegale;
       if (!uniteLegale) throw new Error("Aucune unité légale trouvée pour ce SIREN.");
-      siren = uniteLegale.siren;
-      // On va chercher un établissement principal (siège)
+      // On tente de trouver l’établissement principal (siège)
       const { data: dataEtab } = await axios.get(
         `${API_SIRENE}/etablissements`,
         {
@@ -56,10 +56,10 @@ export async function fetchEtablissementData(siretOrSiren: string) {
       throw error;
     }
   } else {
-    throw new Error("Merci de fournir un SIRET ou SIREN valide.");
+    throw new Error("Merci de fournir un SIRET (14 chiffres) ou SIREN (9 chiffres) valide.");
   }
 
-  // Recherche établissements secondaires (hors principal)
+  // Établissements secondaires (hors principal)
   secondaires = [];
   if (siren) {
     try {
@@ -167,6 +167,4 @@ export async function fetchEtablissementData(siretOrSiren: string) {
 
 // Calcul clé TVA à partir du SIREN
 function calculateTvaKey(siren: string): string {
-  const key = (12 + 3 * (Number(siren) % 97)) % 97;
-  return `FR${key.toString().padStart(2, "0")}${siren}`;
-}
+  const key
