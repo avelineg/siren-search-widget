@@ -1,127 +1,171 @@
 import axios from "axios";
+import { decodeFormeJuridique, decodeNaf } from "./decode";
 
-const API_SIRENE = import.meta.env.REACT_APP_API_SIRENE;
-const SIRENE_API_KEY = import.meta.env.REACT_APP_SIRENE_API_KEY;
-const API_VIES = import.meta.env.REACT_APP_API_VIES;
-const API_INPI = import.meta.env.REACT_APP_API_INPI;
+const API_SIRENE = "https://api.insee.fr/api-sirene/3.11";
+const API_GEO = "https://api-adresse.data.gouv.fr/search/";
+const API_INPI = import.meta.env.VITE_API_URL + "/inpi/entreprise/";
+const API_ACTES = import.meta.env.VITE_API_URL + "/inpi/actes/";
+const API_VIES = import.meta.env.VITE_VAT_API_URL + "/check-vat";
+const SIRENE_API_KEY = import.meta.env.VITE_SIRENE_API_KEY;
 
-
-function formatAdresseINPI(adresse: any) {
-  if (!adresse) return "";
+// Format adresse INPI robuste
+function formatAdresseINPI(ad: any) {
+  if (!ad) return "";
   return [
-    adresse.numVoie,
-    adresse.voie,
-    adresse.codePostal,
-    adresse.commune,
-    adresse.pays
+    ad.numVoie,
+    ad.typeVoie,
+    ad.voie,
+    ad.codePostal,
+    ad.commune,
+    ad.pays
   ].filter(Boolean).join(" ");
 }
 
-/**
- * Récupère les infos via SIRENE, VIES (TVA), et INPI (dirigeants)
- * @param siretOrSiren string SIRET (14 chiffres) ou SIREN (9 chiffres)
- */
-export async function fetchEtablissementData(siretOrSiren: string) {
-  // SUPPRESSION des erreurs bloquantes sur les variables d'environnement
+// Calcul TVA intracommunautaire
+function computeTva(siren: string) {
+  const valid = /^\d{9}$/.test(siren) ? siren : "";
+  if (!valid) return "";
+  const sirenNum = parseInt(siren, 10);
+  const cle = (12 + 3 * (sirenNum % 97)) % 97;
+  return `FR${cle < 10 ? "0" : ""}${cle}${siren}`;
+}
 
+export async function fetchEtablissementData(siretOrSiren: string) {
   let etab: any = null;
   let uniteLegale: any = null;
-  let geo: any = null;
-  let siret = "", siren = "";
-  let numeroTVA = null;
-  let tvaValidity = null;
+  let siren = "";
+  let inpiData: any = {};
+  let geo: [number, number] | null = null;
 
-  // 1. Recherche SIRENE (établissement ou unité légale)
+  // 1) SIRENE
   if (/^\d{14}$/.test(siretOrSiren)) {
-    siret = siretOrSiren;
-    const { data } = await axios.get(
-      `${API_SIRENE}/siret/${siret}`,
-      SIRENE_API_KEY ? { headers: { "X-INSEE-Api-Key-Integration": SIRENE_API_KEY } } : {}
-    );
+    const { data } = await axios.get(`${API_SIRENE}/siret/${siretOrSiren}`, {
+      headers: { "X-INSEE-Api-Key-Integration": SIRENE_API_KEY }
+    });
     etab = data.etablissement;
     siren = etab.siren;
-    uniteLegale = etab.uniteLegale ?? null;
-    geo = {
-      lat: etab.latitude,
-      lon: etab.longitude
-    };
-    numeroTVA = etab.numeroTvaIntracommunautaire || null;
-  } else if (/^\d{9}$/.test(siretOrSiren)) {
-    siren = siretOrSiren;
-    const { data } = await axios.get(
-      `${API_SIRENE}/siren/${siren}`,
-      SIRENE_API_KEY ? { headers: { "X-INSEE-Api-Key-Integration": SIRENE_API_KEY } } : {}
-    );
-    uniteLegale = data.uniteLegale;
-    numeroTVA = uniteLegale.numeroTvaIntracommunautaire || null;
+    uniteLegale = etab.uniteLegale;
   } else {
-    throw new Error("Merci de fournir un SIRET (14 chiffres) ou SIREN (9 chiffres) valide.");
+    siren = siretOrSiren;
+    const { data } = await axios.get(`${API_SIRENE}/siren/${siren}`, {
+      headers: { "X-INSEE-Api-Key-Integration": SIRENE_API_KEY }
+    });
+    uniteLegale = data.uniteLegale;
   }
 
-  // 2. Vérification TVA intracommunautaire via VIES si présente
-  if (numeroTVA && API_VIES) {
-    try {
-      const { data } = await axios.get(
-        `${API_VIES}/vies/${numeroTVA.replace(/\s/g, "")}`
-      );
-      tvaValidity = data.valid ? true : false;
-    } catch (e) {
-      tvaValidity = null;
-    }
+  // 2) INPI fallback
+  try {
+    const { data } = await axios.get(`${API_INPI}${siren}`);
+    inpiData = data;
+  } catch {
+    inpiData = {};
   }
+  const pm = inpiData.content?.personneMorale ?? {};
+  const etabINPI = pm.etablissementPrincipal ?? {};
+  const adresseINPI = etabINPI.adresse ?? pm.adresseEntreprise ?? {};
 
-  // 3. Récupération INPI pour dirigeants, etc.
-  let representants: any[] = [];
-  if (API_INPI && siren) {
-    try {
-      const { data: inpiData } = await axios.get(`${API_INPI}${siren}`);
-      const pm = inpiData.content?.personneMorale || {};
-      const reps = Array.isArray(pm.composition)
-        ? pm.composition.map((r: any) => ({
-            nom: r.nom,
-            prenom: r.prenom,
-            qualite: r.qualite,
-            dateNaissance: r.naissance?.date || null,
-            lieuNaissance: r.naissance?.lieu || null,
-            dateNomination: r.mandat?.dateDebut || null,
-            dateFinMandat: r.mandat?.dateFin || null,
-          }))
-        : [];
-      representants = reps;
-    } catch (e) {
-      representants = [];
-    }
-  }
-
-  // 4. Adresse (SIRENE puis fallback INPI possible)
+  // 3) Adresse
   let adresse = [
-    etab?.numeroVoieEtablissement || uniteLegale?.numeroVoieUniteLegale,
-    etab?.typeVoieEtablissement || uniteLegale?.typeVoieUniteLegale,
-    etab?.libelleVoieEtablissement || uniteLegale?.libelleVoieUniteLegale,
-    etab?.complementAdresseEtablissement || uniteLegale?.complementAdresseUniteLegale,
-    etab?.codePostalEtablissement || uniteLegale?.codePostalUniteLegale,
-    etab?.libelleCommuneEtablissement || uniteLegale?.libelleCommuneUniteLegale
-  ].filter(Boolean).join(" ");
-  if ((!adresse || adresse.trim() === "") && API_INPI && siren) {
-    // Optionnel : fallback adresse INPI si rien côté SIRENE (à adapter selon structure INPI)
-    try {
-      const { data: inpiData } = await axios.get(`${API_INPI}${siren}`);
-      const pm = inpiData.content?.personneMorale || {};
-      const etabINPI = pm.etablissementPrincipal || {};
-      const adresseINPI = etabINPI.adresse || pm.adresseEntreprise || {};
-      adresse = formatAdresseINPI(adresseINPI);
-    } catch {}
+    etab?.numeroVoieEtablissement,
+    etab?.typeVoieEtablissement,
+    etab?.libelleVoieEtablissement,
+    etab?.complementAdresseEtablissement,
+    etab?.codePostalEtablissement,
+    etab?.libelleCommuneEtablissement
+  ]
+    .filter(Boolean)
+    .join(" ");
+  if (!adresse) {
+    adresse = formatAdresseINPI(adresseINPI);
   }
+
+  // 4) Géoloc
+  try {
+    const { data } = await axios.get(API_GEO, { params: { q: adresse, limit: 1 } });
+    const coords = data.features?.[0]?.geometry?.coordinates;
+    if (coords) geo = coords;
+  } catch {}
+
+  // 5) Identité
+  const forme_juridique =
+    decodeFormeJuridique(
+      uniteLegale?.categorieJuridiqueUniteLegale ||
+        etab?.categorieJuridiqueUniteLegale ||
+        inpiData.formeJuridique ||
+        pm.formeJuridique ||
+        ""
+    );
+  const denomination =
+    uniteLegale?.denominationUniteLegale ||
+    pm.enseigne ||
+    pm.nomCommercial ||
+    pm.denomination ||
+    "";
+  const code_ape =
+    etab?.activitePrincipaleEtablissement ||
+    uniteLegale?.activitePrincipaleUniteLegale ||
+    etabINPI.codeApe ||
+    "";
+  const libelle_ape = decodeNaf(code_ape);
+  const siretF = etab?.siret || etabINPI.siret || "";
+  const date_creation =
+    etab?.dateCreationEtablissement ||
+    uniteLegale?.dateCreationUniteLegale ||
+    inpiData.dateCreation ||
+    "";
+  const capital_social = uniteLegale?.capitalSocial ?? pm.montantCapital ?? 0;
+  const objet_social = pm.description?.objet ?? "";
+
+  // 6) TVA
+  const tvaNum = computeTva(siren);
+  let tvaRes = null;
+  if (tvaNum) {
+    try {
+      const { data } = await axios.get(API_VIES, {
+        params: { countryCode: "FR", vatNumber: tvaNum.slice(2) }
+      });
+      tvaRes = { numero: tvaNum, valide: !!data.isValid };
+    } catch {
+      tvaRes = { numero: tvaNum, valide: null };
+    }
+  }
+
+  // 7) Actes INPI
+  let documents: any[] = [];
+  try {
+    const { data: actes } = await axios.get(`${API_ACTES}${siren}`);
+    documents = actes.map((a: any) => ({
+      titre: a.titre || a.typeDocument,
+      dateDepot: a.dateDepot,
+      url: a.urlPdf || a.url
+    }));
+  } catch {}
+
+  // 8) Autres onglets
+  const representants = Array.isArray(pm.composition) ? pm.composition : [];
+  const annonces = pm.publicationLegale ? [pm.publicationLegale] : [];
+  const finances = capital_social ? [{ montant: capital_social, devise: pm.deviseCapital }] : [];
+  const labels = inpiData.labels || [];
+  const divers = inpiData.divers || [];
 
   return {
+    denomination,
     siren,
-    siret,
-    etab,
-    uniteLegale,
-    geo,
+    siret: siretF,
     adresse,
-    numeroTVA,
-    tvaValidity,
+    geo,
+    code_ape,
+    libelle_ape,
+    forme_juridique,
+    date_creation,
+    capital_social,
+    objet_social,
+    tva: tvaRes,
     representants,
+    documents,
+    annonces,
+    finances,
+    labels,
+    divers
   };
 }
