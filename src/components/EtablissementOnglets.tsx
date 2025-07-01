@@ -5,21 +5,30 @@ import CarteAdresse from "./CarteAdresse";
 import FilteredObjectListView from "./FilteredObjectListView";
 
 export default function EtablissementOnglets({ etab }: { etab: any }) {
-  // on stocke désormais une factory plutôt qu’un JSX closuré
   const onglets = [
     {
       label: "Identité",
-      render: () => (
+      content: (
         <div>
           <h2>{etab.denomination}</h2>
           <div><b>SIREN :</b> {etab.siren}</div>
           <div><b>SIRET :</b> {etab.siret}</div>
           <div><b>Adresse :</b> {etab.adresse}</div>
-          <CarteAdresse lat={etab.geo?.lat ?? null} lon={etab.geo?.lon ?? null} label={etab.adresse} />
-          <div><b>Activité principale :</b> {etab.code_ape} – {decodeNaf(etab.code_ape)}</div>
-          <div><b>Forme juridique :</b> {decodeFormeJuridique(etab.forme_juridique)}</div>
+          <CarteAdresse
+            lat={etab.geo?.lat ?? null}
+            lon={etab.geo?.lon ?? null}
+            label={etab.adresse}
+          />
+          <div>
+            <b>Activité principale :</b> {etab.code_ape} – {decodeNaf(etab.code_ape)}
+          </div>
+          <div>
+            <b>Forme juridique :</b> {decodeFormeJuridique(etab.forme_juridique)}
+          </div>
           <div><b>Date de création :</b> {etab.date_creation}</div>
-          <div><b>Numéro TVA :</b> {etab.tva?.numero} {etab.tva?.valide ? "✅" : "❌"}</div>
+          <div>
+            <b>Numéro TVA :</b> {etab.tva?.numero} {etab.tva?.valide ? "✅" : "❌"}
+          </div>
           <div><b>Capital social :</b> {etab.capital_social ?? "—"}</div>
           <div><b>Effectif :</b> {etab.effectif ?? "—"}</div>
         </div>
@@ -27,15 +36,68 @@ export default function EtablissementOnglets({ etab }: { etab: any }) {
     },
     {
       label: "Dirigeants",
-      render: () => (
-        etab.representants?.length
-          ? <ul>{etab.representants.map((r: any,i:number)=><li key={i}>{r.nom} {r.prenom}{r.qualite?` — ${r.qualite}`:""}</li>)}</ul>
-          : <em>Aucun dirigeant trouvé</em>
+      content: etab.representants?.length ? (
+        <table className="table-dirigeants">
+          <thead>
+            <tr>
+              <th>Nom</th>
+              <th>Prénom</th>
+              <th>Qualité</th>
+              <th>Date de naissance</th>
+              <th>Lieu de naissance</th>
+              <th>Date nomination</th>
+              <th>Fin mandat</th>
+            </tr>
+          </thead>
+          <tbody>
+            {etab.representants.map((r: any, i: number) => (
+              <tr key={i}>
+                <td>{r.nom}</td>
+                <td>{r.prenom}</td>
+                <td>{r.qualite ?? "—"}</td>
+                <td>{r.dateNaissance ?? "—"}</td>
+                <td>{r.lieuNaissance ?? "—"}</td>
+                <td>{r.dateNomination ?? "—"}</td>
+                <td>{r.dateFinMandat ?? "—"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      ) : (
+        <em>Aucun dirigeant trouvé</em>
       )
     },
-    // ... idem pour les autres onglets
+    {
+      label: "Documents",
+      content: etab.documents
+        ? <FilteredObjectListView data={etab.documents} />
+        : <em>Aucun document trouvé</em>
+    },
+    {
+      label: "Données financières",
+      content: etab.finances
+        ? <FilteredObjectListView data={etab.finances} />
+        : <em>Aucune donnée financière</em>
+    },
+    {
+      label: "Annonces",
+      content: etab.annonces
+        ? <FilteredObjectListView data={etab.annonces} />
+        : <em>Aucune annonce</em>
+    },
+    {
+      label: "Labels & certificats",
+      content: etab.labels
+        ? <FilteredObjectListView data={etab.labels} />
+        : <em>Aucun label/certificat</em>
+    },
+    {
+      label: "Divers",
+      content: etab.divers
+        ? <FilteredObjectListView data={etab.divers} />
+        : <em>Aucune autre information</em>
+    }
   ];
 
-  // on passe dorénavant la data à Tabs
-  return <Tabs items={onglets} data={etab} />;
+  return <Tabs items={onglets} />;
 }
