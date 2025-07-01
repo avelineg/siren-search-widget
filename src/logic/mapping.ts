@@ -1,9 +1,9 @@
 import axios from "axios";
 
-const API_SIRENE = "https://api.insee.fr/api-sirene/3.11"; // https://api.insee.fr/api-sirene/3.11
-const SIRENE_API_KEY = "35130283-462e-4f28-991c-ddc18f739e2a";
-const API_VIES = "https://check-vat-backend.onrender.com"; // https://check-vat-backend.onrender.com
-const API_INPI = "https://hubshare-cmexpert.fr"; // Ton endpoint INPI ou proxy
+const API_SIRENE = process.env.REACT_APP_API_SIRENE;
+const SIRENE_API_KEY = process.env.REACT_APP_SIRENE_API_KEY;
+const API_VIES = process.env.REACT_APP_API_VIES;
+const API_INPI = process.env.REACT_APP_API_INPI;
 
 function formatAdresseINPI(adresse: any) {
   if (!adresse) return "";
@@ -16,6 +16,10 @@ function formatAdresseINPI(adresse: any) {
   ].filter(Boolean).join(" ");
 }
 
+/**
+ * Récupère les infos via SIRENE, VIES (TVA), et INPI (dirigeants)
+ * @param siretOrSiren string SIRET (14 chiffres) ou SIREN (9 chiffres)
+ */
 export async function fetchEtablissementData(siretOrSiren: string) {
   if (!API_SIRENE) throw new Error("REACT_APP_API_SIRENE n'est pas définie");
   if (!SIRENE_API_KEY) throw new Error("REACT_APP_SIRENE_API_KEY n'est pas définie");
@@ -55,7 +59,7 @@ export async function fetchEtablissementData(siretOrSiren: string) {
     throw new Error("Merci de fournir un SIRET (14 chiffres) ou SIREN (9 chiffres) valide.");
   }
 
-  // 2. Vérification TVA intracommunautaire via VIES si présent
+  // 2. Vérification TVA intracommunautaire via VIES si présente
   if (numeroTVA && API_VIES) {
     try {
       const { data } = await axios.get(
