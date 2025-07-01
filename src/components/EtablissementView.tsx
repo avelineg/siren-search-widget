@@ -7,16 +7,7 @@ export default function EtablissementView({ etab }: { etab: any }) {
       <header>
         <h1 className="info-title">{etab.denomination}</h1>
         <span className="siret">{etab.siret}</span>
-        <div style={{ margin: "0.3em 0 1em 0" }}>
-          <a
-            className="btn"
-            href={`https://annuaire-entreprises.data.gouv.fr/entreprise/${etab.unite_legale?.siren}`}
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Voir l’unité légale
-          </a>
-        </div>
+        
       </header>
       <CarteAdresse
         lat={etab.geo?.lat || null}
