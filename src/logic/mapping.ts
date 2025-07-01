@@ -3,6 +3,7 @@ import axios from "axios";
 const API_SIRENE = process.env.REACT_APP_API_SIRENE; // https://api.insee.fr/api-sirene/3.11
 const SIRENE_API_KEY = process.env.REACT_APP_SIRENE_API_KEY;
 const API_VIES = process.env.REACT_APP_API_VIES; // https://check-vat-backend.onrender.com
+const API_INPI = process.env.REACT_APP_API_INPI; // Ton endpoint INPI ou proxy
 
 function formatAdresseINPI(adresse: any) {
   if (!adresse) return "";
@@ -18,6 +19,7 @@ function formatAdresseINPI(adresse: any) {
 export async function fetchEtablissementData(siretOrSiren: string) {
   if (!API_SIRENE) throw new Error("REACT_APP_API_SIRENE n'est pas définie");
   if (!SIRENE_API_KEY) throw new Error("REACT_APP_SIRENE_API_KEY n'est pas définie");
+  if (!API_INPI) throw new Error("REACT_APP_API_INPI n'est pas définie");
 
   let etab: any = null;
   let uniteLegale: any = null;
@@ -65,7 +67,28 @@ export async function fetchEtablissementData(siretOrSiren: string) {
     }
   }
 
-  // 3. Adresse (SIRENE puis fallback INPI)
+  // 3. Récupération INPI pour dirigeants, etc.
+  let representants: any[] = [];
+  try {
+    const { data: inpiData } = await axios.get(`${API_INPI}${siren}`);
+    const pm = inpiData.content?.personneMorale || {};
+    const reps = Array.isArray(pm.composition)
+      ? pm.composition.map((r: any) => ({
+          nom: r.nom,
+          prenom: r.prenom,
+          qualite: r.qualite,
+          dateNaissance: r.naissance?.date || null,
+          lieuNaissance: r.naissance?.lieu || null,
+          dateNomination: r.mandat?.dateDebut || null,
+          dateFinMandat: r.mandat?.dateFin || null,
+        }))
+      : [];
+    representants = reps;
+  } catch (e) {
+    representants = [];
+  }
+
+  // 4. Adresse (SIRENE puis fallback INPI possible)
   let adresse = [
     etab?.numeroVoieEtablissement || uniteLegale?.numeroVoieUniteLegale,
     etab?.typeVoieEtablissement || uniteLegale?.typeVoieUniteLegale,
@@ -74,9 +97,16 @@ export async function fetchEtablissementData(siretOrSiren: string) {
     etab?.codePostalEtablissement || uniteLegale?.codePostalUniteLegale,
     etab?.libelleCommuneEtablissement || uniteLegale?.libelleCommuneUniteLegale
   ].filter(Boolean).join(" ");
-
-  // 4. Dirigeants : à compléter selon ta logique INPI si besoin
-  const representants: any[] = [];
+  if (!adresse || adresse.trim() === "") {
+    // Optionnel : fallback adresse INPI si rien côté SIRENE (à adapter selon structure INPI)
+    try {
+      const { data: inpiData } = await axios.get(`${API_INPI}${siren}`);
+      const pm = inpiData.content?.personneMorale || {};
+      const etabINPI = pm.etablissementPrincipal || {};
+      const adresseINPI = etabINPI.adresse || pm.adresseEntreprise || {};
+      adresse = formatAdresseINPI(adresseINPI);
+    } catch {}
+  }
 
   return {
     siren,
