@@ -13,12 +13,7 @@ export default function EtablissementOnglets({ etab }: { etab: any }) {
           <h2>{etab.denomination}</h2>
           <div><b>SIREN :</b> {etab.siren}</div>
           <div><b>SIRET :</b> {etab.siret}</div>
-          <div><b>Adresse :</b> {etab.adresse}</div>
-          <CarteAdresse
-            lat={etab.geo?.lat ?? null}
-            lon={etab.geo?.lon ?? null}
-            label={etab.adresse}
-          />
+          <CarteAdresse adresse={etab.adresse} geo={etab.geo} />
           <div>
             <b>Activité principale :</b> {etab.code_ape} – {decodeNaf(etab.code_ape)}
           </div>
@@ -27,75 +22,58 @@ export default function EtablissementOnglets({ etab }: { etab: any }) {
           </div>
           <div><b>Date de création :</b> {etab.date_creation}</div>
           <div>
-            <b>Numéro TVA :</b> {etab.tva?.numero} {etab.tva?.valide ? "✅" : "❌"}
+            <b>Numéro TVA :</b> {etab.tva?.numero}
+            {etab.tva
+              ? etab.tva.valide === true
+                ? " ✅"
+                : etab.tva.valide === false
+                ? " ❌"
+                : ""
+              : ""}
           </div>
-          <div><b>Capital social :</b> {etab.capital_social ?? "—"}</div>
-          <div><b>Effectif :</b> {etab.effectif ?? "—"}</div>
         </div>
       )
     },
     {
       label: "Dirigeants",
-      content: etab.representants?.length ? (
-        <table className="table-dirigeants">
-          <thead>
-            <tr>
-              <th>Nom</th>
-              <th>Prénom</th>
-              <th>Qualité</th>
-              <th>Date de naissance</th>
-              <th>Lieu de naissance</th>
-              <th>Date nomination</th>
-              <th>Fin mandat</th>
-            </tr>
-          </thead>
-          <tbody>
-            {etab.representants.map((r: any, i: number) => (
-              <tr key={i}>
-                <td>{r.nom}</td>
-                <td>{r.prenom}</td>
-                <td>{r.qualite ?? "—"}</td>
-                <td>{r.dateNaissance ?? "—"}</td>
-                <td>{r.lieuNaissance ?? "—"}</td>
-                <td>{r.dateNomination ?? "—"}</td>
-                <td>{r.dateFinMandat ?? "—"}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      ) : (
-        <em>Aucun dirigeant trouvé</em>
-      )
+      content:
+        Array.isArray(etab.representants) && etab.representants.length > 0 ? (
+          <ul>
+            {etab.representants.map((r: any, i: number) => {
+              const nom = r.individu?.nom || r.personneMorale?.denomination || "";
+              const prenom = r.individu?.prenom || "";
+              const qualite = r.roleEntreprise || r.qualite || r.fonction || "";
+              return (
+                <li key={i}>
+                  <b>{nom}</b> {prenom}
+                  {qualite ? <> — <i>{qualite}</i></> : null}
+                </li>
+              );
+            })}
+          </ul>
+        ) : (
+          <em>Aucun dirigeant trouvé</em>
+        )
     },
     {
       label: "Documents",
-      content: etab.documents
-        ? <FilteredObjectListView data={etab.documents} />
-        : <em>Aucun document trouvé</em>
+      content: <FilteredObjectListView data={etab.documents} />
     },
     {
       label: "Données financières",
-      content: etab.finances
-        ? <FilteredObjectListView data={etab.finances} />
-        : <em>Aucune donnée financière</em>
+      content: <FilteredObjectListView data={etab.finances} />
     },
     {
       label: "Annonces",
-      content: etab.annonces
-        ? <FilteredObjectListView data={etab.annonces} />
-        : <em>Aucune annonce</em>
+      content: <FilteredObjectListView data={etab.annonces} />
     },
     {
       label: "Labels & certificats",
-      content: etab.labels
-        ? <FilteredObjectListView data={etab.labels} />
-        : <em>Aucun label/certificat</em>
+      content: <FilteredObjectListView data={etab.labels} />
     },
     {
       label: "Divers",
-      content: etab.divers
-        ? <FilteredObjectListView data={etab.divers} />
-        : <em>Aucune autre information</em>
+      content: <FilteredObjectListView data={etab.divers} />
     }
   ];
 
