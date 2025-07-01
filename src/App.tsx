@@ -2,7 +2,9 @@ import React, { useState } from "react";
 import "./styles.css";
 import EtablissementView from "./components/EtablissementView";
 import { fetchEtablissementData } from "./logic/mapping";
+import EtablissementOnglets from "./components/EtablissementOnglets";
 
+{etabData && <EtablissementOnglets etab={etabData} />}
 export default function App() {
   const [input, setInput] = useState("");
   const [etabData, setEtabData] = useState<any | null>(null);
