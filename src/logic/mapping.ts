@@ -6,7 +6,7 @@ const API_INPI = import.meta.env.VITE_API_URL + "/inpi/entreprise/";
 const API_VIES = import.meta.env.VITE_VAT_API_URL + "/check-vat";
 
 export async function fetchEtablissementData(siretOrSiren: string) {
-  let etab: any = null, uniteLegale: any = null, secondaires: any[] = [], geo = null, tvaInfo = null, inpiInfo: any = {};
+  let etab: any = null, uniteLegale: any = null, geo = null, tvaInfo = null, inpiInfo: any = {};
   let siret = "", siren = "";
 
   const SIRENE_API_KEY = import.meta.env.VITE_SIRENE_API_KEY;
@@ -39,16 +39,8 @@ export async function fetchEtablissementData(siretOrSiren: string) {
       );
       uniteLegale = data.uniteLegale;
       if (!uniteLegale) throw new Error("Aucune unité légale trouvée pour ce SIREN.");
-      // On tente de trouver l’établissement principal (siège)
-      const { data: dataEtab } = await axios.get(
-        `${API_SIRENE}/etablissements`,
-        {
-          headers: { "X-INSEE-Api-Key-Integration": SIRENE_API_KEY },
-          params: { siren, etatAdministratifEtablissement: "A", limit: 1 }
-        }
-      );
-      etab = dataEtab.etablissements?.[0] || null;
-      if (!etab) throw new Error("Aucun établissement principal trouvé pour ce SIREN.");
+      // On ne cherche plus d'établissement principal secondaire ici
+      etab = null;
     } catch (error: any) {
       if (error.response?.status === 404) {
         throw new Error("Aucune unité légale trouvée pour ce SIREN.");
@@ -59,37 +51,7 @@ export async function fetchEtablissementData(siretOrSiren: string) {
     throw new Error("Merci de fournir un SIRET (14 chiffres) ou SIREN (9 chiffres) valide.");
   }
 
-  // Établissements secondaires (hors principal)
-  secondaires = [];
-  if (siren) {
-    try {
-      const { data: dataSec } = await axios.get(
-        `${API_SIRENE}/etablissements`,
-        {
-          headers: { "X-INSEE-Api-Key-Integration": SIRENE_API_KEY },
-          params: { siren, etatAdministratifEtablissement: "A", limit: 20 }
-        }
-      );
-      secondaires = (dataSec.etablissements || [])
-        .filter((e: any) => etab && e.siret !== etab.siret)
-        .map((e: any) => ({
-          siret: e.siret,
-          denomination: e.denominationEtablissement || e.uniteLegale?.denominationUniteLegale || "",
-          adresse: [
-            e.numeroVoieEtablissement,
-            e.typeVoieEtablissement,
-            e.libelleVoieEtablissement,
-            e.complementAdresseEtablissement,
-            e.codePostalEtablissement,
-            e.libelleCommuneEtablissement
-          ].filter(Boolean).join(" ")
-        }));
-    } catch {
-      secondaires = [];
-    }
-  }
-
-  // Géocodage adresse principale
+  // Géocodage adresse principale (si possible)
   let adresse = [
     etab?.numeroVoieEtablissement,
     etab?.typeVoieEtablissement,
@@ -156,7 +118,8 @@ export async function fetchEtablissementData(siretOrSiren: string) {
           forme_juridique: uniteLegale.categorieJuridiqueUniteLegale
         }
       : undefined,
-    etablissements_secondaires: secondaires,
+    // Plus d'établissements secondaires ni de /etablissements !
+    etablissements_secondaires: [],
     geo,
     tva: tvaInfo,
     representants: inpiInfo.dirigeants || [],
