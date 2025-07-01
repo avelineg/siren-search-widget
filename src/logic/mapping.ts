@@ -1,9 +1,9 @@
 import axios from "axios";
 
-const API_SIRENE = process.env.REACT_APP_API_SIRENE; // https://api.insee.fr/api-sirene/3.11
+const API_SIRENE = "https://api.insee.fr/api-sirene/3.11"; // https://api.insee.fr/api-sirene/3.11
 const SIRENE_API_KEY = "35130283-462e-4f28-991c-ddc18f739e2a";
-const API_VIES = process.env.REACT_APP_API_VIES; // https://check-vat-backend.onrender.com
-const API_INPI = process.env.REACT_APP_API_INPI; // Ton endpoint INPI ou proxy
+const API_VIES = "https://check-vat-backend.onrender.com"; // https://check-vat-backend.onrender.com
+const API_INPI = "https://hubshare-cmexpert.fr"; // Ton endpoint INPI ou proxy
 
 function formatAdresseINPI(adresse: any) {
   if (!adresse) return "";
