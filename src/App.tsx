@@ -10,9 +10,9 @@ const formeJuridique: Record<string, string> = formeJuridiqueRaw;
 
 // Vite‐exposées dans .env* (préfixe VITE_)
 const BACKEND_URL   = import.meta.env.VITE_API_URL as string;
-const VIES_API_URL = import.meta.env.VITE_VAT_API_URL as string;
+const VIES_API_URL  = import.meta.env.VITE_VAT_API_URL as string;
+const SIRENE_API_KEY = import.meta.env.VITE_SIRENE_API_KEY as string | undefined;
 
-// Helpers pour formater les données
 function getApeLabel(code: string) {
   return nafNomenclature[code] || "";
 }
@@ -48,12 +48,56 @@ function formatValue(value: any) {
   return value;
 }
 
-// Calcul de la clé TVA à partir du SIREN
 const calculateTvaKey = (siren: string): string => {
   if (!siren || siren.length !== 9) return "";
   const key = (12 + 3 * (Number(siren) % 97)) % 97;
   return `FR${key.toString().padStart(2, "0")}${siren}`;
 };
+
+// --- Affichage récursif d'un objet sous forme de liste ---
+function ObjectListView({ data, level = 0 }: { data: any; level?: number }) {
+  if (data === null || data === undefined) return <span>Non renseigné</span>;
+  if (typeof data !== "object") return <span>{String(data)}</span>;
+  if (Array.isArray(data)) {
+    return (
+      <ul style={{ marginLeft: (level + 1) * 16 }}>
+        {data.map((item, idx) => (
+          <li key={idx}><ObjectListView data={item} level={level + 1} /></li>
+        ))}
+      </ul>
+    );
+  }
+  return (
+    <ul style={{ marginLeft: (level + 1) * 16 }}>
+      {Object.entries(data).map(([k, v]) => (
+        <li key={k}>
+          <strong>{prettifyKey(k)}:</strong> <ObjectListView data={v} level={level + 1} />
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+// --- Appel API SIRENE 3.11 direct si pas de BACKEND_URL ---
+async function fetchSireneDirect(sirenOrSiret: string) {
+  if (!SIRENE_API_KEY) throw new Error("Clé API SIRENE manquante");
+  let endpoint = "";
+  if (/^\d{9}$/.test(sirenOrSiret)) {
+    endpoint = `https://api.insee.fr/entreprises/sirene/V3.11/siren/${sirenOrSiret}`;
+  } else if (/^\d{14}$/.test(sirenOrSiret)) {
+    endpoint = `https://api.insee.fr/entreprises/sirene/V3.11/siret/${sirenOrSiret}`;
+  } else {
+    throw new Error("Entrée non valide (SIREN ou SIRET attendu)");
+  }
+  const resp = await fetch(endpoint, {
+    headers: {
+      Authorization: `Bearer ${SIRENE_API_KEY}`,
+      Accept: "application/json"
+    }
+  });
+  if (!resp.ok) throw new Error("Erreur API SIRENE");
+  return resp.json();
+}
 
 export default function App() {
   const [input, setInput] = useState("");
@@ -64,17 +108,14 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [verification, setVerification] = useState<string | null>(null);
 
-  // Détecte SIREN (9), SIRET (14) ou texte libre
   const getType = (val: string) => {
     if (/^\d{9}$/.test(val))  return "siren";
     if (/^\d{14}$/.test(val)) return "siret";
     return "texte";
   };
 
-  // Recherche principale : on enlève les appels à l'API SIRENE
   const handleSearch = async (preset?: string) => {
     const searchInput = (preset || input).trim();
-    console.log("[LOG] Recherche pour :", searchInput);
     setInput(searchInput);
     setInfos(null);
     setSuggestions([]);
@@ -89,33 +130,36 @@ export default function App() {
       }
       const type = getType(searchInput);
 
-      // 1) SIREN ou SIRET → on interroge directement l'API INPI backend
       if (type === "siren" || type === "siret") {
-        const url = `${BACKEND_URL}/inpi/entreprise/${searchInput}`;
-        console.log("[LOG] Appel API INPI directe →", url);
-        const resp = await fetch(url);
-        console.log(`[LOG] API INPI directe statut : ${resp.status} (${resp.ok})`);
-        if (!resp.ok) throw new Error("Entreprise non trouvée via INPI");
-        const data = await resp.json();
-        // On s'attend ici à recevoir un objet complet d'entreprise
-        setInfos(data);
+        if (BACKEND_URL) {
+          const url = `${BACKEND_URL}/inpi/entreprise/${searchInput}`;
+          const resp = await fetch(url);
+          if (!resp.ok) throw new Error("Entreprise non trouvée via INPI");
+          const data = await resp.json();
+          setInfos(data);
+        } else {
+          // Appel direct API SIRENE 3.11
+          const data = await fetchSireneDirect(searchInput);
+          setInfos(data);
+        }
         setLoading(false);
         return;
       }
 
-      // 2) Texte libre → recherche floue via INPI backend
-      const urlFuzzy = `${BACKEND_URL}/inpi/entreprises?raisonSociale=${encodeURIComponent(searchInput)}`;
-      console.log("[LOG] Appel API INPI (fuzzy) →", urlFuzzy);
-      const respFuzzy = await fetch(urlFuzzy);
-      console.log(`[LOG] API INPI fuzzy statut : ${respFuzzy.status} (${respFuzzy.ok})`);
-      if (!respFuzzy.ok) throw new Error("Aucun résultat INPI");
-      const entreprises = await respFuzzy.json();
-      if (!entreprises.length) throw new Error("Aucun résultat INPI");
-      setSuggestions(entreprises);
-      setShowSuggestions(true);
+      // 2) Texte libre → recherche floue via INPI backend uniquement
+      if (BACKEND_URL) {
+        const urlFuzzy = `${BACKEND_URL}/inpi/entreprises?raisonSociale=${encodeURIComponent(searchInput)}`;
+        const respFuzzy = await fetch(urlFuzzy);
+        if (!respFuzzy.ok) throw new Error("Aucun résultat INPI");
+        const entreprises = await respFuzzy.json();
+        if (!entreprises.length) throw new Error("Aucun résultat INPI");
+        setSuggestions(entreprises);
+        setShowSuggestions(true);
+      } else {
+        throw new Error("Recherche texte non supportée sans backend.");
+      }
 
     } catch (err: any) {
-      console.error("[LOG] Erreur handleSearch :", err);
       setErreur(err.message || "Erreur de recherche");
     } finally {
       setLoading(false);
@@ -127,14 +171,15 @@ export default function App() {
     handleSearch(siren);
   };
 
-  // Vérification du numéro TVA intracommunautaire
   const handleVerifyTva = async () => {
     setVerification(null);
-    if (!infos?.siren) {
+    // SIREN/SIRET peut être imbriqué selon structure
+    const siren = infos?.siren ?? infos?.header?.siren ?? "";
+    if (!siren) {
       setVerification("Aucun SIREN pour vérifier la TVA");
       return;
     }
-    const tva = calculateTvaKey(infos.siren);
+    const tva = calculateTvaKey(siren);
     if (!tva) {
       setVerification("SIREN invalide pour TVA");
       return;
@@ -142,11 +187,9 @@ export default function App() {
     const country = tva.slice(0, 2);
     const number = tva.slice(2);
     const url = `${VIES_API_URL}/check-vat?countryCode=${country}&vatNumber=${number}`;
-    console.log("[LOG] Appel API VIES →", url);
 
     try {
       const resp = await fetch(url);
-      console.log(`[LOG] API VIES statut : ${resp.status} (${resp.ok})`);
       const json = await resp.json();
       setVerification(
         json.valid
@@ -154,7 +197,6 @@ export default function App() {
           : "❌ TVA invalide"
       );
     } catch (e) {
-      console.error("[LOG] Erreur API VIES :", e);
       setVerification("⚠️ Service TVA indisponible");
     }
   };
@@ -181,7 +223,7 @@ export default function App() {
         <ul className="suggestions">
           {suggestions.map(ent => (
             <li key={ent.siren} onClick={() => handleSuggestionClick(ent.siren)}>
-              {ent.denomination}
+              {ent.denomination || ent.nom || ent.raisonSociale || ent.siren}
             </li>
           ))}
         </ul>
@@ -190,18 +232,7 @@ export default function App() {
       {infos && (
         <div className="results">
           <h3>Fiche entreprise</h3>
-          <table>
-            <tbody>
-              {Object.entries(infos).map(([k, v]) => (
-                <tr key={k}>
-                  <td>{prettifyKey(k)}</td>
-                  <td>{formatValue(v)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-
-          {/* Vérification TVA */}
+          <ObjectListView data={infos} />
           {verification && <p className="vat">{verification}</p>}
         </div>
       )}
