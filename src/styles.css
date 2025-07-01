@@ -1,78 +1,62 @@
-:root {
-  --cm-primary: #84C598FF;
-  --cm-bg: #FFF;
-  --cm-secondary: #D2D2D2FF;
-  --cm-accent: #B973AFFF;
-  --cm-text: #1a1a1a;
-}
 body {
+  font-family: Arial, sans-serif;
+  background: #fff;
   margin: 0;
   padding: 0;
-  background: var(--cm-bg);
-  font-family: "Segoe UI", Tahoma, sans-serif;
-  color: var(--cm-text);
-  min-height: 100vh;
 }
+
 .container {
-  max-width: 700px;
-  width: 98%;
-  margin: 24px auto;
-  padding: 24px 18px;
-  background: var(--cm-bg);
-  border: 1px solid var(--cm-primary);
-  border-radius: 10px;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
+  margin: 48px auto;
+  width: 480px;
+  border: 1px solid #b8e2c8;
+  border-radius: 16px;
+  padding: 32px 42px;
+  background: #fafefb;
+  text-align: center;
 }
-.info-widget {
-  background: var(--cm-bg);
-  border-radius: 10px;
-  padding: 20px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.07);
-  border: 1px solid var(--cm-primary);
-  margin-top: 1.5em;
-}
-.info-title {
-  font-size: 2rem;
-  color: var(--cm-accent);
-  font-weight: 600;
-  margin-bottom: 0.8em;
-  margin-top: 0.5em;
-}
-.btn {
-  padding: 8px 13px;
-  font-size: 1rem;
-  background-color: var(--cm-primary);
-  border: none;
-  border-radius: 5px;
-  color: white;
-  cursor: pointer;
-  margin-left: 8px;
-}
-.btn:hover {
-  background-color: var(--cm-accent);
-}
-ul {
-  padding-left: 22px;
-}
-li {
-  margin-bottom: 7px;
-  font-size: 1.02rem;
-}
-.siret {
-  background: #f4f2fa;
-  color: #444;
-  padding: 1px 7px;
-  border-radius: 6px;
-  font-size: 1.08em;
-  margin-left: 0.7em;
-  letter-spacing: 1.2px;
-}
+
 h2 {
-  color: var(--cm-accent);
-  font-size: 1.25rem;
+  color: #af7fa5;
+  margin-top: 0;
 }
-@media (max-width: 600px) {
-  .info-title { font-size: 1.2rem; }
-  .container, .info-widget { padding: 12px; }
-  li { font-size: 0.97rem; }
+
+input[type="text"] {
+  padding: 8px;
+  font-size: 1.1em;
+  width: 200px;
+  margin-right: 16px;
+  border: 1px solid #b8e2c8;
+  border-radius: 4px;
+}
+
+button {
+  background: #8ed4a6;
+  color: #fff;
+  border: none;
+  padding: 8px 18px;
+  border-radius: 4px;
+  font-size: 1.1em;
+  cursor: pointer;
+}
+
+button:disabled {
+  background: #e2f7e6;
+  color: #a2b8a6;
+}
+
+.result {
+  margin-top: 28px;
+  text-align: left;
+  font-size: 1.08em;
+  line-height: 1.6;
+}
+
+.error {
+  color: #b04460;
+  margin-top: 16px;
+}
+
+ul {
+  margin: 0;
+  padding-left: 22px;
 }
