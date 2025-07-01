@@ -21,9 +21,7 @@ function formatAdresseINPI(adresse: any) {
  * @param siretOrSiren string SIRET (14 chiffres) ou SIREN (9 chiffres)
  */
 export async function fetchEtablissementData(siretOrSiren: string) {
-  if (!API_SIRENE) throw new Error("REACT_APP_API_SIRENE n'est pas définie");
-  if (!SIRENE_API_KEY) throw new Error("REACT_APP_SIRENE_API_KEY n'est pas définie");
-  if (!API_INPI) throw new Error("REACT_APP_API_INPI n'est pas définie");
+  // SUPPRESSION des erreurs bloquantes sur les variables d'environnement
 
   let etab: any = null;
   let uniteLegale: any = null;
@@ -37,7 +35,7 @@ export async function fetchEtablissementData(siretOrSiren: string) {
     siret = siretOrSiren;
     const { data } = await axios.get(
       `${API_SIRENE}/siret/${siret}`,
-      { headers: { "X-INSEE-Api-Key-Integration": SIRENE_API_KEY } }
+      SIRENE_API_KEY ? { headers: { "X-INSEE-Api-Key-Integration": SIRENE_API_KEY } } : {}
     );
     etab = data.etablissement;
     siren = etab.siren;
@@ -51,7 +49,7 @@ export async function fetchEtablissementData(siretOrSiren: string) {
     siren = siretOrSiren;
     const { data } = await axios.get(
       `${API_SIRENE}/siren/${siren}`,
-      { headers: { "X-INSEE-Api-Key-Integration": SIRENE_API_KEY } }
+      SIRENE_API_KEY ? { headers: { "X-INSEE-Api-Key-Integration": SIRENE_API_KEY } } : {}
     );
     uniteLegale = data.uniteLegale;
     numeroTVA = uniteLegale.numeroTvaIntracommunautaire || null;
@@ -73,23 +71,25 @@ export async function fetchEtablissementData(siretOrSiren: string) {
 
   // 3. Récupération INPI pour dirigeants, etc.
   let representants: any[] = [];
-  try {
-    const { data: inpiData } = await axios.get(`${API_INPI}${siren}`);
-    const pm = inpiData.content?.personneMorale || {};
-    const reps = Array.isArray(pm.composition)
-      ? pm.composition.map((r: any) => ({
-          nom: r.nom,
-          prenom: r.prenom,
-          qualite: r.qualite,
-          dateNaissance: r.naissance?.date || null,
-          lieuNaissance: r.naissance?.lieu || null,
-          dateNomination: r.mandat?.dateDebut || null,
-          dateFinMandat: r.mandat?.dateFin || null,
-        }))
-      : [];
-    representants = reps;
-  } catch (e) {
-    representants = [];
+  if (API_INPI && siren) {
+    try {
+      const { data: inpiData } = await axios.get(`${API_INPI}${siren}`);
+      const pm = inpiData.content?.personneMorale || {};
+      const reps = Array.isArray(pm.composition)
+        ? pm.composition.map((r: any) => ({
+            nom: r.nom,
+            prenom: r.prenom,
+            qualite: r.qualite,
+            dateNaissance: r.naissance?.date || null,
+            lieuNaissance: r.naissance?.lieu || null,
+            dateNomination: r.mandat?.dateDebut || null,
+            dateFinMandat: r.mandat?.dateFin || null,
+          }))
+        : [];
+      representants = reps;
+    } catch (e) {
+      representants = [];
+    }
   }
 
   // 4. Adresse (SIRENE puis fallback INPI possible)
@@ -101,7 +101,7 @@ export async function fetchEtablissementData(siretOrSiren: string) {
     etab?.codePostalEtablissement || uniteLegale?.codePostalUniteLegale,
     etab?.libelleCommuneEtablissement || uniteLegale?.libelleCommuneUniteLegale
   ].filter(Boolean).join(" ");
-  if (!adresse || adresse.trim() === "") {
+  if ((!adresse || adresse.trim() === "") && API_INPI && siren) {
     // Optionnel : fallback adresse INPI si rien côté SIRENE (à adapter selon structure INPI)
     try {
       const { data: inpiData } = await axios.get(`${API_INPI}${siren}`);
