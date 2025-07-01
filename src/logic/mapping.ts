@@ -5,10 +5,11 @@ import naf from "../naf.json";
 const API_SIRENE = "https://api.insee.fr/api-sirene/3.11";
 const API_GEO = "https://api-adresse.data.gouv.fr/search/";
 const API_INPI = import.meta.env.VITE_API_URL + "/inpi/entreprise/";
+const API_ACTES = import.meta.env.VITE_API_URL + "/inpi/actes/"; // adapte si besoin
 const API_VIES = import.meta.env.VITE_VAT_API_URL + "/check-vat";
-
 const SIRENE_API_KEY = import.meta.env.VITE_SIRENE_API_KEY;
 
+// Décodage des codes
 function decodeFormeJuridique(code: string) {
   return formeJuridique[code] || code;
 }
@@ -16,13 +17,33 @@ function decodeNaf(code: string) {
   return naf[code] || code;
 }
 
+// Formatage de l'adresse INPI
+function formatAdresseINPI(adresse: any) {
+  if (!adresse) return "";
+  return [
+    adresse.numVoie,
+    adresse.typeVoie,
+    adresse.voie,
+    adresse.codePostal,
+    adresse.commune
+  ].filter(Boolean).join(" ");
+}
+
+// Calcul du numéro de TVA intracommunautaire (FR)
+function computeTva(siren: string) {
+  if (!/^\d{9}$/.test(siren)) return "";
+  // Algorithme officiel pour la France (ISO 3166-1 alpha-2 : FR)
+  const sirenNum = parseInt(siren, 10);
+  const cle = (12 + 3 * (sirenNum % 97)) % 97;
+  return `FR${cle < 10 ? "0" : ""}${cle}${siren}`;
+}
+
 export async function fetchEtablissementData(siretOrSiren: string) {
   let etab: any = null, uniteLegale: any = null, geo = null, tvaInfo = null, inpiInfo: any = {};
   let siret = "", siren = "";
 
-  // --- 1. SIRENE fetch (établissement ou unité légale) ---
+  // 1. SIRENE (établissement ou unité légale)
   if (/^\d{14}$/.test(siretOrSiren)) {
-    // SIRET → fiche établissement
     siret = siretOrSiren;
     try {
       const { data } = await axios.get(
@@ -40,7 +61,6 @@ export async function fetchEtablissementData(siretOrSiren: string) {
       throw error;
     }
   } else if (/^\d{9}$/.test(siretOrSiren)) {
-    // SIREN → fiche unité légale
     siren = siretOrSiren;
     try {
       const { data } = await axios.get(
@@ -60,17 +80,22 @@ export async function fetchEtablissementData(siretOrSiren: string) {
     throw new Error("Merci de fournir un SIRET (14 chiffres) ou SIREN (9 chiffres) valide.");
   }
 
-  // --- 2. Inpi fetch (dirigeants, documents, annonces, finances, labels, divers) ---
+  // 2. INPI : pour fallback et onglets
+  let inpiData: any = {};
   if (siren) {
     try {
       const { data } = await axios.get(`${API_INPI}${siren}`);
-      inpiInfo = data;
+      inpiData = data;
     } catch (e) {
-      inpiInfo = {};
+      inpiData = {};
     }
   }
+  // Racourcis INPI
+  const pm = inpiData.content?.personneMorale || {};
+  const etabINPI = pm.etablissementPrincipal || {};
+  const adresseINPI = etabINPI.adresse || pm.adresseEntreprise || {};
 
-  // --- 3. Adresse (formatée) & géolocalisation ---
+  // 3. Adresse (SIRENE puis fallback INPI)
   let adresse = [
     etab?.numeroVoieEtablissement || uniteLegale?.numeroVoieUniteLegale,
     etab?.typeVoieEtablissement || uniteLegale?.typeVoieUniteLegale,
@@ -78,7 +103,10 @@ export async function fetchEtablissementData(siretOrSiren: string) {
     etab?.complementAdresseEtablissement || uniteLegale?.complementAdresseUniteLegale,
     etab?.codePostalEtablissement || uniteLegale?.codePostalUniteLegale,
     etab?.libelleCommuneEtablissement || uniteLegale?.libelleCommuneUniteLegale
-  ].filter(Boolean).join(" ").replace(/\s{2,}/g, " ");
+  ].filter(Boolean).join(" ");
+  if (!adresse) adresse = formatAdresseINPI(adresseINPI);
+
+  // 4. Géolocalisation
   geo = null;
   if (adresse) {
     try {
@@ -91,33 +119,99 @@ export async function fetchEtablissementData(siretOrSiren: string) {
     }
   }
 
-  // --- 4. TVA (optionnel) ---
-  // (À adapter selon ta logique, ici laissé vide)
-  tvaInfo = null;
+  // 5. Champs identité avec fallback INPI
+  const forme_juridique =
+    decodeFormeJuridique(
+      uniteLegale?.categorieJuridiqueUniteLegale ||
+      etab?.categorieJuridiqueUniteLegale ||
+      inpiData.formeJuridique ||
+      inpiData.formeJuridiqueInsee ||
+      pm.formeJuridique ||
+      ""
+    );
+  const denomination =
+    uniteLegale?.denominationUniteLegale ||
+    pm.enseigne ||
+    pm.nomCommercial ||
+    pm.denomination ||
+    "";
+  const code_ape =
+    etab?.activitePrincipaleEtablissement ||
+    uniteLegale?.activitePrincipaleUniteLegale ||
+    etabINPI.codeApe ||
+    "";
+  const libelle_ape = decodeNaf(code_ape);
+  const siretF =
+    etab?.siret ||
+    etabINPI.siret ||
+    "";
+  const date_creation =
+    etab?.dateCreationEtablissement ||
+    uniteLegale?.dateCreationUniteLegale ||
+    inpiData.dateCreation ||
+    "";
+  const capital_social =
+    uniteLegale?.capitalSocial ||
+    pm.montantCapital ||
+    null;
+  const objet_social =
+    pm.description?.objet || "";
 
-  // --- 5. Sortie normalisée pour affichage ---
-  // Prend les infos de l’établissement si possible, sinon de l’unité légale
-  const base = etab || uniteLegale || {};
+  // 6. Numéro TVA + vérification VIES
+  let tvaValue = "";
+  if ((inpiData.siren || siren) && /^\d{9}$/.test(inpiData.siren || siren)) {
+    tvaValue = computeTva(inpiData.siren || siren);
+  }
+
+  let tvaInfoRes: null | { numero: string; valide: boolean|null } = null;
+  if (tvaValue) {
+    try {
+      const { data } = await axios.get(API_VIES, { params: { countryCode: "FR", vatNumber: tvaValue.slice(2) } });
+      tvaInfoRes = { numero: tvaValue, valide: !!data.isValid };
+    } catch (e) {
+      tvaInfoRes = { numero: tvaValue, valide: null };
+    }
+  }
+
+  // 7. Données secondaires (onglets)
+  const representants = pm.composition || [];
+  // Doc INPI actes : pour la liste des actes avec lien de téléchargement
+  let documents: any[] = [];
+  try {
+    if (siren) {
+      const { data: actes } = await axios.get(`${API_ACTES}${siren}`);
+      documents = (actes || []).map((a: any) => ({
+        titre: a.titre || a.typeDocument,
+        dateDepot: a.dateDepot,
+        url: a.urlPdf || a.url, // selon la clé fournie par l’API actes
+      }));
+    }
+  } catch (e) {
+    documents = [];
+  }
+  const annonces = pm.publicationLegale ? [pm.publicationLegale] : [];
+  const finances = pm.montantCapital ? [{ montant: pm.montantCapital, devise: pm.deviseCapital }] : [];
+  const labels = inpiData.labels || [];
+  const divers = inpiData.divers || [];
 
   return {
-    denomination: base.denominationUniteLegale || base.denomination || base.nom || "",
-    siren: base.siren || siren,
-    siret: base.siret || siret,
+    denomination,
+    siren: inpiData.siren || uniteLegale?.siren || etab?.siren || "",
+    siret: siretF,
     adresse,
     geo: geo ? { lat: geo[1], lon: geo[0] } : null,
-    code_ape: base.activitePrincipaleEtablissement || base.activitePrincipaleUniteLegale || "",
-    libelle_ape: decodeNaf(base.activitePrincipaleEtablissement || base.activitePrincipaleUniteLegale || ""),
-    forme_juridique: decodeFormeJuridique(base.categorieJuridiqueUniteLegale || ""),
-    date_creation: base.dateCreationEtablissement || base.dateCreationUniteLegale || "",
-    capital_social: base.capitalSocial || inpiInfo.capital || null,
-    effectif: base.trancheEffectifsEtablissement || base.trancheEffectifsUniteLegale || inpiInfo.effectif || null,
-    tva: tvaInfo,
-    // Onglets enrichis via INPI
-    representants: inpiInfo.dirigeants || [],
-    documents: inpiInfo.documents || [],
-    annonces: inpiInfo.annonces || [],
-    finances: inpiInfo.finances || [],
-    labels: inpiInfo.labels || [],
-    divers: inpiInfo.divers || [],
+    code_ape,
+    libelle_ape,
+    forme_juridique,
+    date_creation,
+    capital_social,
+    objet_social,
+    tva: tvaInfoRes,
+    representants,
+    documents,
+    annonces,
+    finances,
+    labels,
+    divers,
   };
 }
