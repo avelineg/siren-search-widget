@@ -52,14 +52,14 @@ export async function fetchEtablissementData(siretOrSiren: string) {
   }
 
   // Géocodage adresse principale (si possible)
-  let adresse = [
-    etab?.numeroVoieEtablissement,
-    etab?.typeVoieEtablissement,
-    etab?.libelleVoieEtablissement,
-    etab?.complementAdresseEtablissement,
-    etab?.codePostalEtablissement,
-    etab?.libelleCommuneEtablissement
-  ].filter(Boolean).join(" ");
+let adresse = [
+  etab?.numeroVoieEtablissement,
+  etab?.typeVoieEtablissement,
+  etab?.libelleVoieEtablissement,
+  etab?.complementAdresseEtablissement,
+  etab?.codePostalEtablissement,
+  etab?.libelleCommuneEtablissement
+].filter(Boolean).join(" ").replace(/\s{2,}/g, " ");
   geo = null;
   if (adresse) {
     try {
