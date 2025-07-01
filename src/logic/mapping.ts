@@ -3,8 +3,7 @@ import { decodeFormeJuridique, decodeNaf } from "./decode";
 
 const API_SIRENE = "https://api.insee.fr/api-sirene/3.11";
 const API_GEO = "https://api-adresse.data.gouv.fr/search/";
-const API_INPI = import.meta.env.VITE_API_URL + "/inpi/entreprise/";
-const API_ACTES = import.meta.env.VITE_API_URL + "/inpi/actes/";
+const API_INPI_ENTREPRISE = import.meta.env.VITE_API_URL + "/inpi/entreprise";
 const API_VIES = import.meta.env.VITE_VAT_API_URL + "/check-vat";
 const SIRENE_API_KEY = import.meta.env.VITE_SIRENE_API_KEY;
 
@@ -55,7 +54,7 @@ export async function fetchEtablissementData(siretOrSiren: string) {
 
   // 2) INPI fallback
   try {
-    const { data } = await axios.get(`${API_INPI}${siren}`);
+    const { data } = await axios.get(`${API_INPI_ENTREPRISE}/${siren}`);
     inpiData = data;
   } catch {
     inpiData = {};
@@ -64,7 +63,7 @@ export async function fetchEtablissementData(siretOrSiren: string) {
   const etabINPI = pm.etablissementPrincipal ?? {};
   const adresseINPI = etabINPI.adresse ?? pm.adresseEntreprise ?? {};
 
-  // 3) Adresse
+  // 3) Adresse (SIRENE puis INPI)
   let adresse = [
     etab?.numeroVoieEtablissement,
     etab?.typeVoieEtablissement,
@@ -72,29 +71,30 @@ export async function fetchEtablissementData(siretOrSiren: string) {
     etab?.complementAdresseEtablissement,
     etab?.codePostalEtablissement,
     etab?.libelleCommuneEtablissement
-  ]
-    .filter(Boolean)
-    .join(" ");
-  if (!adresse) {
+  ].filter(Boolean).join(" ");
+  if (!adresse.trim()) {
     adresse = formatAdresseINPI(adresseINPI);
   }
 
-  // 4) Géoloc
-  try {
-    const { data } = await axios.get(API_GEO, { params: { q: adresse, limit: 1 } });
-    const coords = data.features?.[0]?.geometry?.coordinates;
-    if (coords) geo = coords;
-  } catch {}
+  // 4) Géoloc (uniquement si adresse non vide)
+  if (adresse.trim()) {
+    try {
+      const { data } = await axios.get(API_GEO, {
+        params: { q: adresse, limit: 1 }
+      });
+      const coords = data.features?.[0]?.geometry?.coordinates;
+      if (coords) geo = coords;
+    } catch {}
+  }
 
   // 5) Identité
-  const forme_juridique =
-    decodeFormeJuridique(
-      uniteLegale?.categorieJuridiqueUniteLegale ||
-        etab?.categorieJuridiqueUniteLegale ||
-        inpiData.formeJuridique ||
-        pm.formeJuridique ||
-        ""
-    );
+  const forme_juridique = decodeFormeJuridique(
+    uniteLegale?.categorieJuridiqueUniteLegale ||
+      etab?.categorieJuridiqueUniteLegale ||
+      inpiData.formeJuridique ||
+      pm.formeJuridique ||
+      ""
+  );
   const denomination =
     uniteLegale?.denominationUniteLegale ||
     pm.enseigne ||
@@ -130,16 +130,22 @@ export async function fetchEtablissementData(siretOrSiren: string) {
     }
   }
 
-  // 7) Actes INPI
+  // 7) Actes INPI (v3.0)
   let documents: any[] = [];
   try {
-    const { data: actes } = await axios.get(`${API_ACTES}${siren}`);
-    documents = actes.map((a: any) => ({
+    const { data: actes } = await axios.get(
+      `${API_INPI_ENTREPRISE}/${siren}/actes`,
+      { params: { page: 0, size: 50 } }
+    );
+    const content = actes.content || [];
+    documents = content.map((a: any) => ({
       titre: a.titre || a.typeDocument,
       dateDepot: a.dateDepot,
       url: a.urlPdf || a.url
     }));
-  } catch {}
+  } catch {
+    // pas de documents
+  }
 
   // 8) Autres onglets
   const representants = Array.isArray(pm.composition) ? pm.composition : [];
