@@ -1,29 +1,32 @@
 # siren-search-widget
 
-Widget de recherche du SIREN/SIRET avec fallback INPI, affichage en onglets, calcul et vérification TVA, et téléchargements d’actes.
+Widget de recherche SIREN/SIRET avec fallback INPI, onglets animés, calcul et vérif TVA, affichage des actes INPI (v3.0), etc.
 
-## Scripts
+## Installation
 
-- `npm install`  
-- `npm run dev` – lance le serveur de dev sur http://localhost:3000  
-- `npm run build` – bundle en production dans `dist/`  
-- `npm run preview` – prévisualisation du build  
-- `npm run lint` – lint TypeScript/React  
-- `npm run format` – formate avec Prettier  
+```bash
+npm install
+```
 
-## Structure
+## Développement
 
-├ public/index.html  
-├ src/main.tsx  
-├ src/App.tsx  
-├ src/styles.css  
-├ src/logic/  
-│ ├ mapping.ts  
-│ └ decode.ts  
-├ src/components/  
-│ ├ Tabs.tsx  
-│ ├ Tabs.css  
-│ ├ EtablissementOnglets.tsx  
-│ ├ FilteredObjectListView.tsx  
-│ └ CarteAdresse.tsx  
-… + config (Vite, TS, ESLint, Prettier)
+```bash
+npm run dev
+```
+
+Ouvre http://localhost:3000 et proxy `/inpi/*` vers votre API (CORS géré côté serveur).
+
+## Production
+
+```bash
+npm run build
+npm run preview
+```
+
+Déployez ensuite le contenu du dossier `dist/` sur votre hébergement.
+
+Variables d’env. obligatoires :
+
+- VITE_API_URL (ex. https://hubshare-cmexpert.fr)  
+- VITE_VAT_API_URL  
+- VITE_SIRENE_API_KEY  
