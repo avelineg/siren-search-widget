@@ -1,10 +1,8 @@
 import React, { useState } from "react";
 import "./styles.css";
-import EtablissementView from "./components/EtablissementView";
-import { fetchEtablissementData } from "./logic/mapping";
 import EtablissementOnglets from "./components/EtablissementOnglets";
+import { fetchEtablissementData } from "./logic/mapping";
 
-{etabData && <EtablissementOnglets etab={etabData} />}
 export default function App() {
   const [input, setInput] = useState("");
   const [etabData, setEtabData] = useState<any | null>(null);
@@ -40,7 +38,7 @@ export default function App() {
         </button>
       </div>
       {erreur && <div className="error">{erreur}</div>}
-      {etabData && <EtablissementView etab={etabData} />}
+      {etabData && <EtablissementOnglets etab={etabData} />}
     </div>
   );
 }
