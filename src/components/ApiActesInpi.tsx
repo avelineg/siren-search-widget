@@ -7,6 +7,10 @@ export function ApiActesInpi({ siren, apiInpi }: { siren: string; apiInpi: strin
   const [error, setError] = useState<string | null>(null);
 
   const fetchActes = async () => {
+    if (!siren) {
+      setError("Aucun SIREN fourni.");
+      return;
+    }
     setLoading(true);
     setError(null);
     setActes(null);
