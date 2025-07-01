@@ -6,14 +6,14 @@ const API_INPI = import.meta.env.VITE_API_URL + "/inpi/entreprise/";
 const API_VIES = import.meta.env.VITE_VAT_API_URL + "/check-vat";
 
 export async function fetchEtablissementData(siretOrSiren: string) {
-  let etab = null, uniteLegale = null, secondaires = [], geo = null, tvaInfo = null, inpiInfo = {};
+  let etab: any = null, uniteLegale: any = null, secondaires: any[] = [], geo = null, tvaInfo = null, inpiInfo: any = {};
   let siret = siretOrSiren, siren = "";
 
   const SIRENE_API_KEY = import.meta.env.VITE_SIRENE_API_KEY;
 
-  // Recherche établissement ou unité légale
+  // Recherche SIRET ou SIREN
   if (/^\d{14}$/.test(siretOrSiren)) {
-    // Recherche par SIRET
+    // Établissement par SIRET
     try {
       const { data } = await axios.get(
         `${API_SIRENE}/siret/${siretOrSiren}`,
@@ -22,7 +22,7 @@ export async function fetchEtablissementData(siretOrSiren: string) {
       etab = data.etablissement;
       if (!etab) throw new Error("Aucun établissement trouvé pour ce SIRET.");
       siren = etab.siren;
-      uniteLegale = etab.uniteLegale ?? null;
+      uniteLegale = etab.uniteLegale || null;
     } catch (error: any) {
       if (error.response?.status === 404) {
         throw new Error("Aucun établissement trouvé pour ce SIRET.");
@@ -30,7 +30,7 @@ export async function fetchEtablissementData(siretOrSiren: string) {
       throw error;
     }
   } else if (/^\d{9}$/.test(siretOrSiren)) {
-    // Recherche par SIREN
+    // Unité légale par SIREN
     try {
       const { data } = await axios.get(
         `${API_SIRENE}/siren/${siretOrSiren}`,
@@ -39,15 +39,15 @@ export async function fetchEtablissementData(siretOrSiren: string) {
       uniteLegale = data.uniteLegale;
       if (!uniteLegale) throw new Error("Aucune unité légale trouvée pour ce SIREN.");
       siren = uniteLegale.siren;
-      // Prend le siège (établissement principal)
+      // On va chercher un établissement principal (siège)
       const { data: dataEtab } = await axios.get(
-        `${API_SIRENE}/siren/${siren}/etablissements`,
+        `${API_SIRENE}/etablissements`,
         {
           headers: { "X-INSEE-Api-Key-Integration": SIRENE_API_KEY },
-          params: { etatAdministratifEtablissement: "A", limit: 1 }
+          params: { siren, etatAdministratifEtablissement: "A", limit: 1 }
         }
       );
-      etab = dataEtab.etablissements?.[0] ?? null;
+      etab = dataEtab.etablissements?.[0] || null;
       if (!etab) throw new Error("Aucun établissement principal trouvé pour ce SIREN.");
     } catch (error: any) {
       if (error.response?.status === 404) {
@@ -64,10 +64,10 @@ export async function fetchEtablissementData(siretOrSiren: string) {
   if (siren) {
     try {
       const { data: dataSec } = await axios.get(
-        `${API_SIRENE}/siren/${siren}/etablissements`,
+        `${API_SIRENE}/etablissements`,
         {
           headers: { "X-INSEE-Api-Key-Integration": SIRENE_API_KEY },
-          params: { etatAdministratifEtablissement: "A", limit: 20 }
+          params: { siren, etatAdministratifEtablissement: "A", limit: 20 }
         }
       );
       secondaires = (dataSec.etablissements || [])
@@ -84,7 +84,7 @@ export async function fetchEtablissementData(siretOrSiren: string) {
             e.libelleCommuneEtablissement
           ].filter(Boolean).join(" ")
         }));
-    } catch (err) {
+    } catch {
       secondaires = [];
     }
   }
@@ -123,10 +123,9 @@ export async function fetchEtablissementData(siretOrSiren: string) {
     }
   }
 
-  // INPI (côté frontend, CORS possible seulement si ton backend fait proxy)
+  // INPI (si proxy backend pour CORS !)
   inpiInfo = {};
   try {
-    // CORS : il faut que ton backend autorise le domaine Render dans Access-Control-Allow-Origin
     const { data: inpi } = await axios.get(`${API_INPI}${siren}`);
     inpiInfo = {
       dirigeants: (inpi.representants || []).map((dir: any) => ({
