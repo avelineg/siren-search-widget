@@ -167,4 +167,6 @@ export async function fetchEtablissementData(siretOrSiren: string) {
 
 // Calcul clé TVA à partir du SIREN
 function calculateTvaKey(siren: string): string {
-  const key
+  const key = (12 + 3 * (Number(siren) % 97)) % 97;
+  return `FR${key.toString().padStart(2, "0")}${siren}`;
+}
