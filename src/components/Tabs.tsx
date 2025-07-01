@@ -1,29 +1,28 @@
 import React, { useState } from "react";
+import "./Tabs.css";
 
 export type TabItem = { label: string; content: React.ReactNode };
 
 export default function Tabs({ items }: { items: TabItem[] }) {
   const [activeIdx, setActiveIdx] = useState(0);
+
   return (
-    <div>
-      <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+    <div className="tabs-widget">
+      <div className="tabs-bar">
         {items.map((t, i) => (
           <button
             key={t.label}
+            className={`tab-btn${activeIdx === i ? " active" : ""}`}
             onClick={() => setActiveIdx(i)}
-            style={{
-              fontWeight: activeIdx === i ? "bold" : undefined,
-              borderBottom: activeIdx === i ? "2px solid #228" : "1px solid #ccc",
-              background: "none",
-              padding: "0.2em 1em",
-              cursor: "pointer"
-            }}
+            tabIndex={0}
+            type="button"
           >
             {t.label}
+            {activeIdx === i && <span className="tab-underline" />}
           </button>
         ))}
       </div>
-      <div>{items[activeIdx]?.content}</div>
+      <div className="tab-content">{items[activeIdx]?.content}</div>
     </div>
   );
 }
