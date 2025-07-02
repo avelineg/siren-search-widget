@@ -1,27 +1,28 @@
-import React, { useState } from "react";
-import EtablissementOnglets from "./components/EtablissementOnglets";
-import { fetchEtablissementData } from "./logic/mapping";
+import React, { useState } from 'react'
+import EtablissementOnglets from './components/EtablissementOnglets'
+import { fetchEtablissementData } from './logic/mapping'
+import { parseApiError } from './utils/error-handler'
 
 export default function App() {
-  const [input, setInput] = useState("");
-  const [etabData, setEtabData] = useState<any | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [erreur, setErreur] = useState<string | null>(null);
+  const [input, setInput] = useState('')
+  const [etabData, setEtabData] = useState<any | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [erreur, setErreur] = useState<string | null>(null)
 
   const handleSearch = async (e?: React.FormEvent) => {
-    e?.preventDefault();
-    setErreur(null);
-    setEtabData(null);
-    setLoading(true);
+    e?.preventDefault()
+    setErreur(null)
+    setEtabData(null)
+    setLoading(true)
     try {
-      const data = await fetchEtablissementData(input.trim());
-      setEtabData(data);
-    } catch (err: any) {
-      setErreur(err.message || "Erreur lors de la recherche");
+      const data = await fetchEtablissementData(input.trim())
+      setEtabData(data)
+    } catch (err: unknown) {
+      setErreur(parseApiError(err))
     } finally {
-      setLoading(false);
+      setLoading(false)
     }
-  };
+  }
 
   return (
     <div className="container">
@@ -34,7 +35,7 @@ export default function App() {
           onChange={(e) => setInput(e.target.value)}
         />
         <button className="btn" type="submit" disabled={loading || !input.trim()}>
-          {loading ? "…" : "Rechercher"}
+          {loading ? '…' : 'Rechercher'}
         </button>
       </form>
 
@@ -42,5 +43,5 @@ export default function App() {
       {erreur && <div className="error">{erreur}</div>}
       {!loading && etabData && <EtablissementOnglets etab={etabData} />}
     </div>
-  );
+  )
 }
