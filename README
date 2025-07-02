@@ -1,12 +1,22 @@
 # siren-search-widget
 
-Widget de recherche SIREN/SIRET avec fallback INPI, onglets animés, calcul et vérif TVA, affichage des actes INPI (v3.0), etc.
+Widget de recherche d’entreprise (SIREN/SIRET)  
+Migration vers React + Tailwind pour reproduire l’UI de l’Annuaire-Entreprises.
+
+## Prérequis
+
+- Node.js ≥ 18
+- Yarn ou npm
 
 ## Installation
 
 ```bash
 npm install
+# ou
+yarn
 ```
+
+Copiez et éditez `.env.example` en `.env`.
 
 ## Développement
 
@@ -14,19 +24,17 @@ npm install
 npm run dev
 ```
 
-Ouvre http://localhost:3000 et proxy `/inpi/*` vers votre API (CORS géré côté serveur).
-
-## Production
+## Build
 
 ```bash
 npm run build
 npm run preview
 ```
 
-Déployez ensuite le contenu du dossier `dist/` sur votre hébergement.
+## Structure
 
-Variables d’env. obligatoires :
-
-- VITE_API_URL (ex. https://hubshare-cmexpert.fr)  
-- VITE_VAT_API_URL  
-- VITE_SIRENE_API_KEY  
+- src/main.tsx : point d’entrée
+- src/App.tsx : layout et tabs
+- src/components/… : composants UI
+- src/services/… : appels API
+- tailwind.config.js, postcss.config.js : configuration de Tailwind
