@@ -19,10 +19,12 @@ export default function EtablissementOnglets({ etab }: { etab: any }) {
           </div>
           <CarteAdresse adresse={etab.adresse} geo={etab.geo} />
           <div>
-            <b>Activité principale :</b> {etab.code_ape} – {decodeNaf(etab.code_ape)}
+            <b>Activité principale :</b>{" "}
+            {etab.code_ape} – {decodeNaf(etab.code_ape)}
           </div>
           <div>
-            <b>Forme juridique :</b> {decodeFormeJuridique(etab.forme_juridique)}
+            <b>Forme juridique :</b>{" "}
+            {decodeFormeJuridique(etab.forme_juridique)}
           </div>
           <div>
             <b>Date de création :</b> {etab.date_creation}
@@ -38,7 +40,7 @@ export default function EtablissementOnglets({ etab }: { etab: any }) {
               : ""}
           </div>
         </div>
-      )
+      ),
     },
     {
       label: "Dirigeants",
@@ -54,34 +56,32 @@ export default function EtablissementOnglets({ etab }: { etab: any }) {
               return (
                 <li key={i}>
                   <b>{nom}</b> {prenom}
-                  {qualite ? (
-                    <> — <i>{qualite}</i></>
-                  ) : null}
+                  {qualite ? <> — <i>{qualite}</i></> : null}
                 </li>
               )
             })}
           </ul>
         ) : (
           <em>Aucun dirigeant trouvé</em>
-        )
+        ),
     },
     {
       label: "Données financières",
-      render: () => <FilteredObjectListView data={etab.finances} />
+      render: () => <FilteredObjectListView data={etab.finances} />,
     },
     {
       label: "Annonces",
-      render: () => <FilteredObjectListView data={etab.annonces} />
+      render: () => <FilteredObjectListView data={etab.annonces} />,
     },
     {
       label: "Labels & certificats",
-      render: () => <FilteredObjectListView data={etab.labels} />
+      render: () => <FilteredObjectListView data={etab.labels} />,
     },
     {
       label: "Divers",
-      render: () => <FilteredObjectListView data={etab.divers} />
-    }
+      render: () => <FilteredObjectListView data={etab.divers} />,
+    },
   ]
 
-  return <Tabs items={onglets} data={etab} />
+  return <Tabs items={onglets} />
 }
