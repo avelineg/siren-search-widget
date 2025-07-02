@@ -1,8 +1,8 @@
-import React from "react";
-import Tabs from "./Tabs";
-import { decodeFormeJuridique, decodeNaf } from "../logic/decode";
-import CarteAdresse from "./CarteAdresse";
-import FilteredObjectListView from "./FilteredObjectListView";
+import React from "react"
+import Tabs from "./Tabs"
+import { decodeFormeJuridique, decodeNaf } from "../logic/decode"
+import CarteAdresse from "./CarteAdresse"
+import FilteredObjectListView from "./FilteredObjectListView"
 
 export default function EtablissementOnglets({ etab }: { etab: any }) {
   const onglets = [
@@ -11,8 +11,12 @@ export default function EtablissementOnglets({ etab }: { etab: any }) {
       content: (
         <div>
           <h2>{etab.denomination}</h2>
-          <div><b>SIREN :</b> {etab.siren}</div>
-          <div><b>SIRET :</b> {etab.siret}</div>
+          <div>
+            <b>SIREN :</b> {etab.siren}
+          </div>
+          <div>
+            <b>SIRET :</b> {etab.siret}
+          </div>
           <CarteAdresse adresse={etab.adresse} geo={etab.geo} />
           <div>
             <b>Activité principale :</b> {etab.code_ape} – {decodeNaf(etab.code_ape)}
@@ -20,7 +24,9 @@ export default function EtablissementOnglets({ etab }: { etab: any }) {
           <div>
             <b>Forme juridique :</b> {decodeFormeJuridique(etab.forme_juridique)}
           </div>
-          <div><b>Date de création :</b> {etab.date_creation}</div>
+          <div>
+            <b>Date de création :</b> {etab.date_creation}
+          </div>
           <div>
             <b>Numéro TVA :</b> {etab.tva?.numero}
             {etab.tva
@@ -40,25 +46,22 @@ export default function EtablissementOnglets({ etab }: { etab: any }) {
         Array.isArray(etab.representants) && etab.representants.length > 0 ? (
           <ul>
             {etab.representants.map((r: any, i: number) => {
-              const nom = r.individu?.nom || r.personneMorale?.denomination || "";
-              const prenom = r.individu?.prenom || "";
-              const qualite = r.roleEntreprise || r.qualite || r.fonction || "";
+              const nom = r.individu?.nom || r.personneMorale?.denomination || ""
+              const prenom = r.individu?.prenom || ""
+              const qualite = r.roleEntreprise || r.qualite || r.fonction || ""
               return (
                 <li key={i}>
                   <b>{nom}</b> {prenom}
                   {qualite ? <> — <i>{qualite}</i></> : null}
                 </li>
-              );
+              )
             })}
           </ul>
         ) : (
           <em>Aucun dirigeant trouvé</em>
         )
     },
-    {
-      label: "Documents",
-      content: <FilteredObjectListView data={etab.documents} />
-    },
+    // Le tab "Documents" a été supprimé temporairement pour éviter le crash
     {
       label: "Données financières",
       content: <FilteredObjectListView data={etab.finances} />
@@ -75,7 +78,7 @@ export default function EtablissementOnglets({ etab }: { etab: any }) {
       label: "Divers",
       content: <FilteredObjectListView data={etab.divers} />
     }
-  ];
+  ]
 
-  return <Tabs items={onglets} />;
+  return <Tabs items={onglets} />
 }
