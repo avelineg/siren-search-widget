@@ -10,7 +10,6 @@ const API_GEO = "https://api-adresse.data.gouv.fr/search/"
 const API_INPI_ENTREPRISE = import.meta.env.VITE_API_URL + "/inpi/entreprise"
 const API_INPI_DIRIGEANTS = import.meta.env.VITE_API_URL + "/inpi/dirigeants"
 const API_VIES = import.meta.env.VITE_VAT_API_URL + "/check-vat"
-// Nouvelle API Recherche d'entreprises
 const API_RECHERCHE = "https://recherche-entreprises.api.gouv.fr/api/v3"
 const SIRENE_API_KEY = import.meta.env.VITE_SIRENE_API_KEY
 
@@ -20,19 +19,16 @@ const SIRENE_API_KEY = import.meta.env.VITE_SIRENE_API_KEY
 function formatAdresseINPI(ad: any): string {
   if (!ad || Object.keys(ad).length === 0) return ""
   const parts: string[] = []
+
   const numero = ad.numeroVoie ?? ad.numVoie
   if (numero) parts.push(numero)
   if (ad.typeVoie) parts.push(ad.typeVoie)
   if (ad.voie) parts.push(ad.voie)
-  // compléments
-  ;[
-    ad.complementAdresse,
-    ad.complement1,
-    ad.complement2,
-  ]
+
+  // Compléments et distributions
+  ;[ad.complementAdresse, ad.complement1, ad.complement2]
     .filter(Boolean)
     .forEach((c) => parts.push(c))
-  // distributions spéciales
   ;[
     ad.distributionSpeciale,
     ad.distributionSpeciale1,
@@ -40,17 +36,21 @@ function formatAdresseINPI(ad: any): string {
   ]
     .filter(Boolean)
     .forEach((d) => parts.push(d))
-  // BP / boîte postale
+
+  // Boîte postale / BP
   const bp = ad.bp ?? ad.boitePostale
   if (bp) parts.push(bp)
+
   // CEDEX
   const cedex = ad.codeCedex ?? ad.cedex
   if (cedex) parts.push(`CEDEX ${cedex}`)
-  // code postal / ville / pays
+
+  // Code postal, ville, pays
   if (ad.codePostal) parts.push(ad.codePostal)
   if (ad.libelleCommune) parts.push(ad.libelleCommune)
   const pays = ad.libellePaysEtranger ?? ad.pays
   if (pays) parts.push(pays)
+
   return parts.join(" ").trim()
 }
 
@@ -110,18 +110,18 @@ export async function fetchEtablissementData(siretOrSiren: string) {
   }
 
   // 4) Construire l'adresse SIRENE
-  const sireneAddressParts = [
+  const sireneAddressParts: any[] = [
     etab?.numeroVoieEtablissement,
     etab?.indiceRepetitionEtablissement,
     etab?.typeVoieEtablissement,
     etab?.libelleVoieEtablissement,
     etab?.complementAdresseEtablissement,
     etab?.distributionSpecialeEtablissement,
-    etab?.cedexEtablissement ?? etab?.codeCedexEtablissement,
+    etab?.codeCedexEtablissement ?? etab?.cedexEtablissement,
     etab?.codePostalEtablissement,
     etab?.libelleCommuneEtablissement,
-    etab?.libellePaysEtablissement ??
-      etab?.libellePaysEtrangerEtablissement,
+    etab?.libellePaysEtrangerEtablissement ??
+      etab?.libellePaysEtablissement,
   ]
   const adresseSirene = sireneAddressParts.filter(Boolean).join(" ").trim()
 
@@ -147,6 +147,10 @@ export async function fetchEtablissementData(siretOrSiren: string) {
       .filter(Boolean)
       .join(" ")
       .trim()
+  }
+
+  if (!adresse) {
+    console.warn("Aucune adresse trouvée pour SIREN/SIRET", siretOrSiren)
   }
 
   // 7) Géolocalisation
@@ -202,12 +206,27 @@ export async function fetchEtablissementData(siretOrSiren: string) {
     }
   }
 
-  // 11) Onglets
+  // 11) Récupération des dirigeants
+  //  - INPI composition (prioritaire)
+  //  - sinon SIRENE periodesDirigeantUniteLegale
   let representants = inpiDirigeants
   if (representants.length === 0 && Array.isArray(pm.composition)) {
     representants = pm.composition
   }
+  if (representants.length === 0 && Array.isArray(uniteLegale?.periodesDirigeantUniteLegale)) {
+    representants = uniteLegale.periodesDirigeantUniteLegale.map((p: any) => ({
+      nom: p.nom,
+      prenom: p.prenom,
+      fonction: p.qualite,
+      dateNomination: p.dateNomination,
+      dateCessation: p.dateCessation,
+    }))
+  }
+  if (representants.length === 0) {
+    console.warn("Aucun dirigeant trouvé pour SIREN/SIRET", siretOrSiren)
+  }
 
+  // 12) Annonces, finances, labels, divers
   const annonces = pm.publicationLegale ? [pm.publicationLegale] : []
   const finances = capital_social
     ? [{ montant: capital_social, devise: pm.deviseCapital }]
@@ -215,14 +234,13 @@ export async function fetchEtablissementData(siretOrSiren: string) {
   const labels = inpiData.labels || rechercheData.labels || []
   const divers = inpiData.divers || rechercheData.divers || []
 
-  // 12) Tranches & catégorie
+  // 13) Tranches & catégorie
   const rawTranche = uniteLegale?.trancheEffectifsUniteLegale ?? ""
   const tranche_effectifs = decodeTrancheEffectifs(rawTranche)
   const tranche_annee =
     uniteLegale?.dateDernierTraitementUniteLegale ?? ""
   const categorie_entreprise = uniteLegale?.categorieEntreprise ?? ""
 
-  // Retour final
   return {
     denomination,
     siren,
@@ -243,7 +261,6 @@ export async function fetchEtablissementData(siretOrSiren: string) {
     tranche_effectifs,
     tranche_annee,
     categorie_entreprise,
-    // données complémentaires de Recherche d'entreprises
     recherche: rechercheData,
   }
 }
