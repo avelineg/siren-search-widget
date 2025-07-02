@@ -1,6 +1,5 @@
 import React from "react"
 import Tabs from "./Tabs"
-import { decodeFormeJuridique, decodeNaf } from "../logic/decode"
 import CarteAdresse from "./CarteAdresse"
 import FilteredObjectListView from "./FilteredObjectListView"
 
@@ -17,17 +16,16 @@ export default function EtablissementOnglets({ etab }: { etab: any }) {
           <div>
             <b>SIRET :</b> {etab.siret}
           </div>
+          {/* affiche directement la carte et l'adresse */}
           <CarteAdresse adresse={etab.adresse} geo={etab.geo} />
           <div>
-            <b>Activité principale :</b>{" "}
-            {etab.code_ape} – {decodeNaf(etab.code_ape)}
+            <b>Activité principale :</b> {etab.libelle_ape || "–"}
           </div>
           <div>
-            <b>Forme juridique :</b>{" "}
-            {decodeFormeJuridique(etab.forme_juridique)}
+            <b>Forme juridique :</b> {etab.forme_juridique || "–"}
           </div>
           <div>
-            <b>Date de création :</b> {etab.date_creation}
+            <b>Date de création :</b> {etab.date_creation || "–"}
           </div>
           <div>
             <b>Numéro TVA :</b> {etab.tva?.numero}
