@@ -13,40 +13,51 @@ const API_VIES = import.meta.env.VITE_VAT_API_URL + "/check-vat"
 const SIRENE_API_KEY = import.meta.env.VITE_SIRENE_API_KEY
 
 /**
- * Formate une adresse en provenance de l'API INPI.
- * On tente plusieurs clés possibles pour couvrir différents formats.
+ * Formate une adresse INPI avec tous ses champs possibles.
  */
 function formatAdresseINPI(ad: any): string {
-  if (!ad) return ""
-  const numero = ad.numeroVoie ?? ad.numVoie
-  const voieType = ad.typeVoie
-  const voieNom = ad.voie
-  // Certains compléments peuvent être dans complementAdresse, complement1, complement2
-  const complement =
-    ad.complementAdresse ?? ad.complement1 ?? ad.complement2
-  const distribution =
-    ad.distributionSpeciale ?? ad.distributionSpeciale1 ?? ad.distributionSpeciale2
-  const cedex = ad.cedex ?? ad.ceDex
-  const bp = ad.bp ?? ad.boitePostale
-  const postcode = ad.codePostal
-  const city = ad.commune
-  const country = ad.pays
+  if (!ad || Object.keys(ad).length === 0) return ""
+  const parts: string[] = []
 
-  return [
-    numero,
-    voieType,
-    voieNom,
-    complement,
-    distribution,
-    bp,
-    cedex,
-    postcode,
-    city,
-    country,
-  ]
-    .filter(Boolean)
-    .join(" ")
-    .trim()
+  const numero = ad.numeroVoie ?? ad.numVoie
+  if (numero) parts.push(numero)
+
+  const voieType = ad.typeVoie
+  if (voieType) parts.push(voieType)
+
+  const voie = ad.voie
+  if (voie) parts.push(voie)
+
+  // Compléments et distributions
+  const complements = [
+    ad.complementAdresse,
+    ad.complement1,
+    ad.complement2,
+  ].filter(Boolean)
+  parts.push(...complements)
+
+  const distributions = [
+    ad.distributionSpeciale,
+    ad.distributionSpeciale1,
+    ad.distributionSpeciale2,
+  ].filter(Boolean)
+  parts.push(...distributions)
+
+  // Boîte postale / BP
+  const bp = ad.bp ?? ad.boitePostale
+  if (bp) parts.push(bp)
+
+  // Cedex
+  const cedex = ad.codeCedex ?? ad.cedex
+  if (cedex) parts.push(`CEDEX ${cedex}`)
+
+  // Code postal, ville, pays
+  if (ad.codePostal) parts.push(ad.codePostal)
+  if (ad.libelleCommune) parts.push(ad.libelleCommune)
+  const pays = ad.libellePaysEtranger ?? ad.pays
+  if (pays) parts.push(pays)
+
+  return parts.join(" ").trim()
 }
 
 function computeTva(siren: string): string {
@@ -84,39 +95,42 @@ export async function fetchEtablissementData(siretOrSiren: string) {
   try {
     const resE = await axios.get(`${API_INPI_ENTREPRISE}/${siren}`)
     inpiData = resE.data
-  } catch {
+  } catch (err) {
+    console.warn("INPI entreprise unreachable:", err)
     inpiData = {}
   }
   try {
     const resD = await axios.get(`${API_INPI_DIRIGEANTS}/${siren}`)
     inpiDirigeants =
       resD.data.content?.composition ?? resD.data.composition ?? []
-  } catch {
+  } catch (err) {
+    console.warn("INPI dirigeants unreachable:", err)
     inpiDirigeants = []
   }
 
-  // 3) Construire l'adresse (SIRENE puis INPI)
-  const adresseSirene = [
+  // 3) Construire l'adresse SIRENE en remontant TOUTES les props disponibles
+  const adresseSireneParts: any[] = [
     etab?.numeroVoieEtablissement,
+    etab?.indiceRepetitionEtablissement,
     etab?.typeVoieEtablissement,
     etab?.libelleVoieEtablissement,
     etab?.complementAdresseEtablissement,
     etab?.distributionSpecialeEtablissement,
-    etab?.cedexEtablissement,
+    // cedex peut s'appeler cedexEtablissement ou codeCedexEtablissement
+    etab?.cedexEtablissement ?? etab?.codeCedexEtablissement,
     etab?.codePostalEtablissement,
     etab?.libelleCommuneEtablissement,
-    etab?.libellePaysEtablissement,
+    // pays peut s'appeler libellePaysEtablissement ou libellePaysEtrangerEtablissement
+    etab?.libellePaysEtablissement ?? etab?.libellePaysEtrangerEtablissement,
   ]
-    .filter(Boolean)
-    .join(" ")
-    .trim()
+  const adresseSirene = adresseSireneParts.filter(Boolean).join(" ").trim()
 
+  // Fallback INPI
   const pm = inpiData.content?.personneMorale ?? {}
   const etabINPI = pm.etablissementPrincipal ?? {}
   const adresseINPI = etabINPI.adresse ?? pm.adresseEntreprise ?? {}
-
-  // Si SIRENE vide, on retombe sur INPI
   const adresse = adresseSirene || formatAdresseINPI(adresseINPI)
+  if (!adresse) console.warn("Aucune adresse trouvée ni SIRENE ni INPI pour", siren)
 
   // 4) Géolocalisation
   if (adresse) {
@@ -129,7 +143,7 @@ export async function fetchEtablissementData(siretOrSiren: string) {
     } catch {}
   }
 
-  // 5) Infos juridiques et identité
+  // 5) Infos juridiques & identité
   const forme_juridique = decodeFormeJuridique(
     uniteLegale?.categorieJuridiqueUniteLegale ??
       pm.formeJuridique ??
@@ -171,12 +185,17 @@ export async function fetchEtablissementData(siretOrSiren: string) {
     }
   }
 
-  // 8) Autres onglets
-  const representants = inpiDirigeants.length
-    ? inpiDirigeants
-    : Array.isArray(pm.composition)
-    ? pm.composition
-    : []
+  // 8) Dirigeants et autres onglets
+  // on remonte d’abord INPI Dirigeants, sinon composition INPI,
+  // sinon message de warning (pas de source disponible).
+  let representants = inpiDirigeants
+  if (representants.length === 0 && Array.isArray(pm.composition)) {
+    representants = pm.composition
+  }
+  if (representants.length === 0) {
+    console.warn("Aucun dirigeant trouvé pour", siren)
+  }
+
   const annonces = pm.publicationLegale ? [pm.publicationLegale] : []
   const finances = capital_social
     ? [{ montant: capital_social, devise: pm.deviseCapital }]
