@@ -3,7 +3,6 @@ import { createRoot } from 'react-dom/client'
 import App from './App'
 import './styles.css'
 
-// on cible #root dans index.html
 const container = document.getElementById('root')!
 const root = createRoot(container)
 root.render(
