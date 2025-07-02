@@ -1,3 +1,4 @@
+/* ajout ou ajustement des styles si nécessaire */
 .tabs {
   margin-top: 1.5rem;
 }
@@ -27,6 +28,10 @@
   padding: 1rem;
   border: 1px solid #ddd;
   border-top: none;
+}
+
+.carte-adresse {
+  margin: 1rem 0;
 }
 
 .carte-adresse iframe {
