@@ -1,26 +1,28 @@
-import React, { useState } from "react"
+import React from 'react'
 
-type TabItem = {
-  label: string
-  render: () => React.ReactNode
+interface TabsProps {
+  labels: string[]
+  current: number
+  onChange: (i: number) => void
 }
 
-export default function Tabs({ items }: { items: TabItem[] }) {
-  const [active, setActive] = useState(0)
+export default function Tabs({ labels, current, onChange }: TabsProps) {
   return (
-    <div className="tabs">
-      <ul className="tab-list">
-        {items.map((it, i) => (
-          <li
-            key={i}
-            className={i === active ? "active" : ""}
-            onClick={() => setActive(i)}
+    <ul className="flex border-b">
+      {labels.map((label, i) => (
+        <li key={i} className="-mb-px mr-4">
+          <button
+            className={`py-2 px-4 font-medium ${
+              current === i
+                ? 'border-b-2 border-blue-600 text-blue-600'
+                : 'text-gray-600 hover:text-gray-800'
+            }`}
+            onClick={() => onChange(i)}
           >
-            {it.label}
-          </li>
-        ))}
-      </ul>
-      <div className="tab-content">{items[active].render()}</div>
-    </div>
+            {label}
+          </button>
+        </li>
+      ))}
+    </ul>
   )
 }
