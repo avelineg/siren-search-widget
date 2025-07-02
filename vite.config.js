@@ -2,9 +2,13 @@ import { defineConfig } from "vite"
 import react from "@vitejs/plugin-react"
 
 export default defineConfig({
+  // Active le plugin React pour TSX, JSX et module resolution
+  plugins: [react()],
+
   build: {
     outDir: "dist",
   },
-  // Assure la copie de tout ce qui est dans public/, y compris favicon.ico
+
+  // Copie tout le dossier public (favicon.ico, etc.) vers dist/
   publicDir: "public",
-})
+  })
