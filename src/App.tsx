@@ -1,47 +1,37 @@
 import React, { useState } from 'react'
-import EtablissementOnglets from './components/EtablissementOnglets'
-import { fetchEtablissementData } from './logic/mapping'
-import { parseApiError } from './utils/error-handler'
+import Tabs from './components/Tabs'
 
-export default function App() {
-  const [input, setInput] = useState('')
-  const [etabData, setEtabData] = useState<any | null>(null)
-  const [loading, setLoading] = useState(false)
-  const [erreur, setErreur] = useState<string | null>(null)
+const tabLabels = [
+  'Identité',
+  'Dirigeants',
+  'Données financières',
+  'Annonces',
+  'Labels & certificats',
+  'Divers'
+]
 
-  const handleSearch = async (e?: React.FormEvent) => {
-    e?.preventDefault()
-    setErreur(null)
-    setEtabData(null)
-    setLoading(true)
-    try {
-      const data = await fetchEtablissementData(input.trim())
-      setEtabData(data)
-    } catch (err: unknown) {
-      setErreur(parseApiError(err))
-    } finally {
-      setLoading(false)
-    }
-  }
-
+function App() {
+  const [current, setCurrent] = useState(0)
   return (
-    <div className="container">
-      <h2 className="titre">🔍 Recherche (SIRET ou SIREN)</h2>
-      <form className="controls" onSubmit={handleSearch}>
-        <input
-          className="input"
-          placeholder="SIREN ou SIRET"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
+    <div className="min-h-screen bg-gray-50 text-gray-800">
+      <header className="bg-white shadow p-4">
+        <h1 className="text-2xl font-semibold">
+          Recherche (SIREN ou SIRET)
+        </h1>
+      </header>
+      <main className="p-4">
+        <Tabs
+          labels={tabLabels}
+          current={current}
+          onChange={setCurrent}
         />
-        <button className="btn" type="submit" disabled={loading || !input.trim()}>
-          {loading ? '…' : 'Rechercher'}
-        </button>
-      </form>
-
-      {loading && <div className="loading">Chargement…</div>}
-      {erreur && <div className="error">{erreur}</div>}
-      {!loading && etabData && <EtablissementOnglets etab={etabData} />}
+        <section className="mt-6">
+          {/* TODO: injecter ici le contenu des données selon l'onglet */}
+          <p>Contenu de l’onglet : <strong>{tabLabels[current]}</strong></p>
+        </section>
+      </main>
     </div>
   )
 }
+
+export default App
