@@ -1,6 +1,5 @@
 import React from "react"
 import Tabs from "./Tabs"
-import CarteAdresse from "./CarteAdresse"
 import FilteredObjectListView from "./FilteredObjectListView"
 
 export default function EtablissementOnglets({ etab }: { etab: any }) {
@@ -22,9 +21,7 @@ export default function EtablissementOnglets({ etab }: { etab: any }) {
           <div><b>Tranche d’effectif :</b> {etab.tranche_effectifs || "–"}</div>
           <div><b>Année de validité effectif :</b> {etab.tranche_annee || "–"}</div>
           <div><b>Catégorie entreprise :</b> {etab.categorie_entreprise || "–"}</div>
-          <div style={{ margin: "1rem 0" }}>
-            <CarteAdresse adresse={etab.adresse} geo={etab.geo} />
-          </div>
+          <div><b>Adresse :</b> {typeof etab.adresse === "string" ? etab.adresse : ""}</div>
         </div>
       ),
     },
