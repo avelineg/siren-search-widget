@@ -19,12 +19,14 @@ function formatAdresseINPI(ad: any): string {
     ad.typeVoie,
     ad.voie,
     ad.complementAdresse,
+    ad.distributionSpeciale,
     ad.codePostal,
     ad.commune,
     ad.pays,
   ]
     .filter(Boolean)
     .join(" ")
+    .trim()
 }
 
 function computeTva(siren: string): string {
@@ -42,7 +44,7 @@ export async function fetchEtablissementData(siretOrSiren: string) {
   let inpiDirigeants: any[] = []
   let geo: [number, number] | null = null
 
-  // 1) SIRENE : etablissement & uniteLegale
+  // 1) SIRENE : établissement & unité légale
   if (/^\d{14}$/.test(siretOrSiren)) {
     const { data } = await axios.get(`${API_SIRENE}/siret/${siretOrSiren}`, {
       headers: { "X-INSEE-Api-Key-Integration": SIRENE_API_KEY },
@@ -79,6 +81,8 @@ export async function fetchEtablissementData(siretOrSiren: string) {
     etab?.typeVoieEtablissement,
     etab?.libelleVoieEtablissement,
     etab?.complementAdresseEtablissement,
+    etab?.distributionSpecialeEtablissement,
+    etab?.cedexEtablissement,
     etab?.codePostalEtablissement,
     etab?.libelleCommuneEtablissement,
     etab?.libellePaysEtablissement,
@@ -106,9 +110,7 @@ export async function fetchEtablissementData(siretOrSiren: string) {
 
   // 5) Infos juridiques et identité
   const forme_juridique = decodeFormeJuridique(
-    uniteLegale?.categorieJuridiqueUniteLegale ||
-      pm.formeJuridique ||
-      ""
+    uniteLegale?.categorieJuridiqueUniteLegale || pm.formeJuridique || ""
   )
   const denomination =
     uniteLegale?.denominationUniteLegale ||
@@ -130,8 +132,7 @@ export async function fetchEtablissementData(siretOrSiren: string) {
     ""
 
   // 6) Capital social
-  const capital_social =
-    uniteLegale?.capitalSocial ?? pm.montantCapital ?? 0
+  const capital_social = uniteLegale?.capitalSocial ?? pm.montantCapital ?? 0
 
   // 7) TVA intracommunautaire
   const tvaNum = computeTva(siren)
@@ -165,8 +166,7 @@ export async function fetchEtablissementData(siretOrSiren: string) {
   const tranche_effectifs = decodeTrancheEffectifs(rawTranche)
   const tranche_annee =
     uniteLegale?.dateDernierTraitementUniteLegale ?? ""
-  const categorie_entreprise =
-    uniteLegale?.categorieEntreprise ?? ""
+  const categorie_entreprise = uniteLegale?.categorieEntreprise ?? ""
 
   return {
     denomination,
