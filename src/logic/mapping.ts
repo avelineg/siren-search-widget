@@ -4,10 +4,10 @@ import { decodeFormeJuridique, decodeNaf } from "./decode"
 const API_SIRENE = "https://api.insee.fr/api-sirene/3.11"
 const API_GEO = "https://api-adresse.data.gouv.fr/search/"
 const API_INPI_ENTREPRISE = import.meta.env.VITE_API_URL + "/inpi/entreprise"
+const API_INPI_DIRIGEANTS = import.meta.env.VITE_API_URL + "/inpi/dirigeants"
 const API_VIES = import.meta.env.VITE_VAT_API_URL + "/check-vat"
 const SIRENE_API_KEY = import.meta.env.VITE_SIRENE_API_KEY
 
-// Format adresse INPI robuste
 function formatAdresseINPI(ad: any) {
   if (!ad) return ""
   return [
@@ -22,7 +22,6 @@ function formatAdresseINPI(ad: any) {
     .join(" ")
 }
 
-// Calcul TVA intracommunautaire
 function computeTva(siren: string) {
   const valid = /^\d{9}$/.test(siren) ? siren : ""
   if (!valid) return ""
@@ -54,13 +53,23 @@ export async function fetchEtablissementData(siretOrSiren: string) {
     uniteLegale = data.uniteLegale
   }
 
-  // 2) INPI fallback
+  // 2) INPI entreprise
   try {
     const { data } = await axios.get(`${API_INPI_ENTREPRISE}/${siren}`)
     inpiData = data
   } catch {
     inpiData = {}
   }
+
+  // 2a) INPI dirigeants
+  let inpiDirigeants: any[] = []
+  try {
+    const { data } = await axios.get(`${API_INPI_DIRIGEANTS}/${siren}`)
+    inpiDirigeants = data.content?.composition ?? data.composition ?? []
+  } catch {
+    inpiDirigeants = []
+  }
+
   const pm = inpiData.content?.personneMorale ?? {}
   const etabINPI = pm.etablissementPrincipal ?? {}
   const adresseINPI = etabINPI.adresse ?? pm.adresseEntreprise ?? {}
@@ -80,7 +89,7 @@ export async function fetchEtablissementData(siretOrSiren: string) {
     adresse = formatAdresseINPI(adresseINPI)
   }
 
-  // 4) Géoloc (uniquement si adresse non vide)
+  // 4) Géoloc
   if (adresse.trim()) {
     try {
       const { data } = await axios.get(API_GEO, { params: { q: adresse, limit: 1 } })
@@ -89,16 +98,19 @@ export async function fetchEtablissementData(siretOrSiren: string) {
     } catch {}
   }
 
-  // 5) Identité
+  // 5) Identité et infos juridiques
   const forme_juridique = decodeFormeJuridique(
     uniteLegale?.categorieJuridiqueUniteLegale ||
-      etab?.categorieJuridiqueUniteLegale ||
       inpiData.formeJuridique ||
       pm.formeJuridique ||
       ""
   )
   const denomination =
-    uniteLegale?.denominationUniteLegale || pm.enseigne || pm.nomCommercial || pm.denomination || ""
+    uniteLegale?.denominationUniteLegale ||
+    pm.enseigne ||
+    pm.nomCommercial ||
+    pm.denomination ||
+    ""
   const code_ape =
     etab?.activitePrincipaleEtablissement ||
     uniteLegale?.activitePrincipaleUniteLegale ||
@@ -112,7 +124,6 @@ export async function fetchEtablissementData(siretOrSiren: string) {
     inpiData.dateCreation ||
     ""
   const capital_social = uniteLegale?.capitalSocial ?? pm.montantCapital ?? 0
-  const objet_social = pm.description?.objet ?? ""
 
   // 6) TVA
   const tvaNum = computeTva(siren)
@@ -128,15 +139,27 @@ export async function fetchEtablissementData(siretOrSiren: string) {
     }
   }
 
-  // 7) Actes INPI désactivé pour stabiliser le widget
+  // 7) INPI documents désactivé
   const documents: any[] = []
 
   // 8) Autres onglets
-  const representants = Array.isArray(pm.composition) ? pm.composition : []
+  const representants =
+    inpiDirigeants.length > 0
+      ? inpiDirigeants
+      : Array.isArray(pm.composition)
+      ? pm.composition
+      : []
   const annonces = pm.publicationLegale ? [pm.publicationLegale] : []
-  const finances = capital_social ? [{ montant: capital_social, devise: pm.deviseCapital }] : []
+  const finances = capital_social
+    ? [{ montant: capital_social, devise: pm.deviseCapital }]
+    : []
   const labels = inpiData.labels || []
   const divers = inpiData.divers || []
+
+  // 9) SIRENE : effectif et catégorie
+  const tranche_effectifs = uniteLegale?.trancheEffectifsUniteLegale ?? ""
+  const tranche_annee = uniteLegale?.dateDernierTraitementUniteLegale ?? ""
+  const categorie_entreprise = uniteLegale?.categorieEntreprise ?? ""
 
   return {
     denomination,
@@ -149,13 +172,16 @@ export async function fetchEtablissementData(siretOrSiren: string) {
     forme_juridique,
     date_creation,
     capital_social,
-    objet_social,
     tva: tvaRes,
     representants,
     documents,
     annonces,
     finances,
     labels,
-    divers
+    divers,
+    // nouvelles données
+    tranche_effectifs,
+    tranche_annee,
+    categorie_entreprise
   }
 }
