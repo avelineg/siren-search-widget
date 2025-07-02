@@ -12,17 +12,37 @@ const API_INPI_DIRIGEANTS = import.meta.env.VITE_API_URL + "/inpi/dirigeants"
 const API_VIES = import.meta.env.VITE_VAT_API_URL + "/check-vat"
 const SIRENE_API_KEY = import.meta.env.VITE_SIRENE_API_KEY
 
+/**
+ * Formate une adresse en provenance de l'API INPI.
+ * On tente plusieurs clés possibles pour couvrir différents formats.
+ */
 function formatAdresseINPI(ad: any): string {
   if (!ad) return ""
+  const numero = ad.numeroVoie ?? ad.numVoie
+  const voieType = ad.typeVoie
+  const voieNom = ad.voie
+  // Certains compléments peuvent être dans complementAdresse, complement1, complement2
+  const complement =
+    ad.complementAdresse ?? ad.complement1 ?? ad.complement2
+  const distribution =
+    ad.distributionSpeciale ?? ad.distributionSpeciale1 ?? ad.distributionSpeciale2
+  const cedex = ad.cedex ?? ad.ceDex
+  const bp = ad.bp ?? ad.boitePostale
+  const postcode = ad.codePostal
+  const city = ad.commune
+  const country = ad.pays
+
   return [
-    ad.numVoie,
-    ad.typeVoie,
-    ad.voie,
-    ad.complementAdresse,
-    ad.distributionSpeciale,
-    ad.codePostal,
-    ad.commune,
-    ad.pays,
+    numero,
+    voieType,
+    voieNom,
+    complement,
+    distribution,
+    bp,
+    cedex,
+    postcode,
+    city,
+    country,
   ]
     .filter(Boolean)
     .join(" ")
@@ -95,6 +115,7 @@ export async function fetchEtablissementData(siretOrSiren: string) {
   const etabINPI = pm.etablissementPrincipal ?? {}
   const adresseINPI = etabINPI.adresse ?? pm.adresseEntreprise ?? {}
 
+  // Si SIRENE vide, on retombe sur INPI
   const adresse = adresseSirene || formatAdresseINPI(adresseINPI)
 
   // 4) Géolocalisation
@@ -110,25 +131,27 @@ export async function fetchEtablissementData(siretOrSiren: string) {
 
   // 5) Infos juridiques et identité
   const forme_juridique = decodeFormeJuridique(
-    uniteLegale?.categorieJuridiqueUniteLegale || pm.formeJuridique || ""
+    uniteLegale?.categorieJuridiqueUniteLegale ??
+      pm.formeJuridique ??
+      ""
   )
   const denomination =
-    uniteLegale?.denominationUniteLegale ||
-    pm.enseigne ||
-    pm.nomCommercial ||
-    pm.denomination ||
+    uniteLegale?.denominationUniteLegale ??
+    pm.enseigne ??
+    pm.nomCommercial ??
+    pm.denomination ??
     ""
   const code_ape =
-    etab?.activitePrincipaleEtablissement ||
-    uniteLegale?.activitePrincipaleUniteLegale ||
-    etabINPI.codeApe ||
+    etab?.activitePrincipaleEtablissement ??
+    uniteLegale?.activitePrincipaleUniteLegale ??
+    etabINPI.codeApe ??
     ""
   const libelle_ape = decodeNaf(code_ape)
-  const siret = etab?.siret || etabINPI.siret || ""
+  const siret = etab?.siret ?? etabINPI.siret ?? ""
   const date_creation =
-    etab?.dateCreationEtablissement ||
-    uniteLegale?.dateCreationUniteLegale ||
-    pm.dateCreation ||
+    etab?.dateCreationEtablissement ??
+    uniteLegale?.dateCreationUniteLegale ??
+    pm.dateCreation ??
     ""
 
   // 6) Capital social
