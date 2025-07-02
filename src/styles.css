@@ -46,3 +46,23 @@
   font-size: 0.9rem;
   color: #333;
 }
+/* Ajout de styles pour la section légale */
+.identite-legal {
+  margin-top: 1rem;
+}
+
+.legal-info-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 1rem;
+}
+.legal-info-table th,
+.legal-info-table td {
+  text-align: left;
+  padding: 0.5rem;
+  border: 1px solid #ddd;
+}
+.legal-info-table th {
+  background-color: #f8f8f8;
+  width: 30%;
+}
