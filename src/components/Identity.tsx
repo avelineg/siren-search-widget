@@ -11,10 +11,6 @@ export default function Identity({ data }: { data: any }) {
             <td>{data.denomination}</td>
           </tr>
           <tr>
-            <td className="font-bold">Nom commercial</td>
-            <td>{data.nom_commercial || '–'}</td>
-          </tr>
-          <tr>
             <td className="font-bold">SIREN</td>
             <td>{data.siren}</td>
           </tr>
@@ -75,20 +71,12 @@ export default function Identity({ data }: { data: any }) {
             <td>{data.statut_diffusion || '–'}</td>
           </tr>
           <tr>
-            <td className="font-bold">Caractère employeur</td>
-            <td>{data.caractere_employeur || '–'}</td>
-          </tr>
-          <tr>
             <td className="font-bold">Dirigeant principal</td>
             <td>
               {data.dirigeants && data.dirigeants.length
                 ? `${data.dirigeants[0].nom || ''} ${data.dirigeants[0].prenoms || ''}`.trim()
                 : '–'}
             </td>
-          </tr>
-          <tr>
-            <td className="font-bold">Sigle</td>
-            <td>{data.sigle || '–'}</td>
           </tr>
           <tr>
             <td className="font-bold">Site internet</td>
