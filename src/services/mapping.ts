@@ -106,11 +106,7 @@ export async function searchEtablissementsByName(name: string) {
     : [];
 }
 
-/**
- * Récupère toutes les données d'un SIREN (INPI + SIRENE + liste établissements depuis l'API recherche)
- */
 export async function fetchEtablissementBySiren(siren: string) {
-  // Récupération de toutes les données brutes
   const [
     inpiDataRaw,
     sireneULRaw,
@@ -118,15 +114,16 @@ export async function fetchEtablissementBySiren(siren: string) {
   ] = await Promise.all([
     getEntrepriseBySiren(siren).catch(() => ({})),
     sirene.get(`/siren/${siren}`).then(r => r.data.uniteLegale).catch(() => ({})),
-    recherche.get('/search', { params: { q: siren, per_page: 1000 } }).then(r => r.data).catch(() => ({ results: [] })),
+    // on récupère tous les établissements même fermés (statut_ferme inclus)
+    recherche.get('/search', { params: { q: siren, per_page: 1000, statut_ferme: true } }).then(r => r.data).catch(() => ({ results: [] })),
   ]);
 
   const inpiData = inpiDataRaw || {};
   const sireneUL = sireneULRaw || {};
   const etabsFromRecherche = Array.isArray(rechercheEtabResp.results) ? rechercheEtabResp.results : [];
 
-  // Liste complète des établissements (enrichie)
-  const etablissements = etabsFromRecherche.map((etab: any) => {
+  // Correction : filtrage strict sur le SIREN (parfois l'API retourne trop large !)
+  const etablissements = etabsFromRecherche.filter(e => e.siren === siren).map((etab: any) => {
     const { statut, date_fermeture } = etablissementStatut(etab);
     return {
       siret: etab.siret || etab.siret_etablissement,
@@ -148,7 +145,7 @@ export async function fetchEtablissementBySiren(siren: string) {
   let statut = siege?.statut || "actif";
   let date_fermeture = siege?.date_fermeture || null;
 
-  // Données principales
+  // Données principales (inchangées)
   const denomination =
     getInpi("formality.content.personneMorale.identite.entreprise.denomination", inpiData) ||
     inpiData.denomination ||
@@ -295,7 +292,8 @@ export async function fetchEtablissementBySiret(siret: string) {
     sirene.get(`/siret/${siret}`).then(r => r.data.etablissement).catch(() => ({})),
     sirene.get(`/siren/${siren}`).then(r => r.data.uniteLegale).catch(() => ({})),
     sirene.get(`/siren/${siren}/etablissements`).then(r => r.data.etablissements).catch(() => ([])),
-    recherche.get('/search', { params: { q: siren, per_page: 1000 } }).then(r => r.data).catch(() => ({ results: [] })),
+    // on récupère tous les établissements même fermés (statut_ferme inclus)
+    recherche.get('/search', { params: { q: siren, per_page: 1000, statut_ferme: true } }).then(r => r.data).catch(() => ({ results: [] })),
   ]);
 
   const inpiData = inpiDataRaw || {};
@@ -303,48 +301,23 @@ export async function fetchEtablissementBySiret(siret: string) {
   const sireneUL = sireneULRaw || {};
   const etabsFromRecherche = Array.isArray(rechercheEtabResp.results) ? rechercheEtabResp.results : [];
 
-  // Liste d'établissements enrichie (recherche entreprise + fallback SIRENE)
-  const etablissements = etabsFromRecherche.length
-    ? etabsFromRecherche.map((etab: any) => {
-        const { statut, date_fermeture } = etablissementStatut(etab);
-        return {
-          siret: etab.siret || etab.siret_etablissement,
-          displayName: etab.denomination || etab.nom_raison_sociale || etab.raison_sociale || etab.name || etab.nom_commercial || "-",
-          adresse: etab.adresse || etab.adresseEtablissement || "-",
-          activite_principale: etab.activite_principale || etab.code_ape || "",
-          tranche_effectif_libelle: etab.tranche_effectif_libelle || etab.tranche_effectifs || "",
-          tranche_effectif_salarie: etab.tranche_effectif_salarie || "",
-          date_creation: etab.date_creation || etab.dateCreationEtablissement || "",
-          est_siege: etab.siege === true || etab.est_siege === true,
-          statut,
-          date_fermeture,
-        };
-      })
-    : (
-      Array.isArray(etablissementsRaw) ? etablissementsRaw.map((etab: any) => {
-        const { statut, date_fermeture } = etablissementStatut(etab);
-        return {
-          siret: etab.siret,
-          displayName:
-            etab.denomination ||
-            etab.nom_raison_sociale ||
-            etab.raison_sociale ||
-            etab.name ||
-            etab.nom_commercial ||
-            "-",
-          adresse: formatAdresseSIRENE(etab.adresseEtablissement),
-          activite_principale: etab.activite_principale || etab.code_ape || "",
-          tranche_effectif_libelle: etab.tranche_effectif_libelle || etab.tranche_effectifs || "",
-          tranche_effectif_salarie: etab.tranche_effectif_salarie || "",
-          date_creation: etab.date_creation || etab.dateCreationEtablissement || "",
-          est_siege: etab.siege === true || etab.est_siege === true,
-          statut,
-          date_fermeture,
-        }
-      }) : []
-    );
+  // Correction : filtrage strict sur le SIREN (parfois l'API retourne trop large !)
+  const etablissements = etabsFromRecherche.filter(e => e.siren === siren).map((etab: any) => {
+    const { statut, date_fermeture } = etablissementStatut(etab);
+    return {
+      siret: etab.siret || etab.siret_etablissement,
+      displayName: etab.denomination || etab.nom_raison_sociale || etab.raison_sociale || etab.name || etab.nom_commercial || "-",
+      adresse: etab.adresse || etab.adresseEtablissement || "-",
+      activite_principale: etab.activite_principale || etab.code_ape || "",
+      tranche_effectif_libelle: etab.tranche_effectif_libelle || etab.tranche_effectifs || "",
+      tranche_effectif_salarie: etab.tranche_effectif_salarie || "",
+      date_creation: etab.date_creation || etab.dateCreationEtablissement || "",
+      est_siege: etab.siege === true || etab.est_siege === true,
+      statut,
+      date_fermeture,
+    };
+  });
 
-  // Données de l'établissement principal (celui du SIRET demandé)
   const { statut, date_fermeture } = etablissementStatut(sireneEtab);
 
   const denomination =
