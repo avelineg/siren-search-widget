@@ -5,16 +5,10 @@ import naf from '../naf.json'
 import formesJuridique from '../formeJuridique.json'
 import { effectifTrancheLabel } from './effectifs'
 
-/**
- * Utilitaire pour extraire une propriété imbriquée dans un objet (type lodash get)
- */
 function getInpi(path: string, obj: any) {
   return path.split('.').reduce((acc, key) => (acc && acc[key] != null ? acc[key] : undefined), obj);
 }
 
-/**
- * Récupère le libellé détaillé (description) du code APE depuis les activités INPI
- */
 function getLibelleApeFromINPI(inpiData: any): string | undefined {
   const activites = getInpi('formality.content.activites', inpiData);
   if (Array.isArray(activites)) {
@@ -26,27 +20,16 @@ function getLibelleApeFromINPI(inpiData: any): string | undefined {
   return undefined;
 }
 
-/**
- * Récupère le nom de l'activité à partir du code APE, via naf.json
- */
 function getApeLabelFromNAF(codeApe: string): string | undefined {
   if (!codeApe) return undefined;
-  // Gère les deux formats (ex: "6920Z" ou "69.20Z")
   return naf[codeApe] || naf[codeApe.replace(/^(\d{2})(\d{2})([A-Z])$/, '$1.$2$3')];
 }
 
-/**
- * Récupère le nom de la forme juridique à partir du code, via formeJuridique.json
- */
 function getFormeJuridiqueLabel(code: string): string | undefined {
   if (!code) return undefined;
-  // Essaie code direct puis leftPad à 4 chiffres
   return formesJuridique[code] || formesJuridique[code.padStart(4, '0')];
 }
 
-/**
- * Format une adresse SIRENE
- */
 function formatAdresseSIRENE(adresseObj: any): string {
   if (!adresseObj || typeof adresseObj !== "object") return "-";
   return [
@@ -58,9 +41,6 @@ function formatAdresseSIRENE(adresseObj: any): string {
   ].filter(Boolean).join(' ');
 }
 
-/**
- * Recherche par nom de société : NE DOIT PAS interroger INPI, uniquement l'API Recherche Entreprise.
- */
 export async function searchEtablissementsByName(name: string) {
   const results = await recherche
     .get('/search', {
@@ -83,7 +63,6 @@ export async function searchEtablissementsByName(name: string) {
     : [];
 }
 
-// Mapping principal pour SIREN (fiche détaillée)
 export async function fetchEtablissementBySiren(siren: string) {
   const [
     inpiDataRaw,
@@ -101,6 +80,21 @@ export async function fetchEtablissementBySiren(siren: string) {
   const rechercheData = rechercheDataRaw || {};
   const sireneUL = sireneULRaw || {};
 
+  // Liste des établissements (pour navigation)
+  let etablissements = Array.isArray(etablissementsRaw)
+    ? etablissementsRaw.map((etab: any) => ({
+        ...etab,
+        displayName:
+          etab.denomination ||
+          etab.nom_raison_sociale ||
+          etab.raison_sociale ||
+          etab.name ||
+          etab.nom_commercial ||
+          "-",
+        adresse: formatAdresseSIRENE(etab.adresseEtablissement),
+      }))
+    : [];
+
   // Dénomination principale
   const denomination =
     getInpi("formality.content.personneMorale.identite.entreprise.denomination", inpiData) ||
@@ -109,13 +103,6 @@ export async function fetchEtablissementBySiren(siren: string) {
     (rechercheData?.results?.[0]?.denomination) ||
     (rechercheData?.results?.[0]?.nom_raison_sociale) ||
     sireneUL.denominationUniteLegale ||
-    "-";
-
-  const nom_commercial =
-    getInpi("formality.content.personneMorale.identite.entreprise.nomCommercial", inpiData) ||
-    inpiData.tradeName ||
-    (rechercheData?.results?.[0]?.nom_commercial) ||
-    sireneUL.nomCommercialUniteLegale ||
     "-";
 
   const forme_juridique_code =
@@ -128,13 +115,6 @@ export async function fetchEtablissementBySiren(siren: string) {
     getFormeJuridiqueLabel(forme_juridique_code) ||
     sireneUL.libelleCategorieJuridiqueUniteLegale ||
     forme_juridique_code;
-
-  const sigle =
-    getInpi("formality.content.personneMorale.identite.entreprise.sigle", inpiData) ||
-    inpiData.acronym ||
-    (rechercheData?.results?.[0]?.sigle) ||
-    sireneUL.sigleUniteLegale ||
-    "-";
 
   const code_ape =
     getInpi("formality.content.personneMorale.identite.entreprise.codeApe", inpiData) ||
@@ -165,18 +145,14 @@ export async function fetchEtablissementBySiren(siren: string) {
     sireneUL.dateCreationUniteLegale ||
     "-";
 
-  // Adresse principale (siège social)
-  const sireneAdresseObj = sireneUL?.adresseEtablissement;
-  const sireneAdresse = formatAdresseSIRENE(sireneAdresseObj);
-
-  const rechercheAdresse = (rechercheData?.results?.[0]?.adresse && typeof rechercheData?.results?.[0]?.adresse === "string")
-    ? rechercheData?.results?.[0]?.adresse
-    : undefined;
-
-  const adresse =
-    rechercheAdresse && rechercheAdresse !== "-" ? rechercheAdresse
-    : sireneAdresse && sireneAdresse !== "-" ? sireneAdresse
-    : "-";
+  // Adresse = celle du siège social (établissement ayant siege === true)
+  let adresse = "-";
+  if (Array.isArray(etablissementsRaw)) {
+    const siege = etablissementsRaw.find((etab: any) => etab.siege);
+    if (siege) {
+      adresse = formatAdresseSIRENE(siege.adresseEtablissement);
+    }
+  }
 
   // Effectifs
   const tranche_effectifs_code =
@@ -194,10 +170,8 @@ export async function fetchEtablissementBySiren(siren: string) {
     sireneUL.trancheEffectifsUniteLegale ||
     "-";
 
-  // TVA
   const tvaNum = tvaFRFromSiren(siren);
 
-  // Données financières INPI
   const finances = inpiData.financialStatements?.length
     ? inpiData.financialStatements.map((f: any) => ({
         exercice: f.fiscalYear,
@@ -208,20 +182,6 @@ export async function fetchEtablissementBySiren(siren: string) {
       }))
     : [];
 
-  // Etablissements (liste de tous les établissements du SIREN)
-  let etablissements = Array.isArray(etablissementsRaw) ? etablissementsRaw.map((etab: any) => ({
-    ...etab,
-    displayName:
-      etab.denomination ||
-      etab.nom_raison_sociale ||
-      etab.raison_sociale ||
-      etab.name ||
-      etab.nom_commercial ||
-      "-",
-    adresse: formatAdresseSIRENE(etab.adresseEtablissement),
-  })) : [];
-
-  // Dirigeants
   let dirigeants = [];
   const pouvoirs = getInpi("formality.content.personneMorale.composition.pouvoirs", inpiData);
   if (Array.isArray(pouvoirs)) {
@@ -254,17 +214,10 @@ export async function fetchEtablissementBySiren(siren: string) {
     }
   }
 
-  // Divers
   const statut_diffusion =
     inpiData.publicationStatus ||
     (rechercheData?.results?.[0]?.statut_diffusion) ||
     sireneUL.statutDiffusionUniteLegale ||
-    "-";
-
-  const caractere_employeur =
-    inpiData.employerCharacteristic ||
-    (rechercheData?.results?.[0]?.caractere_employeur) ||
-    sireneUL.caractereEmployeurUniteLegale ||
     "-";
 
   const site_web =
@@ -281,8 +234,6 @@ export async function fetchEtablissementBySiren(siren: string) {
     denomination,
     forme_juridique,
     categorie_juridique: forme_juridique_code,
-    sigle,
-    nom_commercial,
     siren,
     siret: etablissements.find(e => e.siege) ? etablissements.find(e => e.siege).siret : (etablissements[0]?.siret || "-"),
     tva: { numero: tvaNum || '-', valide: null },
@@ -297,14 +248,12 @@ export async function fetchEtablissementBySiren(siren: string) {
     dirigeants,
     finances,
     statut_diffusion,
-    caractere_employeur,
     site_web,
     email,
     inpiRaw: inpiDataRaw
   };
 }
 
-// Mapping principal pour SIRET (fiche détaillée)
 export async function fetchEtablissementBySiret(siret: string) {
   const siren = siret.slice(0, 9)
   const [
@@ -323,19 +272,25 @@ export async function fetchEtablissementBySiret(siret: string) {
   const sireneEtab = sireneEtabRaw || {};
   const sireneUL = sireneULRaw || {};
 
-  // Champs principaux
+  let etablissements = Array.isArray(etablissementsRaw)
+    ? etablissementsRaw.map((etab: any) => ({
+        ...etab,
+        displayName:
+          etab.denomination ||
+          etab.nom_raison_sociale ||
+          etab.raison_sociale ||
+          etab.name ||
+          etab.nom_commercial ||
+          "-",
+        adresse: formatAdresseSIRENE(etab.adresseEtablissement),
+      }))
+    : [];
+
   const denomination =
     getInpi("formality.content.personneMorale.identite.entreprise.denomination", inpiData) ||
     inpiData.denomination ||
     getInpi("formality.content.personneMorale.identite.entreprise.nom", inpiData) ||
     sireneUL.denominationUniteLegale ||
-    "-";
-
-  const nom_commercial =
-    getInpi("formality.content.personneMorale.identite.entreprise.nomCommercial", inpiData) ||
-    inpiData.tradeName ||
-    sireneEtab.nomCommercialEtablissement ||
-    sireneUL.nomCommercialUniteLegale ||
     "-";
 
   const forme_juridique_code =
@@ -347,12 +302,6 @@ export async function fetchEtablissementBySiret(siret: string) {
     getFormeJuridiqueLabel(forme_juridique_code) ||
     sireneUL.libelleCategorieJuridiqueUniteLegale ||
     forme_juridique_code;
-
-  const sigle =
-    getInpi("formality.content.personneMorale.identite.entreprise.sigle", inpiData) ||
-    inpiData.acronym ||
-    sireneUL.sigleUniteLegale ||
-    "-";
 
   const code_ape =
     getInpi("formality.content.personneMorale.identite.entreprise.codeApe", inpiData) ||
@@ -381,12 +330,10 @@ export async function fetchEtablissementBySiret(siret: string) {
     sireneUL.dateCreationUniteLegale ||
     "-";
 
-  // Adresse établissement uniquement
   const sireneAdresseObj = sireneEtab?.adresseEtablissement;
   const sireneAdresse = formatAdresseSIRENE(sireneAdresseObj);
   const adresse = sireneAdresse && sireneAdresse !== "-" ? sireneAdresse : "-";
 
-  // Effectifs
   const tranche_effectifs_code =
     getInpi("formality.content.personneMorale.identite.entreprise.trancheEffectifs", inpiData) ||
     inpiData.workforceLabel ||
@@ -400,10 +347,8 @@ export async function fetchEtablissementBySiret(siret: string) {
     sireneUL.trancheEffectifsUniteLegale ||
     "-";
 
-  // TVA
   const tvaNum = tvaFRFromSiren(siren);
 
-  // Données financières INPI
   const finances = inpiData.financialStatements?.length
     ? inpiData.financialStatements.map((f: any) => ({
         exercice: f.fiscalYear,
@@ -414,20 +359,6 @@ export async function fetchEtablissementBySiret(siret: string) {
       }))
     : [];
 
-  // Etablissements (liste de tous les établissements du SIREN parent pour navigation)
-  let etablissements = Array.isArray(etablissementsRaw) ? etablissementsRaw.map((etab: any) => ({
-    ...etab,
-    displayName:
-      etab.denomination ||
-      etab.nom_raison_sociale ||
-      etab.raison_sociale ||
-      etab.name ||
-      etab.nom_commercial ||
-      "-",
-    adresse: formatAdresseSIRENE(etab.adresseEtablissement),
-  })) : [];
-
-  // Dirigeants
   let dirigeants = [];
   const pouvoirs = getInpi("formality.content.personneMorale.composition.pouvoirs", inpiData);
   if (Array.isArray(pouvoirs)) {
@@ -452,15 +383,9 @@ export async function fetchEtablissementBySiret(siret: string) {
     });
   }
 
-  // Divers
   const statut_diffusion =
     inpiData.publicationStatus ||
     sireneUL.statutDiffusionUniteLegale ||
-    "-";
-
-  const caractere_employeur =
-    inpiData.employerCharacteristic ||
-    sireneUL.caractereEmployeurUniteLegale ||
     "-";
 
   const site_web =
@@ -475,8 +400,6 @@ export async function fetchEtablissementBySiret(siret: string) {
     denomination,
     forme_juridique,
     categorie_juridique: forme_juridique_code,
-    sigle,
-    nom_commercial,
     siren,
     siret,
     tva: { numero: tvaNum || '-', valide: null },
@@ -491,14 +414,12 @@ export async function fetchEtablissementBySiret(siret: string) {
     dirigeants,
     finances,
     statut_diffusion,
-    caractere_employeur,
     site_web,
     email,
     inpiRaw: inpiDataRaw
   };
 }
 
-// Routeur intelligent
 export async function fetchEtablissementByCode(code: string) {
   if (/^\d{14}$/.test(code)) {
     return fetchEtablissementBySiret(code);
