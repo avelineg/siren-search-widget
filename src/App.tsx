@@ -1,48 +1,39 @@
-import React, { useState, useEffect } from "react";
+import { useState } from "react";
 import { useEtablissementData } from "./hooks/useEtablissementData";
-import Tabs from "./components/Tabs";
 import CompanyHeader from "./components/CompanyHeader";
+import Tabs from "./components/Tabs";
 import Identity from "./components/Identity";
 import EtablissementsSelector from "./components/EtablissementsSelector";
 import Dirigeants from "./components/Dirigeants";
 import Finances from "./components/Finances";
-import Labels from "./components/LabelsCertifications";
-import Divers from "./components/Various";
-
-const tabLabels = [
-  "Identité",
-  "Établissements",
-  "Dirigeants",
-  "Finances",
-  "Labels",
-  "Divers",
-];
-
-const isNonEmptyArray = (arr: any) => Array.isArray(arr) && arr.length > 0;
+import Labels from "./components/Labels";
+import Divers from "./components/Divers";
 
 function App() {
   const [search, setSearch] = useState("");
-  const [selectedCode, setSelectedCode] = useState(""); // SIREN ou SIRET sélectionné
+  const [selectedCode, setSelectedCode] = useState("");
   const [tabIndex, setTabIndex] = useState(0);
 
-  const { data, loading, error, results } = useEtablissementData(search, selectedCode);
-
-  useEffect(() => {
-    // Pour debug
-    // console.log("[App] data:", data);
-    // console.log("[App] results:", results);
-    // console.log("[App] loading:", loading);
-    // console.log("[App] error:", error);
-  }, [data, results, loading, error]);
+  const { data, loading, error, results } = useEtablissementData(
+    search,
+    selectedCode
+  );
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     setSelectedCode("");
-    setTabIndex(0);
   };
 
-  // Affichage de la liste de résultats pour la recherche par nom
-  if (results && results.length > 0 && !selectedCode) {
+  const tabLabels = [
+    "Identité",
+    "Établissements",
+    "Dirigeants",
+    "Finances",
+    "Labels",
+    "Divers",
+  ];
+
+  if (!selectedCode && results && results.length > 0) {
     return (
       <div className="max-w-5xl mx-auto mt-5 p-4">
         <h1 className="text-2xl font-bold mb-6">Annuaire Widget</h1>
@@ -66,17 +57,29 @@ function App() {
             Rechercher
           </button>
         </form>
-        <div className="mb-4">
-          {loading && "Chargement..."}
-          {error && <div className="text-red-600">{error.toString()}</div>}
-        </div>
+
+        {error && (
+          <div className="text-red-600 mb-4">Erreur : {error.toString()}</div>
+        )}
+        {loading && <div className="mb-4">Chargement...</div>}
+
         <div>
-          <h2 className="text-lg font-semibold mb-2">Résultats de recherche</h2>
           <ul>
             {results.map((r, idx) => (
-              <li key={idx} className="mb-2">
+              <li key={idx} className="mb-2 flex items-center">
                 <span>
                   {r.displayName || "(Sans nom)"} — SIREN: {r.siren}
+                </span>
+                <span
+                  className="ml-2 px-2 py-1 rounded text-xs"
+                  style={{
+                    background: r.actif ? "#e6faea" : "#fde8ea",
+                    color: r.actif ? "#208b42" : "#b71c1c",
+                    fontWeight: 600,
+                  }}
+                  title={r.actif ? "Établissement actif" : "Établissement fermé"}
+                >
+                  {r.actif ? "Actif" : "Fermé"}
                 </span>
                 <button
                   className="ml-4 bg-blue-600 text-white px-2 py-1 rounded hover:bg-blue-700 text-sm"
@@ -84,30 +87,46 @@ function App() {
                 >
                   Voir la fiche
                 </button>
-                {Array.isArray(r.matching_etablissements) && r.matching_etablissements.length > 0 && (
-                  <ul className="ml-8 mt-1">
-                    {r.matching_etablissements.map((etab: any, eidx: number) => (
-                      <li key={eidx}>
-                        <span>
-                          {etab.displayName ||
-                            etab.denomination ||
-                            etab.nom_raison_sociale ||
-                            etab.name ||
-                            etab.raison_sociale ||
-                            etab.nom_commercial ||
-                            "(Établissement sans nom)"}{" "}
-                          — SIRET: {etab.siret}
-                        </span>
-                        <button
-                          className="ml-2 bg-green-600 text-white px-2 py-1 rounded hover:bg-green-700 text-xs"
-                          onClick={() => setSelectedCode(etab.siret)}
-                        >
-                          Voir établissement
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                )}
+                {Array.isArray(r.matching_etablissements) &&
+                  r.matching_etablissements.length > 0 && (
+                    <ul className="ml-8 mt-1">
+                      {r.matching_etablissements.map((etab: any, eidx: number) => (
+                        <li key={eidx}>
+                          <span>
+                            {etab.displayName ||
+                              etab.denomination ||
+                              etab.nom_raison_sociale ||
+                              etab.name ||
+                              etab.raison_sociale ||
+                              etab.nom_commercial ||
+                              "(\u00c9tablissement sans nom)"}{" "}
+                            — SIRET: {etab.siret}
+                            <span
+                              className="ml-2 px-2 py-1 rounded text-xs"
+                              style={{
+                                background: etab.actif ? "#e6faea" : "#fde8ea",
+                                color: etab.actif ? "#208b42" : "#b71c1c",
+                                fontWeight: 600,
+                              }}
+                              title={
+                                etab.actif
+                                  ? "Établissement actif"
+                                  : "Établissement fermé"
+                              }
+                            >
+                              {etab.actif ? "Actif" : "Fermé"}
+                            </span>
+                          </span>
+                          <button
+                            className="ml-2 bg-green-600 text-white px-2 py-1 rounded hover:bg-green-700 text-xs"
+                            onClick={() => setSelectedCode(etab.siret)}
+                          >
+                            Voir établissement
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
               </li>
             ))}
           </ul>
@@ -146,6 +165,21 @@ function App() {
       {data && (
         <div>
           <CompanyHeader {...data} />
+          {/* Affichage de l'indicateur actif/fermé dans l'en-tête */}
+          <div className="mb-4">
+            <span
+              className="px-2 py-1 rounded text-xs"
+              style={{
+                background: data.actif ? "#e6faea" : "#fde8ea",
+                color: data.actif ? "#208b42" : "#b71c1c",
+                fontWeight: 700,
+                marginLeft: "0.5rem",
+              }}
+              title={data.actif ? "Établissement actif" : "Établissement fermé"}
+            >
+              {data.actif ? "Actif" : "Fermé"}
+            </span>
+          </div>
 
           {/* Affiche la liste des établissements (navigation possible) dans l'onglet 1 */}
           <Tabs labels={tabLabels} current={tabIndex} onChange={setTabIndex} />
@@ -159,15 +193,9 @@ function App() {
                 onSelect={setSelectedCode}
               />
             )}
-            {tabIndex === 2 && (
-              <Dirigeants dirigeants={data.dirigeants || []} />
-            )}
-            {tabIndex === 3 && (
-              <Finances data={data} />
-            )}
-            {tabIndex === 4 && (
-              <Labels data={data} />
-            )}
+            {tabIndex === 2 && <Dirigeants dirigeants={data.dirigeants || []} />}
+            {tabIndex === 3 && <Finances data={data} />}
+            {tabIndex === 4 && <Labels data={data} />}
             {tabIndex === 5 && <Divers data={data} />}
           </div>
 
