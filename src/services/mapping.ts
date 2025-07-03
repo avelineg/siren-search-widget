@@ -1,4 +1,4 @@
-import { getEntrepriseBySiren, searchEntreprisesByRaisonSociale } from './inpiBackend'
+import { getEntrepriseBySiren } from './inpiBackend'
 import { sirene, vies, recherche } from './api'
 import { tvaFRFromSiren } from './tva'
 
@@ -37,6 +37,21 @@ function getInpi(path: string, obj: any) {
 }
 
 /**
+ * Récupère le libellé détaillé (description) du code APE depuis les activités INPI
+ */
+function getLibelleApeFromINPI(inpiData: any): string | undefined {
+  const activites = getInpi('formality.content.activites', inpiData);
+  if (Array.isArray(activites)) {
+    // On prend la première activité qui porte le code APE de l'entreprise ou marquée principale, sinon la première
+    const principale = activites.find(act => act.codeApe || act.principale) || activites[0];
+    if (principale && principale.descriptionDetaillee) {
+      return principale.descriptionDetaillee;
+    }
+  }
+  return undefined;
+}
+
+/**
  * Format une adresse INPI (objet plat avec numVoie, voie, codePostal, commune)
  */
 function formatAdresseINPI(adresseObj: any): string {
@@ -68,11 +83,13 @@ export async function fetchEtablissementBySiren(siren: string) {
   const [
     inpiDataRaw,
     rechercheDataRaw,
-    sireneULRaw
+    sireneULRaw,
+    etablissementsRaw
   ] = await Promise.all([
     getEntrepriseBySiren(siren).catch(() => ({})),
     recherche.get('/search', { params: { q: siren, page: 1, per_page: 1 } }).then(r => r.data).catch(() => ({})),
-    sirene.get(`/siren/${siren}`).then(r => r.data.uniteLegale).catch(() => ({}))
+    sirene.get(`/siren/${siren}`).then(r => r.data.uniteLegale).catch(() => ({})),
+    sirene.get(`/siren/${siren}/etablissements`).then(r => r.data.etablissements).catch(() => ([])),
   ]);
 
   const inpiData = inpiDataRaw || {};
@@ -125,6 +142,7 @@ export async function fetchEtablissementBySiren(siren: string) {
     "-";
   const libelle_ape =
     sireneUL.libelleActivitePrincipaleUniteLegale ||
+    getLibelleApeFromINPI(inpiData) ||
     inpiData.apeLabel ||
     (rechercheData?.results?.[0]?.libelle_ape) ||
     "-";
@@ -145,7 +163,7 @@ export async function fetchEtablissementBySiren(siren: string) {
     sireneUL.dateCreationUniteLegale ||
     "-";
 
-  // Adresse principale
+  // Adresse principale (siège social)
   const inpiAdresseObj = getInpi("formality.content.personneMorale.adresseEntreprise.adresse", inpiData);
   const inpiAdresse = formatAdresseINPI(inpiAdresseObj);
 
@@ -179,7 +197,6 @@ export async function fetchEtablissementBySiren(siren: string) {
   // TVA
   const tvaNum = tvaFRFromSiren(siren);
   let tvaValide: boolean | null = null;
-  // (option: lazy check VIES ici si tu veux accélérer)
 
   // Données financières INPI
   const finances = inpiData.financialStatements?.length
@@ -192,38 +209,18 @@ export async function fetchEtablissementBySiren(siren: string) {
       }))
     : [];
 
-  // Etablissements
-  let etablissements = [];
-  if (rechercheData?.results?.length) {
-    const match = rechercheData.results.find((r: any) => r.siren === siren)
-    if (match) {
-      etablissements = (match.matching_etablissements || []).concat(match.siege ? [match.siege] : []);
-    }
-  }
-  // INPI fallback
-  if (!etablissements.length && inpiData.formality?.content?.personneMorale?.autresEtablissements) {
-    etablissements = inpiData.formality.content.personneMorale.autresEtablissements;
-  }
-  if (!etablissements.length && inpiData.establishments) {
-    etablissements = inpiData.establishments;
-  }
-  // Format d'adresse pour chaque établissement si INPI
-  etablissements = etablissements.map((etab: any) => {
-    if (etab.adresse) {
-      etab.adresse = formatAdresseINPI(etab.adresse);
-    } else if (etab.adresseEtablissement) {
-      etab.adresse = formatAdresseSIRENE(etab.adresseEtablissement);
-    }
-    // Ajout d'un nom d'affichage pour l'établissement
-    etab.displayName =
+  // Etablissements (liste de tous les établissements du SIREN)
+  let etablissements = Array.isArray(etablissementsRaw) ? etablissementsRaw.map((etab: any) => ({
+    ...etab,
+    displayName:
       etab.denomination ||
       etab.nom_raison_sociale ||
       etab.raison_sociale ||
       etab.name ||
       etab.nom_commercial ||
-      "-";
-    return etab;
-  });
+      "-",
+    adresse: formatAdresseSIRENE(etab.adresseEtablissement),
+  })) : [];
 
   // Dirigeants
   let dirigeants = [];
@@ -288,7 +285,7 @@ export async function fetchEtablissementBySiren(siren: string) {
     sigle,
     nom_commercial,
     siren,
-    siret: etablissements[0]?.siret || "-",
+    siret: etablissements.find(e => e.siege) ? etablissements.find(e => e.siege).siret : (etablissements[0]?.siret || "-"),
     tva: { numero: tvaNum || '-', valide: tvaValide },
     code_ape,
     libelle_ape,
@@ -366,6 +363,7 @@ export async function fetchEtablissementBySiret(siret: string) {
     "-";
   const libelle_ape =
     sireneUL.libelleActivitePrincipaleUniteLegale ||
+    getLibelleApeFromINPI(inpiData) ||
     inpiData.apeLabel ||
     "-";
 
@@ -384,17 +382,10 @@ export async function fetchEtablissementBySiret(siret: string) {
     sireneUL.dateCreationUniteLegale ||
     "-";
 
-  // Adresse principale
-  const inpiAdresseObj = getInpi("formality.content.personneMorale.adresseEntreprise.adresse", inpiData);
-  const inpiAdresse = formatAdresseINPI(inpiAdresseObj);
-
-  const sireneAdresseObj = sireneEtab?.adresseEtablissement || sireneUL?.adresseEtablissement;
+  // Adresse = ADRESSE DE L'ETABLISSEMENT (jamais celle du siège/SIREN)
+  const sireneAdresseObj = sireneEtab?.adresseEtablissement;
   const sireneAdresse = formatAdresseSIRENE(sireneAdresseObj);
-
-  const adresse =
-    inpiAdresse && inpiAdresse !== "-" ? inpiAdresse
-    : sireneAdresse && sireneAdresse !== "-" ? sireneAdresse
-    : "-";
+  const adresse = sireneAdresse && sireneAdresse !== "-" ? sireneAdresse : "-";
 
   // Effectifs
   const tranche_effectifs =
