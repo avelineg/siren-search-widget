@@ -9,7 +9,7 @@ export default function FinancialData({ data }: { data: any }) {
         <h3 className="font-semibold mb-2">Données financières</h3>
         {finances.map((f: any, i: number) => (
           <p key={i}>
-            {f.montant.toLocaleString()} {f.devise || '€'}
+            {f.montant.toLocaleString()} {f.devise}
           </p>
         ))}
         {finances.length === 0 && <p>Aucune donnée financière.</p>}
