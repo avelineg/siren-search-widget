@@ -4,10 +4,14 @@ import Tabs from "./components/Tabs";
 import CompanyHeader from "./components/CompanyHeader";
 import Identity from "./components/Identity";
 import EtablissementsSelector from "./components/EtablissementsSelector";
-import Dirigeants from "./components/Dirigeants"; // <-- minuscule !
+import Dirigeants from "./components/Dirigeants";
 import Finances from "./components/Finances";
 import Labels from "./components/LabelsCertifications";
 import Divers from "./components/Various";
+
+function isNonEmptyArray(arr) {
+  return Array.isArray(arr) && arr.length > 0;
+}
 
 function App() {
   const [search, setSearch] = useState("");
@@ -17,6 +21,7 @@ function App() {
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!search || search.length < 3) return; // Empêche la recherche trop courte
     setSelectedSiret("");
     setActiveTab("Identité");
   };
@@ -39,6 +44,7 @@ function App() {
         <button
           type="submit"
           className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+          disabled={!search || search.length < 3}
         >
           Rechercher
         </button>
@@ -54,7 +60,7 @@ function App() {
           <CompanyHeader data={data} />
 
           {/* Sélecteur d'établissements si plusieurs */}
-          {data.etablissements && data.etablissements.length > 1 && (
+          {isNonEmptyArray(data.etablissements) && (
             <EtablissementsSelector
               etablissements={data.etablissements}
               selected={selectedSiret}
@@ -79,16 +85,20 @@ function App() {
             {activeTab === "Identité" && <Identity data={data} />}
             {activeTab === "Établissements" && (
               <EtablissementsSelector
-                etablissements={data.etablissements}
+                etablissements={data.etablissements || []}
                 selected={selectedSiret}
                 onSelect={setSelectedSiret}
               />
             )}
             {activeTab === "Dirigeants" && (
-              <Dirigeants dirigeants={data.dirigeants} />
+              <Dirigeants dirigeants={data.dirigeants || []} />
             )}
-            {activeTab === "Finances" && <Finances finances={data.finances} />}
-            {activeTab === "Labels" && <Labels labels={data.labels} />}
+            {activeTab === "Finances" && (
+              <Finances finances={data.finances || []} />
+            )}
+            {activeTab === "Labels" && (
+              <Labels labels={data.labels || []} />
+            )}
             {activeTab === "Divers" && <Divers data={data} />}
           </div>
 
