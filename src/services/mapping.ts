@@ -1,11 +1,23 @@
 import { getEntrepriseBySiren, searchEntreprisesByRaisonSociale } from './inpiBackend'
 import { sirene, vies, recherche } from './api'
 
+/**
+ * Recherche multi-source par raison sociale (INPI, Sirene…)
+ */
+export async function searchEtablissementsByName(name: string) {
+  // Recherche principale via INPI (peut être fusionnée avec d'autres sources au besoin)
+  return await searchEntreprisesByRaisonSociale(name);
+}
+
+/**
+ * Récupère toutes les informations d'un établissement à partir d'un code SIREN/SIRET,
+ * en combinant les différentes sources (INPI, SIRENE, Recherche, VIES…)
+ */
 export async function fetchEtablissementByCode(code: string) {
   const siren = code.length === 9 ? code : code.slice(0, 9);
   const siret = code.length === 14 ? code : null;
 
-  // Appels en parallèle
+  // 1. Appels en parallèle aux différentes sources
   const [
     inpiData,
     rechercheData,
@@ -18,7 +30,7 @@ export async function fetchEtablissementByCode(code: string) {
     sirene.get(`/siren/${siren}`).then(r => r.data.uniteLegale).catch(() => ({}))
   ]);
 
-  // Recherche complémentaire pour les dirigeants/établissements enrichis
+  // 2. Recherche complémentaire pour établissements et dirigeants via l'API Recherche
   let etablissements = [];
   let dirigeants = [];
   if (rechercheData?.results?.length) {
@@ -29,7 +41,7 @@ export async function fetchEtablissementByCode(code: string) {
     }
   }
 
-  // TVA via VIES
+  // 3. Vérification TVA via VIES
   let tvaNum = inpiData.vatNumber || sireneEtab.numeroTvaIntracommunautaire || sireneUL.numeroTvaIntracommunautaireUniteLegale || '';
   let tvaValide = false;
   if (tvaNum) {
@@ -39,7 +51,7 @@ export async function fetchEtablissementByCode(code: string) {
     } catch {/* ignore */}
   }
 
-  // Données financières (fusion INPI + fallback SIRENE)
+  // 4. Données financières (fusion INPI + fallback éventuel SIRENE)
   const finances = inpiData.financialStatements?.length
     ? inpiData.financialStatements.map((f: any) => ({
         exercice: f.fiscalYear,
@@ -50,14 +62,14 @@ export async function fetchEtablissementByCode(code: string) {
       }))
     : [];
 
-  // Capital social (priorité INPI, sinon SIRENE, sinon Recherche)
+  // 5. Capital social (priorité INPI, puis SIRENE, puis fallback finances)
   let capital_social =
     inpiData.shareCapital ||
     sireneUL.capitalSocial ||
     (finances.length ? finances[0].capital_social : undefined) ||
     0;
 
-  // Mapping robuste pour chaque champ
+  // 6. Mapping robuste pour chaque champ, toujours prendre la première source non vide
   return {
     denomination: inpiData.companyName || sireneUL.denominationUniteLegale || '',
     forme_juridique: inpiData.legalForm || sireneUL.libelleCategorieJuridiqueUniteLegale || '',
