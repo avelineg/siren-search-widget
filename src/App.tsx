@@ -6,45 +6,30 @@ import CompanyHeader from './components/CompanyHeader'
 import Identity from './components/Identity'
 import Directors from './components/Directors'
 import FinancialData from './components/FinancialData'
+import Announcements from './components/Announcements'
 import LabelsCertifications from './components/LabelsCertifications'
 import Various from './components/Various'
 
-const tabLabels = [
-  'Identité',
-  'Dirigeants',
-  'Données financières',
-  'Annonces',
-  'Labels & cert.',
-  'Divers'
-]
-
 export default function App() {
-  // input libre (SIREN/SIRET ou raison sociale)
   const [input, setInput] = useState('')
-  // siren sélectionné pour lookup
-  const [selectedSiren, setSelectedSiren] = useState('')
-  // suggestions issues de la recherche par nom
+  const [selected, setSelected] = useState('')
   const [suggestions, setSuggestions] = useState<
-    Array<{ siren: string; nom_complet: string; nom_raison_sociale?: string }>
+    { siren: string; nom_complet: string; nom_raison_sociale?: string }[]
   >([])
 
-  // hook pour charger les données d'établissement
-  const { data, loading, error } = useEtablissementData(selectedSiren)
+  const { data, loading, error } = useEtablissementData(selected)
 
-  // gérer la recherche au clic
   async function onSearch() {
     setSuggestions([])
-    setSelectedSiren('')
+    setSelected('')
     if (/^\d{9,14}$/.test(input)) {
-      // lookup direct SIREN ou SIRET
-      // on passe le code complet => le hook découpe le siren
-      setSelectedSiren(input)
-    } else if (input.trim().length > 0) {
+      setSelected(input)
+    } else if (input.trim()) {
       try {
         const res = await searchEtablissementsByName(input.trim(), 1, 5)
         setSuggestions(res)
-      } catch (err) {
-        console.error('Erreur recherche par nom:', err)
+      } catch (e) {
+        console.error(e)
       }
     }
   }
@@ -60,46 +45,51 @@ export default function App() {
           onChange={e => setInput(e.target.value)}
           className="border px-2 py-1 rounded mr-2 flex-1"
         />
-        <button
-          onClick={onSearch}
-          className="bg-blue-600 text-white px-4 py-1 rounded"
-        >
+        <button onClick={onSearch} className="bg-blue-600 text-white px-4 py-1 rounded">
           Rechercher
         </button>
       </header>
-
       <main className="p-4">
-        {/* suggestions si recherche par nom */}
         {suggestions.length > 0 && (
-          <ul className="border rounded p-2 bg-white space-y-1">
+          <ul className="bg-white border rounded p-2 space-y-1">
             {suggestions.map(s => (
               <li
                 key={s.siren}
-                className="cursor-pointer hover:bg-gray-100 p-2"
                 onClick={() => {
-                  setSelectedSiren(s.siren)
+                  setSelected(s.siren)
                   setSuggestions([])
                 }}
+                className="cursor-pointer hover:bg-gray-100 p-2"
               >
                 {s.nom_raison_sociale || s.nom_complet} ({s.siren})
               </li>
             ))}
           </ul>
         )}
-
         {loading && <p>Chargement…</p>}
         {error && <p className="text-red-600">{error}</p>}
-
         {data && (
           <>
             <CompanyHeader {...data} />
-            <Tabs labels={tabLabels} current={0} onChange={() => {}} />
+            <Tabs
+              labels={[
+                'Identité',
+                'Dirigeants',
+                'Finances',
+                'Annonces',
+                'Labels',
+                'Divers'
+              ]}
+              current={0}
+              onChange={() => {}}
+            />
             <section className="mt-6 space-y-6">
               <Identity data={data} />
               <Directors data={data} />
               <FinancialData data={data} />
-              <Various data={data} />
+              <Announcements data={data} />
               <LabelsCertifications data={data} />
+              <Various data={data} />
             </section>
           </>
         )}
