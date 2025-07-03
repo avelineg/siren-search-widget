@@ -9,10 +9,12 @@ export const sirene = axios.create({
 
 // Client INPI (entreprise & dirigeants)
 export const inpiEntreprise = axios.create({
-  baseURL: `${import.meta.env.VITE_API_URL}/inpi/entreprise`
+  baseURL: `${import.meta.env.VITE_API_URL}/inpi/entreprise`,
+  headers: { Accept: 'application/json' }
 })
 export const inpiDirigeants = axios.create({
-  baseURL: `${import.meta.env.VITE_API_URL}/inpi/dirigeants`
+  baseURL: `${import.meta.env.VITE_API_URL}/inpi/dirigeants`,
+  headers: { Accept: 'application/json' }
 })
 
 // Client VIES
@@ -22,7 +24,8 @@ export const vies = axios.create({
 
 // Client Recherche d'entreprises (nom / adresse)
 export const recherche = axios.create({
-  baseURL: import.meta.env.VITE_RECHERCHE_URL
+  baseURL: import.meta.env.VITE_RECHERCHE_URL,
+  headers: { Accept: 'application/json' }
 })
 
 /**
@@ -44,7 +47,7 @@ export async function searchCompaniesByName(
 }
 
 /**
- * Lookup par code (SIREN ou SIRET), wrapper autour de mapping.fetchEtablissementByCode
+ * Wrapper pour lookup par code (SIREN ou SIRET).
  * @param code 9 ou 14 chiffres
  */
 export async function fetchEtablissementData(code: string) {
