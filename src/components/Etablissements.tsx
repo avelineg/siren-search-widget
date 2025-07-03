@@ -1,4 +1,5 @@
 import React from 'react'
+import { formatDateFR } from '../services/mapping'
 
 export default function Etablissements({ etablissements }: { etablissements: any[] }) {
   if (!etablissements?.length) return null
@@ -36,6 +37,11 @@ export default function Etablissements({ etablissements }: { etablissements: any
                   title={e.actif ? "Établissement actif" : "Établissement fermé"}
                 >
                   {e.actif ? "Actif" : "Fermé"}
+                  {!e.actif && e.date_fermeture && (
+                    <span className="ml-1 text-xs text-gray-500">
+                      (le {formatDateFR(e.date_fermeture)})
+                    </span>
+                  )}
                 </span>
               </td>
               <td>{e.date_creation}</td>
