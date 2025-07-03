@@ -4,6 +4,7 @@ type Etablissement = {
   siret: string;
   displayName: string;
   adresse?: string;
+  actif?: boolean;
 };
 
 type Props = {
@@ -13,10 +14,14 @@ type Props = {
 };
 
 /**
- * Affiche la liste des établissements d'un SIREN, 
+ * Affiche la liste des établissements d'un SIREN,
  * permet de naviguer de l'un à l'autre (clic sur fiche SIRET)
  */
-const EtablissementsSelector: React.FC<Props> = ({ etablissements, selected, onSelect }) => {
+const EtablissementsSelector: React.FC<Props> = ({
+  etablissements,
+  selected,
+  onSelect,
+}) => {
   if (!etablissements || etablissements.length === 0) {
     return <div>Aucun établissement référencé.</div>;
   }
@@ -27,10 +32,25 @@ const EtablissementsSelector: React.FC<Props> = ({ etablissements, selected, onS
           <span className="flex-1">
             <strong>{etab.displayName || "(Sans nom)"}</strong>
             <span className="ml-2 text-gray-600">SIRET : {etab.siret}</span>
-            {etab.adresse && <span className="ml-2 text-gray-500">{etab.adresse}</span>}
+            {etab.adresse && (
+              <span className="ml-2 text-gray-500">{etab.adresse}</span>
+            )}
+            <span
+              className="ml-2 px-2 py-1 rounded text-xs"
+              style={{
+                background: etab.actif ? "#e6faea" : "#fde8ea",
+                color: etab.actif ? "#208b42" : "#b71c1c",
+                fontWeight: 600,
+              }}
+              title={etab.actif ? "Établissement actif" : "Établissement fermé"}
+            >
+              {etab.actif ? "Actif" : "Fermé"}
+            </span>
           </span>
           {selected === etab.siret ? (
-            <span className="ml-2 px-2 py-1 rounded bg-blue-200 text-blue-800 text-xs">Sélectionné</span>
+            <span className="ml-2 px-2 py-1 rounded bg-blue-200 text-blue-800 text-xs">
+              Sélectionné
+            </span>
           ) : (
             <button
               className="ml-2 px-2 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 text-xs"
