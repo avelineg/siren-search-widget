@@ -80,13 +80,13 @@ export async function fetchEtablissementByCode(
     throw new Error('Le code doit être un SIREN (9 chiffres) ou un SIRET (14 chiffres)')
   }
 
-  // 2) Sirene données unité et établissement
+  // 2) Données Sirene
   const { data: dEtab } = await sirene.get<{ etablissement: any }>(`/siret/${siret}`)
   const etab = dEtab.etablissement
   const { data: dUL } = await sirene.get<{ uniteLegale: any }>(`/siren/${siren}`)
   const ul = dUL.uniteLegale
 
-  // 3) TVA VIES
+  // 3) Vérif. TVA via VIES
   const tvaNum =
     etab.numeroTvaIntracommunautaire ||
     ul.numeroTvaIntracommunautaireUniteLegale ||
@@ -103,7 +103,7 @@ export async function fetchEtablissementByCode(
     }
   }
 
-  // 4) INPI comptes annuels (montantCapital dans content)
+  // 4) Comptes annuels INPI
   let inpiEnt: any = {}
   try {
     inpiEnt = (await inpiEntreprise.get(`/${siren}`)).data
@@ -165,11 +165,16 @@ export async function fetchEtablissementByCode(
     siren,
     siret,
     tva: { numero: tvaNum, valide: tvaValide },
+    // Priorité au contenu INPI pour l'APE
     code_ape:
+      content.codeApe ||
       ul.activitePrincipaleUniteLegale ||
       etab.activitePrincipaleEtablissement ||
       '',
-    libelle_ape: ul.libelleActivitePrincipaleUniteLegale,
+    libelle_ape:
+      content.libelleApe ||
+      ul.libelleActivitePrincipaleUniteLegale ||
+      '',
     tranche_effectifs:
       etab.trancheEffectifsEtablissement ||
       ul.trancheEffectifsUniteLegale ||
