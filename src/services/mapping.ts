@@ -27,32 +27,58 @@ export async function fetchEtablissementByCode(code: string) {
   const sireneEtab = sireneEtabRaw || {}
   const sireneUL = sireneULRaw || {}
 
-  // Recherche complémentaire pour les dirigeants/établissements
-  let etablissements = []
+  // Recherche - Raison sociale & Dirigeants
+  let raison_sociale = '-'
   let dirigeants = []
   if (rechercheData?.results?.length) {
-    const match = rechercheData.results.find(r => r.siren === siren);
+    const match = rechercheData.results.find(r => r.siren === siren)
     if (match) {
-      etablissements = (match.matching_etablissements || []).concat(match.siege ? [match.siege] : []);
-      dirigeants = match.dirigeants || [];
+      raison_sociale = match.denomination || match.nom_raison_sociale || '-'
+      dirigeants = match.dirigeants || []
     }
   }
 
-  // Calcul du numéro de TVA intracom
-  const tvaNum = tvaFRFromSiren(siren); // toujours calculé
-  let tvaValide: boolean | null = null;
+  // Code APE et Forme juridique - SIRENE
+  const code_ape =
+    sireneUL.activitePrincipaleUniteLegale ||
+    sireneEtab.activitePrincipaleEtablissement ||
+    inpiData.ape ||
+    (rechercheData?.results?.[0]?.code_ape) ||
+    "-";
+  const libelle_ape =
+    sireneUL.libelleActivitePrincipaleUniteLegale ||
+    inpiData.apeLabel ||
+    (rechercheData?.results?.[0]?.libelle_ape) ||
+    "-";
+  const forme_juridique =
+    sireneUL.libelleCategorieJuridiqueUniteLegale ||
+    inpiData.legalForm ||
+    (rechercheData?.results?.[0]?.forme_juridique) ||
+    "-";
+
+  // Capital social - INPI
+  let capital_social =
+    inpiData.shareCapital !== undefined
+      ? inpiData.shareCapital
+      : (sireneUL.capitalSocial ||
+        (inpiData.financialStatements?.[0]?.shareCapital) ||
+        "-");
+
+  // Calcul du numéro TVA intracom
+  const tvaNum = tvaFRFromSiren(siren)
+  let tvaValide: boolean | null = null
   if (tvaNum) {
     try {
       const { data: dv } = await vies.get('/check-vat', {
-        params: { countryCode: 'FR', vatNumber: tvaNum.slice(2) } // Sans le "FR"
+        params: { countryCode: 'FR', vatNumber: tvaNum.slice(2) }
       });
       tvaValide = dv.valid;
     } catch {
-      tvaValide = null; // Pas d'info
+      tvaValide = null
     }
   }
 
-  // Données financières
+  // Données financières INPI
   const finances = inpiData.financialStatements?.length
     ? inpiData.financialStatements.map((f: any) => ({
         exercice: f.fiscalYear,
@@ -63,27 +89,22 @@ export async function fetchEtablissementByCode(code: string) {
       }))
     : [];
 
-  // Capital social
-  let capital_social =
-    inpiData.shareCapital ||
-    sireneUL.capitalSocial ||
-    (finances.length ? finances[0].capital_social : undefined) ||
-    undefined;
+  // Etablissements (fallback classique)
+  let etablissements = []
+  if (rechercheData?.results?.length) {
+    const match = rechercheData.results.find(r => r.siren === siren)
+    if (match) {
+      etablissements = (match.matching_etablissements || []).concat(match.siege ? [match.siege] : [])
+    }
+  }
+  if (!etablissements.length && inpiData.establishments) {
+    etablissements = inpiData.establishments
+  }
 
-  // Mapping robuste
+  // Mapping final
   return {
-    denomination:
-      inpiData.companyName ||
-      (rechercheData?.results?.[0]?.denomination) ||
-      sireneUL.denominationUniteLegale ||
-      "-",
-
-    forme_juridique:
-      inpiData.legalForm ||
-      (rechercheData?.results?.[0]?.forme_juridique) ||
-      sireneUL.libelleCategorieJuridiqueUniteLegale ||
-      "-",
-
+    denomination: raison_sociale,
+    forme_juridique,
     categorie_juridique:
       inpiData.legalCategory ||
       (rechercheData?.results?.[0]?.categorie_juridique) ||
@@ -107,18 +128,8 @@ export async function fetchEtablissementByCode(code: string) {
 
     tva: { numero: tvaNum || '-', valide: tvaValide },
 
-    code_ape:
-      inpiData.ape ||
-      (rechercheData?.results?.[0]?.code_ape) ||
-      sireneUL.activitePrincipaleUniteLegale ||
-      sireneEtab.activitePrincipaleEtablissement ||
-      "-",
-
-    libelle_ape:
-      inpiData.apeLabel ||
-      (rechercheData?.results?.[0]?.libelle_ape) ||
-      sireneUL.libelleActivitePrincipaleUniteLegale ||
-      "-",
+    code_ape,
+    libelle_ape,
 
     tranche_effectifs:
       inpiData.workforceLabel ||
@@ -147,13 +158,8 @@ export async function fetchEtablissementByCode(code: string) {
       sireneEtab.adresse ||
       "-",
 
-    etablissements: etablissements.length
-      ? etablissements
-      : (inpiData.establishments || []),
-
-    dirigeants: dirigeants.length
-      ? dirigeants
-      : (inpiData.representatives || []),
+    etablissements,
+    dirigeants,
 
     finances,
 
