@@ -1,4 +1,4 @@
-import { sirene, vies, searchCompaniesByName } from './api'
+import { sirene, vies, inpiEntreprise, inpiDirigeants, searchCompaniesByName } from './api'
 
 export interface UnifiedEtablissement {
   denomination: string
@@ -26,14 +26,11 @@ export interface UnifiedEtablissement {
   divers: string[]
 }
 
-// Réexport de la recherche par nom pour composants UI
+// Réexport pour la recherche par nom
 export { searchCompaniesByName }
 
 /**
- * Mappe les résultats bruts de searchCompaniesByName
- * @param name chaîne à rechercher
- * @param page numéro de page
- * @param perPage résultats par page
+ * Recherche simplifiée par nom : renvoie siren + nom complet.
  */
 export async function searchEtablissementsByName(
   name: string,
@@ -53,8 +50,7 @@ export async function searchEtablissementsByName(
 }
 
 /**
- * Lookup par code (SIREN/SIRET) uniquement via Sirene + VIES.
- * @param code 9 ou 14 chiffres
+ * Lookup par code (SIREN/SIRET) via Sirene + VIES + INPI.
  */
 export async function fetchEtablissementByCode(
   code: string
@@ -62,57 +58,91 @@ export async function fetchEtablissementByCode(
   let siren: string
   let siret: string
 
+  // 1) Détection du format
   if (/^\d{9}$/.test(code)) {
-    // SIREN seul
     siren = code
-    const { data: payloadSiren } = await sirene.get<{ uniteLegale: any }>(
-      `/siren/${siren}`
-    )
-    const nic = payloadSiren.uniteLegale.nicSiegeUniteLegale
+    // NIC siège
+    const { data: pl } = await sirene.get<{ uniteLegale: any }>(`/siren/${siren}`)
+    const nic = pl.uniteLegale.nicSiegeUniteLegale
     if (!nic) throw new Error(`NIC siège non trouvé pour le SIREN ${siren}`)
     siret = `${siren}${nic}`
   } else if (/^\d{14}$/.test(code)) {
-    // SIRET complet
     siret = code
     siren = code.slice(0, 9)
   } else {
     throw new Error('Le code doit être un SIREN (9 chiffres) ou un SIRET (14 chiffres)')
   }
 
-  // Détails établissement
-  const { data: payloadEtab } = await sirene.get<{ etablissement: any }>(
-    `/siret/${siret}`
-  )
-  const etab = payloadEtab.etablissement
+  // 2) Données Sirene
+  const { data: dEtab } = await sirene.get<{ etablissement: any }>(`/siret/${siret}`)
+  const etab = dEtab.etablissement
+  const { data: dUL } = await sirene.get<{ uniteLegale: any }>(`/siren/${siren}`)
+  const ul = dUL.uniteLegale
 
-  // Détails unité légale
-  const { data: payloadUL } = await sirene.get<{ uniteLegale: any }>(
-    `/siren/${siren}`
-  )
-  const ul = payloadUL.uniteLegale
-
-  // Vérification TVA via VIES
+  // 3) Vérif. TVA via VIES
   const tvaNum =
     etab.numeroTvaIntracommunautaire ||
     ul.numeroTvaIntracommunautaireUniteLegale ||
     ''
-  const { data: viesPayload } = await vies.get<{ valid: boolean }>(
-    `/check-vat`,
+  const { data: dVies } = await vies.get<{ valid: boolean }>(
+    '/check-vat',
     { params: { countryCode: 'FR', vatNumber: tvaNum } }
   )
 
+  // 4) Enrichissement INPI
+  let inpiEnt: any = {}
+  try {
+    const resEnt = await inpiEntreprise.get(`/${siren}`)
+    inpiEnt = resEnt.data
+  } catch (e) {
+    console.warn('INPI entreprise error', e)
+  }
+
+  let inpiDir: any = {}
+  try {
+    const resDir = await inpiDirigeants.get(`/${siren}`)
+    inpiDir = resDir.data
+  } catch (e) {
+    console.warn('INPI dirigeants error', e)
+  }
+
+  // 5) Mapping unifié
+  const dirigeants =
+    inpiDir.dirigeants?.map((d: any) => ({
+      nom: d.nom,
+      prenoms: d.prenoms,
+      qualite: d.qualite,
+      dateNaissance: d.date_naissance,
+      type: d.type_dirigeant
+    })) || []
+
+  const finances =
+    inpiEnt.finances?.map((f: any) => ({
+      annee: f.annee,
+      ca: f.ca,
+      resultatNet: f.resultat_net
+    })) || []
+
+  const annonces =
+    inpiEnt.annonces?.map((a: any) => ({
+      titre: a.titre,
+      date: a.date,
+      lien: a.lien
+    })) || []
+
+  const divers = inpiEnt.divers
+    ? inpiEnt.divers.map((x: any) => JSON.stringify(x))
+    : []
+
   return {
-    denomination:
-      ul.denominationUniteLegale ||
-      etab.uniteLegale?.denomination ||
-      '',
+    denomination: ul.denominationUniteLegale || etab.uniteLegale?.denomination || '',
     formeJuridique:
       ul.libelleCategorieJuridiqueUniteLegale ||
       ul.categorieJuridiqueUniteLegale ||
       '',
     siren,
     siret,
-    tva: { numero: tvaNum, valide: viesPayload.valid },
+    tva: { numero: tvaNum, valide: dVies.valid },
     codeApe:
       ul.activitePrincipaleUniteLegale ||
       etab.activitePrincipaleEtablissement ||
@@ -140,10 +170,10 @@ export async function fetchEtablissementByCode(
       etab.geoLatitude && etab.geoLongitude
         ? [etab.geoLatitude, etab.geoLongitude]
         : undefined,
-    dirigeants: [],
-    finances: [],
-    annonces: [],
-    labels: [],
-    divers: []
+    dirigeants,
+    finances,
+    annonces,
+    labels: inpiEnt.labels || [],
+    divers
   }
 }
