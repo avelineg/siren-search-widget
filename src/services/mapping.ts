@@ -4,11 +4,36 @@ import { tvaFRFromSiren } from './tva'
 
 /**
  * Utilitaire pour extraire une propriété imbriquée dans un objet (type lodash get)
- * @param path - chemin sous forme 'prop1.prop2.prop3'
- * @param obj - objet source
  */
 function getInpi(path: string, obj: any) {
   return path.split('.').reduce((acc, key) => (acc && acc[key] != null ? acc[key] : undefined), obj);
+}
+
+/**
+ * Format une adresse INPI (objet plat avec numVoie, voie, codePostal, commune)
+ */
+function formatAdresseINPI(adresseObj: any): string {
+  if (!adresseObj || typeof adresseObj !== "object") return "-";
+  return [
+    adresseObj.numVoie,
+    adresseObj.voie,
+    adresseObj.codePostal,
+    adresseObj.commune
+  ].filter(Boolean).join(' ');
+}
+
+/**
+ * Format une adresse SIRENE (objet plat avec numeroVoieEtablissement, typeVoieEtablissement, libelleVoieEtablissement, codePostalEtablissement, libelleCommuneEtablissement)
+ */
+function formatAdresseSIRENE(adresseObj: any): string {
+  if (!adresseObj || typeof adresseObj !== "object") return "-";
+  return [
+    adresseObj.numeroVoieEtablissement,
+    adresseObj.typeVoieEtablissement,
+    adresseObj.libelleVoieEtablissement,
+    adresseObj.codePostalEtablissement,
+    adresseObj.libelleCommuneEtablissement,
+  ].filter(Boolean).join(' ');
 }
 
 export async function searchEtablissementsByName(name: string) {
@@ -98,16 +123,21 @@ export async function fetchEtablissementBySiren(siren: string) {
     "-";
 
   // Adresse principale
-  const adresseObj = getInpi("formality.content.personneMorale.adresseEntreprise.adresse", inpiData);
+  const inpiAdresseObj = getInpi("formality.content.personneMorale.adresseEntreprise.adresse", inpiData);
+  const inpiAdresse = formatAdresseINPI(inpiAdresseObj);
+
+  const sireneAdresseObj = sireneUL?.adresseEtablissement;
+  const sireneAdresse = formatAdresseSIRENE(sireneAdresseObj);
+
+  const rechercheAdresse = (rechercheData?.results?.[0]?.adresse && typeof rechercheData?.results?.[0]?.adresse === "string")
+    ? rechercheData?.results?.[0]?.adresse
+    : undefined;
+
   const adresse =
-    adresseObj
-      ? [adresseObj.numVoie, adresseObj.voie, adresseObj.codePostal, adresseObj.commune].filter(Boolean).join(" ")
-      : (
-        inpiData.address ||
-        (rechercheData?.results?.[0]?.adresse) ||
-        sireneUL.adresseEtablissement ||
-        "-"
-      );
+    inpiAdresse && inpiAdresse !== "-" ? inpiAdresse
+    : rechercheAdresse && rechercheAdresse !== "-" ? rechercheAdresse
+    : sireneAdresse && sireneAdresse !== "-" ? sireneAdresse
+    : "-";
 
   // Effectifs
   const tranche_effectifs =
@@ -126,16 +156,7 @@ export async function fetchEtablissementBySiren(siren: string) {
   // TVA
   const tvaNum = tvaFRFromSiren(siren);
   let tvaValide: boolean | null = null;
-  if (tvaNum) {
-    try {
-      const { data: dv } = await vies.get('/check-vat', {
-        params: { countryCode: 'FR', vatNumber: tvaNum.slice(2) }
-      });
-      tvaValide = dv.valid;
-    } catch {
-      tvaValide = null;
-    }
-  }
+  // (option: lazy check VIES ici si tu veux accélérer)
 
   // Données financières INPI
   const finances = inpiData.financialStatements?.length
@@ -156,12 +177,22 @@ export async function fetchEtablissementBySiren(siren: string) {
       etablissements = (match.matching_etablissements || []).concat(match.siege ? [match.siege] : []);
     }
   }
+  // INPI fallback
   if (!etablissements.length && inpiData.formality?.content?.personneMorale?.autresEtablissements) {
     etablissements = inpiData.formality.content.personneMorale.autresEtablissements;
   }
   if (!etablissements.length && inpiData.establishments) {
     etablissements = inpiData.establishments;
   }
+  // Format d'adresse pour chaque établissement si INPI
+  etablissements = etablissements.map((etab: any) => {
+    if (etab.adresse) {
+      etab.adresse = formatAdresseINPI(etab.adresse);
+    } else if (etab.adresseEtablissement) {
+      etab.adresse = formatAdresseSIRENE(etab.adresseEtablissement);
+    }
+    return etab;
+  });
 
   // Dirigeants
   let dirigeants = [];
@@ -188,7 +219,6 @@ export async function fetchEtablissementBySiren(siren: string) {
     });
   }
   if (!dirigeants.length) {
-    // Fallback recherche
     if (rechercheData?.results?.length) {
       const match = rechercheData.results.find((r: any) => r.siren === siren)
       if (match) {
@@ -324,16 +354,16 @@ export async function fetchEtablissementBySiret(siret: string) {
     "-";
 
   // Adresse principale
-  const adresseObj = getInpi("formality.content.personneMorale.adresseEntreprise.adresse", inpiData);
+  const inpiAdresseObj = getInpi("formality.content.personneMorale.adresseEntreprise.adresse", inpiData);
+  const inpiAdresse = formatAdresseINPI(inpiAdresseObj);
+
+  const sireneAdresseObj = sireneEtab?.adresseEtablissement || sireneUL?.adresseEtablissement;
+  const sireneAdresse = formatAdresseSIRENE(sireneAdresseObj);
+
   const adresse =
-    adresseObj
-      ? [adresseObj.numVoie, adresseObj.voie, adresseObj.codePostal, adresseObj.commune].filter(Boolean).join(" ")
-      : (
-        inpiData.address ||
-        sireneEtab.adresseEtablissement ||
-        sireneUL.adresseEtablissement ||
-        "-"
-      );
+    inpiAdresse && inpiAdresse !== "-" ? inpiAdresse
+    : sireneAdresse && sireneAdresse !== "-" ? sireneAdresse
+    : "-";
 
   // Effectifs
   const tranche_effectifs =
@@ -350,16 +380,7 @@ export async function fetchEtablissementBySiret(siret: string) {
   // TVA
   const tvaNum = tvaFRFromSiren(siren);
   let tvaValide: boolean | null = null;
-  if (tvaNum) {
-    try {
-      const { data: dv } = await vies.get('/check-vat', {
-        params: { countryCode: 'FR', vatNumber: tvaNum.slice(2) }
-      });
-      tvaValide = dv.valid;
-    } catch {
-      tvaValide = null;
-    }
-  }
+  // (option: lazy check VIES ici si tu veux accélérer)
 
   // Données financières INPI
   const finances = inpiData.financialStatements?.length
@@ -372,8 +393,8 @@ export async function fetchEtablissementBySiret(siret: string) {
       }))
     : [];
 
-  // Etablissements (pour fiche SIRET, on ne renvoie pas les autres)
-  const etablissements = [];
+  // Pas d'établissements sur fiche SIRET
+  const etablissements: any[] = [];
 
   // Dirigeants
   let dirigeants = [];
