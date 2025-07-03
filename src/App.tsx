@@ -6,7 +6,7 @@ import Identity from "./components/Identity";
 import EtablissementsSelector from "./components/EtablissementsSelector";
 import Dirigeants from "./components/Dirigeants";
 import Finances from "./components/Finances";
-import Labels from "./components/LabelsCertifications";
+import Labels from "./components/Labels";
 import Divers from "./components/Divers";
 import { formatDateFR } from "./services/mapping";
 
