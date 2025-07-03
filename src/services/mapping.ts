@@ -114,7 +114,6 @@ export async function fetchEtablissementBySiren(siren: string) {
   ] = await Promise.all([
     getEntrepriseBySiren(siren).catch(() => ({})),
     sirene.get(`/siren/${siren}`).then(r => r.data.uniteLegale).catch(() => ({})),
-    // on récupère tous les établissements même fermés (statut_ferme inclus)
     recherche.get('/search', { params: { q: siren, per_page: 1000, statut_ferme: true } }).then(r => r.data).catch(() => ({ results: [] })),
   ]);
 
@@ -122,8 +121,7 @@ export async function fetchEtablissementBySiren(siren: string) {
   const sireneUL = sireneULRaw || {};
   const etabsFromRecherche = Array.isArray(rechercheEtabResp.results) ? rechercheEtabResp.results : [];
 
-  // Correction : filtrage strict sur le SIREN (parfois l'API retourne trop large !)
-  const etablissements = etabsFromRecherche.filter(e => e.siren === siren).map((etab: any) => {
+  let etablissements = etabsFromRecherche.filter(e => e.siren === siren).map((etab: any) => {
     const { statut, date_fermeture } = etablissementStatut(etab);
     return {
       siret: etab.siret || etab.siret_etablissement,
@@ -139,13 +137,30 @@ export async function fetchEtablissementBySiren(siren: string) {
     };
   });
 
+  // Ajout automatique du siège si la liste est vide (cas mono-établissement)
+  if (etablissements.length === 0 && sireneUL) {
+    const siegesiret = sireneUL.siretSiegeUniteLegale || sireneUL.siret_siege_unite_legale || null;
+    const adresseSiege = formatAdresseSIRENE(sireneUL.adresseSiegeUniteLegale || sireneUL.adresse_siege_unite_legale || {});
+    etablissements = [{
+      siret: siegesiret || "-",
+      displayName: sireneUL.denominationUniteLegale || "-",
+      adresse: adresseSiege,
+      activite_principale: sireneUL.activitePrincipaleUniteLegale || "-",
+      tranche_effectif_libelle: sireneUL.trancheEffectifsUniteLegale || "-",
+      tranche_effectif_salarie: "-",
+      date_creation: sireneUL.dateCreationUniteLegale || "-",
+      est_siege: true,
+      statut: sireneUL.etatAdministratifUniteLegale === "A" ? "actif" : "ferme",
+      date_fermeture: null,
+    }];
+  }
+
   // Siège = premier avec est_siege true, sinon premier
   const siege = etablissements.find(e => e.est_siege) || etablissements[0] || {};
   let adresse = siege?.adresse || "-";
   let statut = siege?.statut || "actif";
   let date_fermeture = siege?.date_fermeture || null;
 
-  // Données principales (inchangées)
   const denomination =
     getInpi("formality.content.personneMorale.identite.entreprise.denomination", inpiData) ||
     inpiData.denomination ||
@@ -214,7 +229,6 @@ export async function fetchEtablissementBySiren(siren: string) {
       }))
     : [];
 
-  // Dirigeants (INPI puis fallback)
   let dirigeants = [];
   const pouvoirs = getInpi("formality.content.personneMorale.composition.pouvoirs", inpiData);
   if (Array.isArray(pouvoirs)) {
@@ -279,6 +293,10 @@ export async function fetchEtablissementBySiren(siren: string) {
   };
 }
 
+/**
+ * PATCH pour la fiche SIRET : on récupère tous les établissements du SIREN parent,
+ * et on affiche au moins le siège si la liste est vide.
+ */
 export async function fetchEtablissementBySiret(siret: string) {
   const siren = siret.slice(0, 9)
   const [
@@ -292,7 +310,6 @@ export async function fetchEtablissementBySiret(siret: string) {
     sirene.get(`/siret/${siret}`).then(r => r.data.etablissement).catch(() => ({})),
     sirene.get(`/siren/${siren}`).then(r => r.data.uniteLegale).catch(() => ({})),
     sirene.get(`/siren/${siren}/etablissements`).then(r => r.data.etablissements).catch(() => ([])),
-    // on récupère tous les établissements même fermés (statut_ferme inclus)
     recherche.get('/search', { params: { q: siren, per_page: 1000, statut_ferme: true } }).then(r => r.data).catch(() => ({ results: [] })),
   ]);
 
@@ -301,8 +318,7 @@ export async function fetchEtablissementBySiret(siret: string) {
   const sireneUL = sireneULRaw || {};
   const etabsFromRecherche = Array.isArray(rechercheEtabResp.results) ? rechercheEtabResp.results : [];
 
-  // Correction : filtrage strict sur le SIREN (parfois l'API retourne trop large !)
-  const etablissements = etabsFromRecherche.filter(e => e.siren === siren).map((etab: any) => {
+  let etablissements = etabsFromRecherche.filter(e => e.siren === siren).map((etab: any) => {
     const { statut, date_fermeture } = etablissementStatut(etab);
     return {
       siret: etab.siret || etab.siret_etablissement,
@@ -317,6 +333,24 @@ export async function fetchEtablissementBySiret(siret: string) {
       date_fermeture,
     };
   });
+
+  // Ajout automatique du siège si la liste est vide (cas mono-établissement)
+  if (etablissements.length === 0 && sireneUL) {
+    const siegesiret = sireneUL.siretSiegeUniteLegale || sireneUL.siret_siege_unite_legale || null;
+    const adresseSiege = formatAdresseSIRENE(sireneUL.adresseSiegeUniteLegale || sireneUL.adresse_siege_unite_legale || {});
+    etablissements = [{
+      siret: siegesiret || "-",
+      displayName: sireneUL.denominationUniteLegale || "-",
+      adresse: adresseSiege,
+      activite_principale: sireneUL.activitePrincipaleUniteLegale || "-",
+      tranche_effectif_libelle: sireneUL.trancheEffectifsUniteLegale || "-",
+      tranche_effectif_salarie: "-",
+      date_creation: sireneUL.dateCreationUniteLegale || "-",
+      est_siege: true,
+      statut: sireneUL.etatAdministratifUniteLegale === "A" ? "actif" : "ferme",
+      date_fermeture: null,
+    }];
+  }
 
   const { statut, date_fermeture } = etablissementStatut(sireneEtab);
 
@@ -393,7 +427,6 @@ export async function fetchEtablissementBySiret(siret: string) {
       }))
     : [];
 
-  // Dirigeants (INPI puis fallback)
   let dirigeants = [];
   const pouvoirs = getInpi("formality.content.personneMorale.composition.pouvoirs", inpiData);
   if (Array.isArray(pouvoirs)) {
