@@ -41,6 +41,9 @@ function formatAdresseSIRENE(adresseObj: any): string {
   ].filter(Boolean).join(' ');
 }
 
+/**
+ * Recherche par nom de société (affiche aussi le statut d'activité).
+ */
 export async function searchEtablissementsByName(name: string) {
   const results = await recherche
     .get('/search', {
@@ -59,6 +62,7 @@ export async function searchEtablissementsByName(name: string) {
           r.name ||
           r.nom ||
           "-",
+        actif: (r.etat_administratif === "A" || r.etatAdministratifUniteLegale === "A" || r.etatAdministratifEtablissement === "A" || r.etat_administratif_unite_legale === "A")
       }))
     : [];
 }
@@ -92,6 +96,7 @@ export async function fetchEtablissementBySiren(siren: string) {
           etab.nom_commercial ||
           "-",
         adresse: formatAdresseSIRENE(etab.adresseEtablissement),
+        actif: etab.etatAdministratifEtablissement === "A"
       }))
     : [];
 
@@ -147,10 +152,12 @@ export async function fetchEtablissementBySiren(siren: string) {
 
   // Adresse = celle du siège social (établissement ayant siege === true)
   let adresse = "-";
+  let actif = false;
   if (Array.isArray(etablissementsRaw)) {
     const siege = etablissementsRaw.find((etab: any) => etab.siege);
     if (siege) {
       adresse = formatAdresseSIRENE(siege.adresseEtablissement);
+      actif = siege.etatAdministratifEtablissement === "A";
     }
   }
 
@@ -250,6 +257,7 @@ export async function fetchEtablissementBySiren(siren: string) {
     statut_diffusion,
     site_web,
     email,
+    actif,
     inpiRaw: inpiDataRaw
   };
 }
@@ -283,6 +291,7 @@ export async function fetchEtablissementBySiret(siret: string) {
           etab.nom_commercial ||
           "-",
         adresse: formatAdresseSIRENE(etab.adresseEtablissement),
+        actif: etab.etatAdministratifEtablissement === "A"
       }))
     : [];
 
@@ -396,6 +405,8 @@ export async function fetchEtablissementBySiret(siret: string) {
     inpiData.email ||
     "-";
 
+  const actif = sireneEtab.etatAdministratifEtablissement === "A";
+
   return {
     denomination,
     forme_juridique,
@@ -416,6 +427,7 @@ export async function fetchEtablissementBySiret(siret: string) {
     statut_diffusion,
     site_web,
     email,
+    actif,
     inpiRaw: inpiDataRaw
   };
 }
