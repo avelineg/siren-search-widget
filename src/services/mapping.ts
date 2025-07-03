@@ -2,7 +2,7 @@ import {
   sirene,
   vies,
   inpiEntreprise,
-  inpiDirigeants,
+  recherche,
   searchCompaniesByName
 } from './api'
 
@@ -26,13 +26,13 @@ export interface UnifiedEtablissement {
     dateNaissance?: string
     type: 'personne physique' | 'personne morale'
   }>
-  finances: Array<{ annee: string; ca?: number; resultatNet?: number }>
+  finances: Array<{ montant: number; devise: string }>
   annonces: Array<{ titre?: string; date?: string; lien?: string }>
   labels: string[]
   divers: string[]
 }
 
-// Réexport recherche brut
+// Réexport recherche brut par nom
 export { searchCompaniesByName }
 
 /**
@@ -52,7 +52,7 @@ export async function searchEtablissementsByName(
 }
 
 /**
- * Lookup par SIREN (9) ou SIRET (14)
+ * Lookup par SIREN (9) ou SIRET (14) + enrichissements Sirene, VIES, INPI et Recherche
  */
 export async function fetchEtablissementByCode(
   code: string
@@ -60,27 +60,34 @@ export async function fetchEtablissementByCode(
   let siren: string
   let siret: string
 
-  // 1) Extract SIREN + SIRET
+  // 1) Détection et extraction du NIC siège si besoin
   if (/^\d{9}$/.test(code)) {
     siren = code
     const { data: pl } = await sirene.get<{ uniteLegale: any }>(`/siren/${siren}`)
-    const nic = pl.uniteLegale.nicSiegeUniteLegale
+    const periodes = pl.uniteLegale.periodesUniteLegale || []
+    // on prend la période en cours (dateFin === null) ou la plus récente
+    let current = periodes.find((p: any) => p.dateFin === null)
+    if (!current && periodes.length) {
+      current = periodes
+        .sort((a: any, b: any) => Date.parse(b.dateDebut) - Date.parse(a.dateDebut))[0]
+    }
+    const nic = current?.nicSiegeUniteLegale
     if (!nic) throw new Error(`NIC siège non trouvé pour le SIREN ${siren}`)
     siret = `${siren}${nic}`
   } else if (/^\d{14}$/.test(code)) {
     siret = code
     siren = code.slice(0, 9)
   } else {
-    throw new Error('Code invalide : 9 (SIREN) ou 14 chiffres (SIRET) requis')
+    throw new Error('Le code doit être un SIREN (9 chiffres) ou un SIRET (14 chiffres)')
   }
 
-  // 2) Sirene data
+  // 2) Données Sirene
   const { data: dEtab } = await sirene.get<{ etablissement: any }>(`/siret/${siret}`)
   const etab = dEtab.etablissement
   const { data: dUL } = await sirene.get<{ uniteLegale: any }>(`/siren/${siren}`)
   const ul = dUL.uniteLegale
 
-  // 3) VIES (si intracom TVA présent)
+  // 3) Vérif. TVA via VIES
   const tvaNum =
     etab.numeroTvaIntracommunautaire ||
     ul.numeroTvaIntracommunautaireUniteLegale ||
@@ -97,45 +104,53 @@ export async function fetchEtablissementByCode(
     }
   }
 
-  // 4) Enrichissement INPI
-  let inEnt: any = {}
+  // 4) Comptes annuels INPI
+  let inpiEnt: any = {}
   try {
-    inEnt = (await inpiEntreprise.get(`/${siren}`)).data
+    inpiEnt = (await inpiEntreprise.get(`/${siren}`)).data
   } catch {
-    console.warn('Échec INPI entreprise')
-  }
-  let inDir: any = {}
-  try {
-    inDir = (await inpiDirigeants.get(`/${siren}`)).data
-  } catch {
-    console.warn('Échec INPI dirigeants')
+    console.warn('Échec récupération INPI comptes annuels')
   }
 
-  // 5) Mapping
-  const dirigeants =
-    inDir.dirigeants?.map((d: any) => ({
-      nom: d.nom,
-      prenoms: d.prenoms,
-      qualite: d.qualite,
-      dateNaissance: d.date_de_naissance,
-      type: d.type_dirigeant
-    })) || []
+  // 5) Dirigeants via API Recherche
+  let rawDir: any[] = []
+  try {
+    const { data: searchRes } = await recherche.get<{ results: any[] }>('/search', {
+      params: { q: siren, page: 1, per_page: 1 }
+    })
+    const match = searchRes.results.find(r => r.siren === siren)
+    rawDir = match?.dirigeants || []
+  } catch {
+    console.warn('Échec récupération dirigeants via Recherche API')
+  }
 
-  const finances =
-    inEnt.finances?.map((f: any) => ({
-      annee: f.annee,
-      ca: f.ca,
-      resultatNet: f.resultat_net
-    })) || []
+  // 6) Mapping unifié
+  const dirigeants = rawDir.map(d => ({
+    nom: d.nom,
+    prenoms: d.prenoms,
+    qualite: d.qualite,
+    dateNaissance: d.date_de_naissance,
+    type: d.type_dirigeant
+  }))
 
-  const annonces =
-    inEnt.annonces?.map((a: any) => ({
-      titre: a.titre,
-      date: a.date,
-      lien: a.lien
-    })) || []
+  const finances = Array.isArray(inpiEnt.finances)
+    ? inpiEnt.finances.map((f: any) => ({
+        montant: f.chiffre_affaires ?? f.ca ?? 0,
+        devise: f.devise || '€'
+      }))
+    : []
 
-  const divers = inEnt.divers ? inEnt.divers.map((x: any) => JSON.stringify(x)) : []
+  const annonces = Array.isArray(inpiEnt.annonces)
+    ? inpiEnt.annonces.map((a: any) => ({
+        titre: a.titre,
+        date: a.date,
+        lien: a.lien
+      }))
+    : []
+
+  const divers = Array.isArray(inpiEnt.divers)
+    ? inpiEnt.divers.map((x: any) => JSON.stringify(x))
+    : []
 
   return {
     denomination:
@@ -156,7 +171,7 @@ export async function fetchEtablissementByCode(
       etab.trancheEffectifsEtablissement ||
       ul.trancheEffectifsUniteLegale ||
       '',
-    capitalSocial: ul.capitalSocial || undefined,
+    capitalSocial: ul.capitalSocial,
     dateCreation:
       ul.dateCreationUniteLegale ||
       etab.dateCreationEtablissement ||
@@ -177,7 +192,7 @@ export async function fetchEtablissementByCode(
     dirigeants,
     finances,
     annonces,
-    labels: inEnt.labels || [],
+    labels: inpiEnt.labels || [],
     divers
   }
 }
