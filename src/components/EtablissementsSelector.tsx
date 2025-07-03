@@ -1,48 +1,48 @@
-import React from 'react';
+import React from "react";
 
-export default function EtablissementsSelector({
-  etablissements,
-  selected,
-  onSelect
-}: {
-  etablissements: { siret: string, adresse: string }[],
-  selected: string,
-  onSelect: (siret: string) => void
-}) {
-  const selectedEtab = etablissements.find(e => e.siret === selected);
+type Etablissement = {
+  siret: string;
+  displayName: string;
+  adresse?: string;
+};
 
-  // Génère l'URL de téléchargement de l'avis SIRENE
-  const avisURL = selectedEtab
-    ? `https://api-avis-situation-sirene.insee.fr/identification/pdf/${selectedEtab.siret}`
-    : '';
+type Props = {
+  etablissements: Etablissement[];
+  selected: string; // SIRET ou SIREN sélectionné
+  onSelect: (siret: string) => void;
+};
 
+/**
+ * Affiche la liste des établissements d'un SIREN, 
+ * permet de naviguer de l'un à l'autre (clic sur fiche SIRET)
+ */
+const EtablissementsSelector: React.FC<Props> = ({ etablissements, selected, onSelect }) => {
+  if (!etablissements || etablissements.length === 0) {
+    return <div>Aucun établissement référencé.</div>;
+  }
   return (
-    <div className="mb-4">
-      <label className="block mb-1 font-medium">Sélectionnez un établissement :</label>
-      <select
-        className="border px-2 py-1 rounded"
-        value={selected}
-        onChange={e => onSelect(e.target.value)}
-      >
-        {etablissements.map(e => (
-          <option key={e.siret} value={e.siret}>
-            {e.siret} — {e.adresse}
-          </option>
-        ))}
-      </select>
-      {selectedEtab && (
-        <div className="mt-2">
-          <a
-            href={avisURL}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-block bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded text-sm"
-            download
-          >
-            Télécharger l'avis SIRENE (PDF)
-          </a>
-        </div>
-      )}
-    </div>
+    <ul className="divide-y">
+      {etablissements.map((etab) => (
+        <li key={etab.siret} className="py-2 flex items-center">
+          <span className="flex-1">
+            <strong>{etab.displayName || "(Sans nom)"}</strong>
+            <span className="ml-2 text-gray-600">SIRET : {etab.siret}</span>
+            {etab.adresse && <span className="ml-2 text-gray-500">{etab.adresse}</span>}
+          </span>
+          {selected === etab.siret ? (
+            <span className="ml-2 px-2 py-1 rounded bg-blue-200 text-blue-800 text-xs">Sélectionné</span>
+          ) : (
+            <button
+              className="ml-2 px-2 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 text-xs"
+              onClick={() => onSelect(etab.siret)}
+            >
+              Voir la fiche
+            </button>
+          )}
+        </li>
+      ))}
+    </ul>
   );
-}
+};
+
+export default EtablissementsSelector;
