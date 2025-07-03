@@ -6,9 +6,9 @@ import Identity from "./components/Identity";
 import EtablissementsSelector from "./components/EtablissementsSelector";
 import Dirigeants from "./components/Dirigeants";
 import Finances from "./components/Finances";
-import Annonces from "./components/Annonces";
-import Labels from "./components/Labels";
-import Divers from "./components/Divers";
+import Annonces from "./components/Annoncements";
+import Labels from "./components/LabelsCertifications";
+import Divers from "./components/Various";
 
 function App() {
   const [search, setSearch] = useState("");
