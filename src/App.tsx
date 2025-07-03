@@ -9,6 +9,7 @@ import FinancialData from './components/FinancialData'
 import Announcements from './components/Announcements'
 import LabelsCertifications from './components/LabelsCertifications'
 import Various from './components/Various'
+import Etablissements from './components/Etablissements'
 
 export default function App() {
   const [input, setInput] = useState('')
@@ -16,6 +17,7 @@ export default function App() {
   const [suggestions, setSuggestions] = useState<
     { siren: string; nom_complet: string; nom_raison_sociale?: string }[]
   >([])
+  const [tab, setTab] = useState(0)
 
   const { data, loading, error } = useEtablissementData(selected)
 
@@ -74,22 +76,24 @@ export default function App() {
             <Tabs
               labels={[
                 'Identité',
+                'Établissements',
                 'Dirigeants',
                 'Finances',
                 'Annonces',
                 'Labels',
                 'Divers'
               ]}
-              current={0}
-              onChange={() => {}}
+              current={tab}
+              onChange={setTab}
             />
             <section className="mt-6 space-y-6">
-              <Identity data={data} />
-              <Directors data={data} />
-              <FinancialData data={data} />
-              <Announcements data={data} />
-              <LabelsCertifications data={data} />
-              <Various data={data} />
+              {tab === 0 && <Identity data={data} />}
+              {tab === 1 && <Etablissements etablissements={data.etablissements} />}
+              {tab === 2 && <Directors dirigeants={data.dirigeants} />}
+              {tab === 3 && <FinancialData data={data} />}
+              {tab === 4 && <Announcements data={data} />}
+              {tab === 5 && <LabelsCertifications data={data} />}
+              {tab === 6 && <Various data={data} />}
             </section>
           </>
         )}
