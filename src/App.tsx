@@ -63,7 +63,6 @@ function App() {
             />
           )}
 
-          {/* Tabs */}
           <Tabs
             tabs={[
               "Identité",
@@ -87,7 +86,9 @@ function App() {
                 onSelect={setSelectedSiret}
               />
             )}
-            {activeTab === "Dirigeants" && <Dirigeants dirigeants={data.dirigeants} />}
+            {activeTab === "Dirigeants" && (
+              <Dirigeants dirigeants={data.dirigeants} />
+            )}
             {activeTab === "Finances" && <Finances finances={data.finances} />}
             {activeTab === "Annonces" && <Annonces annonces={data.annonces} />}
             {activeTab === "Labels" && <Labels labels={data.labels} />}
@@ -96,7 +97,10 @@ function App() {
 
           {/* Affichage du JSON brut INPI pour debug */}
           {data.inpiRaw && (
-            <details className="mt-10 bg-gray-100 p-4 rounded text-xs overflow-auto" style={{ maxHeight: 400 }}>
+            <details
+              className="mt-10 bg-gray-100 p-4 rounded text-xs overflow-auto"
+              style={{ maxHeight: 400 }}
+            >
               <summary className="font-semibold cursor-pointer">
                 Détail brut de la requête INPI (JSON)
               </summary>
