@@ -25,7 +25,19 @@ export default function Etablissements({ etablissements }: { etablissements: any
               <td>{e.activite_principale}</td>
               <td>{e.tranche_effectif_libelle || e.tranche_effectif_salarie}</td>
               <td>{e.est_siege ? 'Oui' : 'Non'}</td>
-              <td>{e.etat_administratif}</td>
+              <td>
+                <span
+                  className="px-2 py-1 rounded text-xs"
+                  style={{
+                    background: e.actif ? "#e6faea" : "#fde8ea",
+                    color: e.actif ? "#208b42" : "#b71c1c",
+                    fontWeight: 600,
+                  }}
+                  title={e.actif ? "Établissement actif" : "Établissement fermé"}
+                >
+                  {e.actif ? "Actif" : "Fermé"}
+                </span>
+              </td>
               <td>{e.date_creation}</td>
             </tr>
           ))}
