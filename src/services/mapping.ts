@@ -36,8 +36,29 @@ function formatAdresseSIRENE(adresseObj: any): string {
   ].filter(Boolean).join(' ');
 }
 
+/**
+ * Utilitaire pour extraire le nom d'affichage d'une entreprise pour la recherche
+ */
+function extractDisplayName(obj: any): string {
+  return (
+    obj?.denomination ||
+    obj?.nom_raison_sociale ||
+    obj?.raison_sociale ||
+    obj?.name ||
+    obj?.nom ||
+    "-"
+  );
+}
+
 export async function searchEtablissementsByName(name: string) {
-  return await searchEntreprisesByRaisonSociale(name);
+  const results = await searchEntreprisesByRaisonSociale(name);
+  // On ajoute displayName systématiquement
+  return Array.isArray(results)
+    ? results.map(r => ({
+        ...r,
+        displayName: extractDisplayName(r),
+      }))
+    : [];
 }
 
 // Mapping principal pour SIREN
@@ -191,6 +212,14 @@ export async function fetchEtablissementBySiren(siren: string) {
     } else if (etab.adresseEtablissement) {
       etab.adresse = formatAdresseSIRENE(etab.adresseEtablissement);
     }
+    // Ajout d'un nom d'affichage pour l'établissement
+    etab.displayName =
+      etab.denomination ||
+      etab.nom_raison_sociale ||
+      etab.raison_sociale ||
+      etab.name ||
+      etab.nom_commercial ||
+      "-";
     return etab;
   });
 
