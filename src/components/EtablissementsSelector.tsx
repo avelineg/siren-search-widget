@@ -5,7 +5,7 @@ type Etablissement = {
   siret: string;
   displayName: string;
   adresse?: string;
-  ferme?: boolean;
+  statut?: "actif" | "ferme";
   date_fermeture?: string | null;
 };
 
@@ -36,14 +36,14 @@ const EtablissementsSelector: React.FC<Props> = ({
             <span
               className="ml-2 px-2 py-1 rounded text-xs"
               style={{
-                background: etab.ferme ? "#fde8ea" : "#e6faea",
-                color: etab.ferme ? "#b71c1c" : "#208b42",
+                background: etab.statut === "ferme" ? "#fde8ea" : "#e6faea",
+                color: etab.statut === "ferme" ? "#b71c1c" : "#208b42",
                 fontWeight: 600,
               }}
-              title={etab.ferme ? "Établissement fermé" : "Établissement actif"}
+              title={etab.statut === "ferme" ? "Établissement fermé" : "Établissement actif"}
             >
-              {etab.ferme ? "Fermé" : "Actif"}
-              {etab.ferme && etab.date_fermeture && (
+              {etab.statut === "ferme" ? "Fermé" : "Actif"}
+              {etab.statut === "ferme" && etab.date_fermeture && (
                 <span className="ml-1 text-xs text-gray-500">
                   (le {formatDateFR(etab.date_fermeture)})
                 </span>
