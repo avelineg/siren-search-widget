@@ -2,13 +2,13 @@ import { getEntrepriseBySiren, searchEntreprisesByRaisonSociale } from './inpiBa
 import { sirene, vies, recherche } from './api'
 import { tvaFRFromSiren } from './tva'
 
+// Recherche par nom
 export async function searchEtablissementsByName(name: string) {
   return await searchEntreprisesByRaisonSociale(name);
 }
 
-// Recherche SIREN
+// Recherche détaillée par SIREN
 export async function fetchEtablissementBySiren(siren: string) {
-  // Appels en parallèle aux différentes sources
   const [
     inpiDataRaw,
     rechercheDataRaw,
@@ -23,7 +23,6 @@ export async function fetchEtablissementBySiren(siren: string) {
   const rechercheData = rechercheDataRaw || {}
   const sireneUL = sireneULRaw || {}
 
-  // Raison sociale (Recherche entreprise)
   let raison_sociale = '-'
   let dirigeants = []
   if (rechercheData?.results?.length) {
@@ -34,7 +33,6 @@ export async function fetchEtablissementBySiren(siren: string) {
     }
   }
 
-  // Code APE et Forme juridique (SIRENE)
   const code_ape =
     sireneUL.activitePrincipaleUniteLegale ||
     inpiData.ape ||
@@ -51,7 +49,6 @@ export async function fetchEtablissementBySiren(siren: string) {
     (rechercheData?.results?.[0]?.forme_juridique) ||
     "-";
 
-  // Capital social (INPI)
   let capital_social =
     inpiData.content?.description?.montantCapital ??
     inpiData.shareCapital ??
@@ -59,7 +56,6 @@ export async function fetchEtablissementBySiren(siren: string) {
     (inpiData.financialStatements?.[0]?.shareCapital) ??
     "-";
 
-  // Calcul du numéro TVA intracom
   const tvaNum = tvaFRFromSiren(siren)
   let tvaValide: boolean | null = null
   if (tvaNum) {
@@ -73,7 +69,6 @@ export async function fetchEtablissementBySiren(siren: string) {
     }
   }
 
-  // Données financières INPI
   const finances = inpiData.financialStatements?.length
     ? inpiData.financialStatements.map((f: any) => ({
         exercice: f.fiscalYear,
@@ -84,7 +79,6 @@ export async function fetchEtablissementBySiren(siren: string) {
       }))
     : [];
 
-  // Etablissements (fallback classique)
   let etablissements = []
   if (rechercheData?.results?.length) {
     const match = rechercheData.results.find((r: any) => r.siren === siren)
@@ -96,7 +90,6 @@ export async function fetchEtablissementBySiren(siren: string) {
     etablissements = inpiData.establishments
   }
 
-  // Mapping final avec priorités/fallbacks
   return {
     denomination: raison_sociale,
     forme_juridique,
@@ -192,10 +185,9 @@ export async function fetchEtablissementBySiren(siren: string) {
   };
 }
 
-// Recherche SIRET
+// Recherche détaillée par SIRET
 export async function fetchEtablissementBySiret(siret: string) {
   const siren = siret.slice(0, 9)
-  // Appels en parallèle aux différentes sources
   const [
     inpiDataRaw,
     sireneEtabRaw,
@@ -210,7 +202,6 @@ export async function fetchEtablissementBySiret(siret: string) {
   const sireneEtab = sireneEtabRaw || {}
   const sireneUL = sireneULRaw || {}
 
-  // Code APE et Forme juridique (SIRENE)
   const code_ape =
     sireneUL.activitePrincipaleUniteLegale ||
     sireneEtab.activitePrincipaleEtablissement ||
@@ -225,7 +216,6 @@ export async function fetchEtablissementBySiret(siret: string) {
     inpiData.legalForm ||
     "-";
 
-  // Capital social (INPI)
   let capital_social =
     inpiData.content?.description?.montantCapital ??
     inpiData.shareCapital ??
@@ -233,7 +223,6 @@ export async function fetchEtablissementBySiret(siret: string) {
     (inpiData.financialStatements?.[0]?.shareCapital) ??
     "-";
 
-  // TVA
   const tvaNum = tvaFRFromSiren(siren)
   let tvaValide: boolean | null = null
   if (tvaNum) {
@@ -247,7 +236,6 @@ export async function fetchEtablissementBySiret(siret: string) {
     }
   }
 
-  // Données financières INPI
   const finances = inpiData.financialStatements?.length
     ? inpiData.financialStatements.map((f: any) => ({
         exercice: f.fiscalYear,
@@ -258,7 +246,6 @@ export async function fetchEtablissementBySiret(siret: string) {
       }))
     : [];
 
-  // Mapping final
   return {
     denomination: inpiData.denomination || "-",
     forme_juridique,
