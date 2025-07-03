@@ -110,7 +110,7 @@ export async function searchEtablissementsByName(name: string) {
  * Récupère toutes les données d'un SIREN (INPI + SIRENE + liste établissements depuis l'API recherche)
  */
 export async function fetchEtablissementBySiren(siren: string) {
-  // Appel INPI, SIRENE UNITELEGALE, RECHERCHE ENTREPRISE
+  // Récupération de toutes les données brutes
   const [
     inpiDataRaw,
     sireneULRaw,
@@ -321,7 +321,6 @@ export async function fetchEtablissementBySiret(siret: string) {
 
   const { statut, date_fermeture } = etablissementStatut(sireneEtab);
 
-  // Les autres champs sont identiques à SIREN, adapte si besoin pour la fiche SIRET
   const denomination =
     getInpi("formality.content.personneMorale.identite.entreprise.denomination", inpiData) ||
     inpiData.denomination ||
