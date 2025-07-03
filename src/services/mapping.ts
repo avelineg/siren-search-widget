@@ -1,4 +1,4 @@
-import { sirene, recherche, vies } from './api'
+import { sirene, vies } from './api'
 
 export interface UnifiedEtablissement {
   denomination: string
@@ -34,64 +34,62 @@ export interface UnifiedEtablissement {
   divers: string[]
 }
 
-export async function fetchEtablissementData(
+/**
+ * Récupère et assemble les données pour un SIREN (9 chiffres) ou un SIRET (14 chiffres).
+ * - Pour un SIREN seul, on appelle /siren pour récupérer NIC siège, puis /siret.
+ * - Pour un SIRET, on en extrait le SIREN et on appelle directement /siret.
+ * @param code SIREN ou SIRET à 9 ou 14 chiffres
+ */
+export async function fetchEtablissementByCode(
   code: string
 ): Promise<UnifiedEtablissement> {
   let siren: string
   let siret: string
 
-  // Détecter SIREN (9 chiffres) vs SIRET (14 chiffres)
   if (/^\d{9}$/.test(code)) {
+    // SIREN seul
     siren = code
-    // 1) Récupérer l’unité légale pour trouver le NIC siège
-    const { data: sirenPayload } = await sirene.get<{ uniteLegale: any }>(
+    const { data: payloadSiren } = await sirene.get<{ uniteLegale: any }>(
       `/siren/${siren}`
     )
-    const nicSiege = sirenPayload.uniteLegale.nicSiegeUniteLegale
+    const nicSiege = payloadSiren.uniteLegale.nicSiegeUniteLegale
     if (!nicSiege) {
       throw new Error(`NIC siège non trouvé pour le SIREN ${siren}`)
     }
     siret = `${siren}${nicSiege}`
   } else if (/^\d{14}$/.test(code)) {
+    // SIRET complet
     siret = code
     siren = code.slice(0, 9)
   } else {
     throw new Error('Le code doit être un SIREN (9 chiffres) ou un SIRET (14 chiffres)')
   }
 
-  // 2) Fetch données SIRET
-  const { data: siretPayload } = await sirene.get<{ etablissement: any }>(
+  // 1) Détails de l'établissement
+  const { data: payloadEtab } = await sirene.get<{ etablissement: any }>(
     `/siret/${siret}`
   )
-  const etab = siretPayload.etablissement
+  const etab = payloadEtab.etablissement
 
-  // 3) Fetch données SIREN (unité légale)
-  const { data: sirenPayload2 } = await sirene.get<{ uniteLegale: any }>(
+  // 2) Détails de l'unité légale
+  const { data: payloadUL } = await sirene.get<{ uniteLegale: any }>(
     `/siren/${siren}`
   )
-  const ul = sirenPayload2.uniteLegale
+  const ul = payloadUL.uniteLegale
 
-  // 4) Recherche d’entreprises pour compléments (dirigeants, finances…)
-  const { data: rec } = await recherche.get<{ results: any[] }>(
-    `/entreprises/${siren}`
-  )
-  const rec0 = rec.results[0] || {}
-
-  // 5) Vérification TVA via VIES
-  const tvaNum = rec0.siege?.numero_tva_intracom || ''
+  // 3) Vérification TVA via VIES
+  const tvaNum = etab.numeroTvaIntracommunautaire || ''
   const { data: viesPayload } = await vies.get<{ valid: boolean }>(
     `/check-vat`,
     { params: { countryCode: 'FR', vatNumber: tvaNum } }
   )
 
-  // 6) Assemblage du schéma unifié
   return {
     denomination:
-      ul.denominationUniteLegale || rec0.nom_raison_sociale || '',
+      ul.denominationUniteLegale || etab.uniteLegale?.denomination || '',
     formeJuridique:
       ul.libelleCategorieJuridiqueUniteLegale ||
       ul.categorieJuridiqueUniteLegale ||
-      rec0.nature_juridique ||
       '',
     siren,
     siret,
@@ -100,16 +98,19 @@ export async function fetchEtablissementData(
       valide: viesPayload.valid
     },
     codeApe:
-      ul.activitePrincipaleUniteLegale || rec0.activite_principale || '',
+      ul.activitePrincipaleUniteLegale ||
+      etab.activitePrincipaleEtablissement ||
+      '',
     libelleApe: ul.libelleActivitePrincipaleUniteLegale,
     trancheEffectifs:
       etab.trancheEffectifsEtablissement ||
       ul.trancheEffectifsUniteLegale ||
-      rec0.tranche_effectif_salarie ||
       '',
     capitalSocial: ul.capitalSocial || undefined,
     dateCreation:
-      ul.dateCreationUniteLegale || etab.dateCreationEtablissement || '',
+      ul.dateCreationUniteLegale ||
+      etab.dateCreationEtablissement ||
+      '',
     adresse: [
       etab.adresseEtablissement.numeroVoieEtablissement,
       etab.adresseEtablissement.typeVoieEtablissement,
@@ -122,24 +123,11 @@ export async function fetchEtablissementData(
     geo:
       etab.geoLatitude && etab.geoLongitude
         ? [etab.geoLatitude, etab.geoLongitude]
-        : rec0.siege?.coordonnees
-        ? rec0.siege.coordonnees.split(',').map((v: string) => +v.trim())
         : undefined,
-    dirigeants:
-      rec0.dirigeants?.map((d: any) => ({
-        nom: d.nom,
-        prenoms: d.prenoms,
-        qualite: d.qualite,
-        dateNaissance: d.date_de_naissance,
-        type: d.type_dirigeant
-      })) || [],
-    finances: Object.entries(rec0.finances || {}).map(([annee, f]: any) => ({
-      annee,
-      ca: f.ca,
-      resultatNet: f.resultat_net
-    })),
-    annonces: [], // À remplir depuis INPI/formalités
-    labels: rec0.complements?.liste_idcc || [],
+    dirigeants: [], // à enrichir via INPI / officialités si besoin
+    finances: [],   // à enrichir via INPI ou sources financières
+    annonces: [],   // à enrichir via INPI / publications légales
+    labels: [],
     divers: []
   }
 }
