@@ -1,65 +1,70 @@
-import { useState, useEffect } from 'react'
-import { fetchEtablissementByCode, searchEtablissementsByName } from '../services/mapping'
+import { useState, useEffect } from "react";
+import {
+  fetchEtablissementByCode,
+  searchEtablissementsByName,
+} from "../services/mapping";
 
-export function useEtablissementData(query: string, selectedCode: string = '') {
-  const [data, setData] = useState<any>(null)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [results, setResults] = useState<any[]>([])
+/**
+ * Hook optimisé : pour la recherche par nom (pas SIREN/SIRET), ne fait que searchEtablissementsByName (API rapide).
+ * Pour fiche détaillée (SIREN/SIRET), lance le mapping complet (INPI/SIRENE/VIES).
+ * N'appelle pas les APIs lentes inutilement lors d'une simple recherche par nom !
+ */
+export function useEtablissementData(query: string, selectedCode: string = "") {
+  const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [results, setResults] = useState<any[]>([]);
 
   useEffect(() => {
-    setError(null)
-    setData(null)
-    setResults([])
-    if (!query || query.length < 3) return
-    setLoading(true)
-    console.log("[useEtablissementData] Recherche lancée, query:", query)
-    const isSiret = /^\d{14}$/.test(query)
-    const isSiren = /^\d{9}$/.test(query)
+    setError(null);
+    setData(null);
+    setResults([]);
+    if (!query || query.length < 3) return;
+    setLoading(true);
+
+    // Détection SIREN/SIRET
+    const isSiret = /^\d{14}$/.test(query);
+    const isSiren = /^\d{9}$/.test(query);
+
     if (isSiret || isSiren) {
+      // Fiche détaillée : mapping complet (INPI/SIRENE/etc.)
       fetchEtablissementByCode(query)
-        .then(res => {
-          console.log("[useEtablissementData] Résultat fetchEtablissementByCode:", res)
-          setData(res)
+        .then((res) => {
+          setData(res);
         })
-        .catch(err => {
-          console.error("[useEtablissementData] Erreur fetchEtablissementByCode:", err)
-          setError(err.message)
+        .catch((err) => {
+          setError(err.message);
         })
-        .finally(() => setLoading(false))
+        .finally(() => setLoading(false));
     } else {
+      // Recherche par nom : UNIQUEMENT searchEtablissementsByName (pas de mapping complexe ici !)
       searchEtablissementsByName(query)
-        .then(list => {
-          console.log("[useEtablissementData] Résultat searchEtablissementsByName:", list)
-          setResults(list)
-          setLoading(false)
+        .then((list) => {
+          setResults(list);
         })
-        .catch(err => {
-          console.error("[useEtablissementData] Erreur searchEtablissementsByName:", err)
-          setError(err.message)
-          setLoading(false)
+        .catch((err) => {
+          setError(err.message);
         })
+        .finally(() => setLoading(false));
     }
-  }, [query])
+  }, [query]);
 
   useEffect(() => {
+    // Sélection fiche : mapping complet
     if (selectedCode && (selectedCode.length === 9 || selectedCode.length === 14)) {
-      setLoading(true)
-      setError(null)
-      setData(null)
-      console.log("[useEtablissementData] Recherche détaillée, selectedCode:", selectedCode)
+      setLoading(true);
+      setError(null);
+      setData(null);
       fetchEtablissementByCode(selectedCode)
-        .then(res => {
-          console.log("[useEtablissementData] Résultat fetchEtablissementByCode (selectedCode):", res)
-          setData(res)
+        .then((res) => {
+          setData(res);
         })
-        .catch(err => {
-          console.error("[useEtablissementData] Erreur fetchEtablissementByCode (selectedCode):", err)
-          setError(err.message)
+        .catch((err) => {
+          setError(err.message);
         })
-        .finally(() => setLoading(false))
+        .finally(() => setLoading(false));
     }
-  }, [selectedCode])
+  }, [selectedCode]);
 
-  return { data, loading, error, results }
+  return { data, loading, error, results };
 }
