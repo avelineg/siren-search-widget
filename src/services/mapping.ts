@@ -1,5 +1,6 @@
 import { getEntrepriseBySiren, searchEntreprisesByRaisonSociale } from './inpiBackend'
 import { sirene, vies, recherche } from './api'
+import { tvaFRFromSiren } from './tva'
 
 export async function searchEtablissementsByName(name: string) {
   return await searchEntreprisesByRaisonSociale(name);
@@ -9,7 +10,7 @@ export async function fetchEtablissementByCode(code: string) {
   const siren = code.length === 9 ? code : code.slice(0, 9)
   const siret = code.length === 14 ? code : null
 
-  // 1. Appels en parallèle
+  // Appels en parallèle
   const [
     inpiDataRaw,
     rechercheDataRaw,
@@ -37,14 +38,18 @@ export async function fetchEtablissementByCode(code: string) {
     }
   }
 
-  // TVA via VIES
-  let tvaNum = inpiData.vatNumber || sireneEtab.numeroTvaIntracommunautaire || sireneUL.numeroTvaIntracommunautaireUniteLegale || '';
-  let tvaValide = false;
+  // Calcul du numéro de TVA intracom
+  const tvaNum = tvaFRFromSiren(siren); // toujours calculé
+  let tvaValide: boolean | null = null;
   if (tvaNum) {
     try {
-      const { data: dv } = await vies.get('/check-vat', { params: { countryCode: 'FR', vatNumber: tvaNum } });
+      const { data: dv } = await vies.get('/check-vat', {
+        params: { countryCode: 'FR', vatNumber: tvaNum.slice(2) } // Sans le "FR"
+      });
       tvaValide = dv.valid;
-    } catch {/* ignore */}
+    } catch {
+      tvaValide = null; // Pas d'info
+    }
   }
 
   // Données financières
@@ -65,7 +70,7 @@ export async function fetchEtablissementByCode(code: string) {
     (finances.length ? finances[0].capital_social : undefined) ||
     undefined;
 
-  // Mapping robuste avec fallback pour chaque champ
+  // Mapping robuste
   return {
     denomination:
       inpiData.companyName ||
