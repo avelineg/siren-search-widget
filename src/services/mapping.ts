@@ -1,3 +1,4 @@
+import { EFFECTIFS_LIBELLES } from './effectifs'
 import {
   sirene,
   vies,
@@ -5,6 +6,27 @@ import {
   recherche,
   searchCompaniesByName
 } from './api'
+
+export interface Etablissement {
+  siret: string
+  adresse: string
+  activite_principale: string
+  tranche_effectif_salarie: string
+  tranche_effectif_libelle: string
+  est_siege: boolean
+  date_creation: string
+  etat_administratif: string
+}
+
+export interface Dirigeant {
+  nom?: string
+  prenoms?: string
+  qualite?: string
+  dateNaissance?: string
+  type: 'personne physique' | 'personne morale'
+  denomination?: string
+  siren?: string
+}
 
 export interface UnifiedEtablissement {
   denomination: string
@@ -19,13 +41,8 @@ export interface UnifiedEtablissement {
   date_creation: string
   adresse: string
   geo?: [number, number]
-  dirigeants: Array<{
-    nom?: string
-    prenoms?: string
-    qualite?: string
-    dateNaissance?: string
-    type: 'personne physique' | 'personne morale'
-  }>
+  etablissements: Etablissement[]
+  dirigeants: Dirigeant[]
   finances: Array<{ montant: number; devise: string }>
   annonces: Array<{ titre?: string; date?: string; lien?: string }>
   labels: string[]
@@ -116,27 +133,50 @@ export async function fetchEtablissementByCode(
       ? content.montantCapital
       : ul.capitalSocial || 0
 
-  // 5) Dirigeants via Recherche-Entreprises API
-  let rawDir: any[] = []
+  // 5) Recherche API pour établissements et dirigeants enrichis
+  let etablissements: Etablissement[] = []
+  let dirigeants: Dirigeant[] = []
   try {
     const { data: searchRes } = await recherche.get<{ results: any[] }>('/search', {
       params: { q: siren, page: 1, per_page: 1 }
     })
     const match = searchRes.results.find(r => r.siren === siren)
-    rawDir = match?.dirigeants || []
+    // Mapping des établissements (API Recherche)
+    if (match) {
+      etablissements = (match.matching_etablissements || []).concat(
+        match.siege ? [match.siege] : []
+      ).map((e: any) => ({
+        siret: e.siret,
+        adresse: e.adresse,
+        activite_principale: e.activite_principale,
+        tranche_effectif_salarie: e.tranche_effectif_salarie,
+        tranche_effectif_libelle: EFFECTIFS_LIBELLES[e.tranche_effectif_salarie] || '',
+        est_siege: !!e.est_siege,
+        date_creation: e.date_creation,
+        etat_administratif: e.etat_administratif
+      })).filter(e => !!e.siret)
+      // Dirigeants (API Recherche)
+      dirigeants = (match.dirigeants || []).map((d: any) =>
+        d.type_dirigeant === 'personne morale'
+          ? {
+              type: d.type_dirigeant,
+              denomination: d.denomination,
+              siren: d.siren
+            }
+          : {
+              type: d.type_dirigeant,
+              nom: d.nom,
+              prenoms: d.prenoms,
+              qualite: d.qualite,
+              dateNaissance: d.date_de_naissance
+            }
+      )
+    }
   } catch {
-    console.warn('Échec récupération dirigeants via Recherche API')
+    console.warn('Échec récupération dirigeants/établissements via Recherche API')
   }
 
-  // 6) Mapping final
-  const dirigeants = rawDir.map(d => ({
-    nom: d.nom,
-    prenoms: d.prenoms,
-    qualite: d.qualite,
-    dateNaissance: d.date_de_naissance,
-    type: d.type_dirigeant
-  }))
-
+  // 6) Mapping final des finances, annonces, etc.
   const finances = Array.isArray(inpiEnt.finances)
     ? inpiEnt.finances.map((f: any) => ({
         montant: f.chiffre_affaires ?? f.ca ?? 0,
@@ -165,17 +205,16 @@ export async function fetchEtablissementByCode(
     siren,
     siret,
     tva: { numero: tvaNum, valide: tvaValide },
-    // Priorité au contenu INPI pour l'APE
     code_ape:
       content.codeApe ||
       ul.activitePrincipaleUniteLegale ||
       etab.activitePrincipaleEtablissement ||
       '',
-    libelle_ape:
-      content.libelleApe ||
-      ul.libelleActivitePrincipaleUniteLegale ||
-      '',
+    libelle_ape: content.libelleApe || ul.libelleActivitePrincipaleUniteLegale || '',
     tranche_effectifs:
+      EFFECTIFS_LIBELLES[
+        etab.trancheEffectifsEtablissement || ul.trancheEffectifsUniteLegale || ''
+      ] ||
       etab.trancheEffectifsEtablissement ||
       ul.trancheEffectifsUniteLegale ||
       '',
@@ -195,6 +234,7 @@ export async function fetchEtablissementByCode(
       etab.geoLatitude && etab.geoLongitude
         ? [etab.geoLatitude, etab.geoLongitude]
         : undefined,
+    etablissements,
     dirigeants,
     finances,
     annonces,
