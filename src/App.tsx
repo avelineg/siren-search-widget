@@ -6,7 +6,6 @@ import Identity from "./components/Identity";
 import EtablissementsSelector from "./components/EtablissementsSelector";
 import Dirigeants from "./components/Dirigeants";
 import Finances from "./components/Finances";
-import Labels from "./components/Labels";
 import Divers from "./components/Divers";
 import { formatDateFR } from "./services/mapping";
 
@@ -30,7 +29,6 @@ function App() {
     "Établissements",
     "Dirigeants",
     "Finances",
-    "Labels",
     "Divers",
   ];
 
@@ -74,14 +72,14 @@ function App() {
                 <span
                   className="ml-2 px-2 py-1 rounded text-xs"
                   style={{
-                    background: r.actif ? "#e6faea" : "#fde8ea",
-                    color: r.actif ? "#208b42" : "#b71c1c",
+                    background: r.ferme ? "#fde8ea" : "#e6faea",
+                    color: r.ferme ? "#b71c1c" : "#208b42",
                     fontWeight: 600,
                   }}
-                  title={r.actif ? "Établissement actif" : "Établissement fermé"}
+                  title={r.ferme ? "Établissement fermé" : "Établissement actif"}
                 >
-                  {r.actif ? "Actif" : "Fermé"}
-                  {!r.actif && r.date_fermeture && (
+                  {r.ferme ? "Fermé" : "Actif"}
+                  {r.ferme && r.date_fermeture && (
                     <span className="ml-1 text-xs text-gray-500">
                       (le {formatDateFR(r.date_fermeture)})
                     </span>
@@ -110,18 +108,18 @@ function App() {
                             <span
                               className="ml-2 px-2 py-1 rounded text-xs"
                               style={{
-                                background: etab.actif ? "#e6faea" : "#fde8ea",
-                                color: etab.actif ? "#208b42" : "#b71c1c",
+                                background: etab.ferme ? "#fde8ea" : "#e6faea",
+                                color: etab.ferme ? "#b71c1c" : "#208b42",
                                 fontWeight: 600,
                               }}
                               title={
-                                etab.actif
-                                  ? "Établissement actif"
-                                  : "Établissement fermé"
+                                etab.ferme
+                                  ? "Établissement fermé"
+                                  : "Établissement actif"
                               }
                             >
-                              {etab.actif ? "Actif" : "Fermé"}
-                              {!etab.actif && etab.date_fermeture && (
+                              {etab.ferme ? "Fermé" : "Actif"}
+                              {etab.ferme && etab.date_fermeture && (
                                 <span className="ml-1 text-xs text-gray-500">
                                   (le {formatDateFR(etab.date_fermeture)})
                                 </span>
@@ -181,15 +179,15 @@ function App() {
             <span
               className="px-2 py-1 rounded text-xs"
               style={{
-                background: data.actif ? "#e6faea" : "#fde8ea",
-                color: data.actif ? "#208b42" : "#b71c1c",
+                background: data.ferme ? "#fde8ea" : "#e6faea",
+                color: data.ferme ? "#b71c1c" : "#208b42",
                 fontWeight: 700,
                 marginLeft: "0.5rem",
               }}
-              title={data.actif ? "Établissement actif" : "Établissement fermé"}
+              title={data.ferme ? "Établissement fermé" : "Établissement actif"}
             >
-              {data.actif ? "Actif" : "Fermé"}
-              {!data.actif && data.date_fermeture && (
+              {data.ferme ? "Fermé" : "Actif"}
+              {data.ferme && data.date_fermeture && (
                 <span className="ml-1 text-xs text-gray-500">
                   (le {formatDateFR(data.date_fermeture)})
                 </span>
@@ -197,7 +195,6 @@ function App() {
             </span>
           </div>
 
-          {/* Affiche la liste des établissements (navigation possible) dans l'onglet 1 */}
           <Tabs labels={tabLabels} current={tabIndex} onChange={setTabIndex} />
 
           <div className="mt-4">
@@ -211,11 +208,9 @@ function App() {
             )}
             {tabIndex === 2 && <Dirigeants dirigeants={data.dirigeants || []} />}
             {tabIndex === 3 && <Finances data={data} />}
-            {tabIndex === 4 && <Labels data={data} />}
-            {tabIndex === 5 && <Divers data={data} />}
+            {tabIndex === 4 && <Divers data={data} />}
           </div>
 
-          {/* Affichage du JSON brut INPI pour debug */}
           {data.inpiRaw && (
             <details
               className="mt-10 bg-gray-100 p-4 rounded text-xs overflow-auto"
