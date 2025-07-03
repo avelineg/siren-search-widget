@@ -5,13 +5,13 @@ type Etablissement = {
   siret: string;
   displayName: string;
   adresse?: string;
-  actif?: boolean;
+  ferme?: boolean;
   date_fermeture?: string | null;
 };
 
 type Props = {
   etablissements: Etablissement[];
-  selected: string; // SIRET ou SIREN sélectionné
+  selected: string;
   onSelect: (siret: string) => void;
 };
 
@@ -36,14 +36,14 @@ const EtablissementsSelector: React.FC<Props> = ({
             <span
               className="ml-2 px-2 py-1 rounded text-xs"
               style={{
-                background: etab.actif ? "#e6faea" : "#fde8ea",
-                color: etab.actif ? "#208b42" : "#b71c1c",
+                background: etab.ferme ? "#fde8ea" : "#e6faea",
+                color: etab.ferme ? "#b71c1c" : "#208b42",
                 fontWeight: 600,
               }}
-              title={etab.actif ? "Établissement actif" : "Établissement fermé"}
+              title={etab.ferme ? "Établissement fermé" : "Établissement actif"}
             >
-              {etab.actif ? "Actif" : "Fermé"}
-              {!etab.actif && etab.date_fermeture && (
+              {etab.ferme ? "Fermé" : "Actif"}
+              {etab.ferme && etab.date_fermeture && (
                 <span className="ml-1 text-xs text-gray-500">
                   (le {formatDateFR(etab.date_fermeture)})
                 </span>
