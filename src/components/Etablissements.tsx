@@ -30,14 +30,14 @@ export default function Etablissements({ etablissements }: { etablissements: any
                 <span
                   className="px-2 py-1 rounded text-xs"
                   style={{
-                    background: e.actif ? "#e6faea" : "#fde8ea",
-                    color: e.actif ? "#208b42" : "#b71c1c",
+                    background: e.ferme ? "#fde8ea" : "#e6faea",
+                    color: e.ferme ? "#b71c1c" : "#208b42",
                     fontWeight: 600,
                   }}
-                  title={e.actif ? "Établissement actif" : "Établissement fermé"}
+                  title={e.ferme ? "Établissement fermé" : "Établissement actif"}
                 >
-                  {e.actif ? "Actif" : "Fermé"}
-                  {!e.actif && e.date_fermeture && (
+                  {e.ferme ? "Fermé" : "Actif"}
+                  {e.ferme && e.date_fermeture && (
                     <span className="ml-1 text-xs text-gray-500">
                       (le {formatDateFR(e.date_fermeture)})
                     </span>
