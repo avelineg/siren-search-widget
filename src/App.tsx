@@ -4,9 +4,8 @@ import Tabs from "./components/Tabs";
 import CompanyHeader from "./components/CompanyHeader";
 import Identity from "./components/Identity";
 import EtablissementsSelector from "./components/EtablissementsSelector";
-import Dirigeants from "./components/Dirigeants";
+import Dirigeants from "./components/Dirigeants"; // <-- minuscule !
 import Finances from "./components/Finances";
-import Annonces from "./components/Annoncements";
 import Labels from "./components/LabelsCertifications";
 import Divers from "./components/Various";
 
@@ -69,7 +68,6 @@ function App() {
               "Établissements",
               "Dirigeants",
               "Finances",
-              "Annonces",
               "Labels",
               "Divers",
             ]}
@@ -90,7 +88,6 @@ function App() {
               <Dirigeants dirigeants={data.dirigeants} />
             )}
             {activeTab === "Finances" && <Finances finances={data.finances} />}
-            {activeTab === "Annonces" && <Annonces annonces={data.annonces} />}
             {activeTab === "Labels" && <Labels labels={data.labels} />}
             {activeTab === "Divers" && <Divers data={data} />}
           </div>
