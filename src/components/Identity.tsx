@@ -1,25 +1,111 @@
-import React from 'react'
+import React from 'react';
 
 export default function Identity({ data }: { data: any }) {
-  const { adresse, geo, recherche } = data
   return (
     <div className="bg-white p-4 rounded shadow">
-      <h3 className="font-semibold mb-2">Coordonnées</h3>
-      <p>{adresse}</p>
-      {recherche?.telephones && (
-        <p>Téléphone : {recherche.telephones.join(' / ')}</p>
-      )}
-      {recherche?.email && <p>Email : {recherche.email}</p>}
-      {recherche?.site && (
-        <p>
-          Site web : <a href={recherche.site}>{recherche.site}</a>
-        </p>
-      )}
-      {geo && (
-        <p className="text-xs text-gray-500">
-          Géolocalisation : {geo[1].toFixed(5)}, {geo[0].toFixed(5)}
-        </p>
-      )}
+      <h3 className="font-semibold mb-2">Identité de l'entreprise</h3>
+      <table className="w-full text-sm">
+        <tbody>
+          <tr>
+            <td className="font-bold">Raison sociale</td>
+            <td>{data.denomination}</td>
+          </tr>
+          <tr>
+            <td className="font-bold">Nom commercial</td>
+            <td>{data.nom_commercial || '–'}</td>
+          </tr>
+          <tr>
+            <td className="font-bold">SIREN</td>
+            <td>{data.siren}</td>
+          </tr>
+          <tr>
+            <td className="font-bold">SIRET</td>
+            <td>{data.siret}</td>
+          </tr>
+          <tr>
+            <td className="font-bold">Adresse</td>
+            <td>{data.adresse}</td>
+          </tr>
+          <tr>
+            <td className="font-bold">Forme juridique</td>
+            <td>{data.forme_juridique}</td>
+          </tr>
+          <tr>
+            <td className="font-bold">Catégorie juridique</td>
+            <td>{data.categorie_juridique || '–'}</td>
+          </tr>
+          <tr>
+            <td className="font-bold">Date de création</td>
+            <td>{data.date_creation}</td>
+          </tr>
+          <tr>
+            <td className="font-bold">Code APE</td>
+            <td>
+              {data.code_ape || '–'} {data.libelle_ape ? `– ${data.libelle_ape}` : ''}
+            </td>
+          </tr>
+          <tr>
+            <td className="font-bold">Effectifs</td>
+            <td>
+              {data.tranche_effectifs}
+              {data.tranche_effectif_salarie ? ` (code ${data.tranche_effectif_salarie})` : ''}
+            </td>
+          </tr>
+          <tr>
+            <td className="font-bold">Capital social</td>
+            <td>{data.capital_social?.toLocaleString()} €</td>
+          </tr>
+          <tr>
+            <td className="font-bold">TVA intracommunautaire</td>
+            <td>
+              {data.tva?.numero || '–'}{' '}
+              {data.tva?.valide === true ? '✅' : data.tva?.valide === false ? '❌' : ''}
+            </td>
+          </tr>
+          <tr>
+            <td className="font-bold">Statut diffusion</td>
+            <td>{data.statut_diffusion || '–'}</td>
+          </tr>
+          <tr>
+            <td className="font-bold">Caractère employeur</td>
+            <td>{data.caractere_employeur || '–'}</td>
+          </tr>
+          <tr>
+            <td className="font-bold">Dirigeant principal</td>
+            <td>
+              {data.dirigeants && data.dirigeants.length
+                ? `${data.dirigeants[0].nom || ''} ${data.dirigeants[0].prenoms || ''}`.trim()
+                : '–'}
+            </td>
+          </tr>
+          <tr>
+            <td className="font-bold">Sigle</td>
+            <td>{data.sigle || '–'}</td>
+          </tr>
+          <tr>
+            <td className="font-bold">Site internet</td>
+            <td>
+              {data.site_web ? (
+                <a href={data.site_web} target="_blank" rel="noopener noreferrer">
+                  {data.site_web}
+                </a>
+              ) : (
+                '–'
+              )}
+            </td>
+          </tr>
+          <tr>
+            <td className="font-bold">Email</td>
+            <td>
+              {data.email ? (
+                <a href={`mailto:${data.email}`}>{data.email}</a>
+              ) : (
+                '–'
+              )}
+            </td>
+          </tr>
+        </tbody>
+      </table>
     </div>
   )
 }
