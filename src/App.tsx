@@ -9,20 +9,30 @@ import Finances from "./components/Finances";
 import Labels from "./components/LabelsCertifications";
 import Divers from "./components/Various";
 
-// Helper pour vérifier si un tableau est non vide
+const tabLabels = [
+  "Identité",
+  "Établissements",
+  "Dirigeants",
+  "Finances",
+  "Labels",
+  "Divers",
+];
+
 const isNonEmptyArray = arr => Array.isArray(arr) && arr.length > 0;
 
 function App() {
   const [search, setSearch] = useState("");
   const [selectedSiret, setSelectedSiret] = useState("");
-  const [activeTab, setActiveTab] = useState("Identité");
-  const { data, loading, error } = useEtablissementData(search, selectedSiret);
+  const [tabIndex, setTabIndex] = useState(0);
+
+  // Utilise le SIRET sélectionné si dispo, sinon la recherche globale
+  const { data, loading, error } = useEtablissementData(selectedSiret || search);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!search || search.trim().length < 3) return; // désactive recherche sur saisie trop courte
+    if (!search || search.trim().length < 3) return;
     setSelectedSiret("");
-    setActiveTab("Identité");
+    setTabIndex(0);
   };
 
   return (
@@ -54,7 +64,7 @@ function App() {
 
       {data && (
         <div>
-          <CompanyHeader data={data} />
+          <CompanyHeader {...data} />
 
           {/* Sélecteur d'établissements si plusieurs */}
           {isNonEmptyArray(data.etablissements) && (
@@ -65,38 +75,27 @@ function App() {
             />
           )}
 
-          <Tabs
-            tabs={[
-              "Identité",
-              "Établissements",
-              "Dirigeants",
-              "Finances",
-              "Labels",
-              "Divers",
-            ]}
-            activeTab={activeTab}
-            onTabClick={setActiveTab}
-          />
+          <Tabs labels={tabLabels} current={tabIndex} onChange={setTabIndex} />
 
           <div className="mt-4">
-            {activeTab === "Identité" && <Identity data={data} />}
-            {activeTab === "Établissements" && (
+            {tabIndex === 0 && <Identity data={data} />}
+            {tabIndex === 1 && (
               <EtablissementsSelector
                 etablissements={data.etablissements || []}
                 selected={selectedSiret}
                 onSelect={setSelectedSiret}
               />
             )}
-            {activeTab === "Dirigeants" && (
+            {tabIndex === 2 && (
               <Dirigeants dirigeants={data.dirigeants || []} />
             )}
-            {activeTab === "Finances" && (
-              <Finances finances={data.finances || []} />
+            {tabIndex === 3 && (
+              <Finances data={data} />
             )}
-            {activeTab === "Labels" && (
-              <Labels labels={data.labels || []} />
+            {tabIndex === 4 && (
+              <Labels data={data} />
             )}
-            {activeTab === "Divers" && <Divers data={data} />}
+            {tabIndex === 5 && <Divers data={data} />}
           </div>
 
           {/* Affichage du JSON brut INPI pour debug */}
