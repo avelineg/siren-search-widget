@@ -1,7 +1,20 @@
 import React from 'react'
 import { formatDateFR } from '../services/mapping'
 
-export default function Etablissements({ etablissements }: { etablissements: any[] }) {
+type Etablissement = {
+  siret: string;
+  displayName?: string;
+  adresse?: string;
+  activite_principale?: string;
+  tranche_effectif_libelle?: string;
+  tranche_effectif_salarie?: string;
+  est_siege?: boolean;
+  statut?: "actif" | "ferme";
+  date_fermeture?: string | null;
+  date_creation?: string;
+};
+
+export default function Etablissements({ etablissements }: { etablissements: Etablissement[] }) {
   if (!etablissements?.length) return null
   return (
     <div className="bg-white p-4 rounded shadow">
