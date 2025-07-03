@@ -1,19 +1,25 @@
 import React from 'react'
 
-export default function Directors({ data }: { data: any }) {
-  const reps = data.representants || []
+export default function Directors({ dirigeants }: { dirigeants: any[] }) {
+  if (!dirigeants?.length) return <div>Aucun dirigeant.</div>
   return (
-    <div className="bg-white p-4 rounded shadow space-y-2">
-      {reps.map((r: any, i: number) => (
-        <div key={i} className="border-b pb-2">
-          <p className="font-medium">{r.prenom} {r.nom}</p>
-          <p className="text-sm">
-            {r.fonction} • Nommé(e) : {r.dateNomination} 
-            {r.dateCessation && ` • Cessé(e) : ${r.dateCessation}`}
-          </p>
-        </div>
-      ))}
-      {reps.length === 0 && <p>Aucun dirigeant connu.</p>}
+    <div className="bg-white p-4 rounded shadow">
+      <h3 className="font-semibold mb-2">Dirigeants</h3>
+      <ul>
+        {dirigeants.map((d, i) =>
+          d.type === 'personne morale' ? (
+            <li key={i}>
+              <b>Personne morale</b> : {d.denomination} (SIREN {d.siren})
+            </li>
+          ) : (
+            <li key={i}>
+              {d.qualite ? d.qualite + ' : ' : ''}
+              {d.nom} {d.prenoms && d.prenoms}
+              {d.dateNaissance && `, né(e) ${d.dateNaissance}`}
+            </li>
+          )
+        )}
+      </ul>
     </div>
   )
 }
