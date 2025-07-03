@@ -53,13 +53,21 @@ export default function Identity({ data }: { data: any }) {
           </tr>
           <tr>
             <td className="font-bold">Capital social</td>
-            <td>{data.capital_social?.toLocaleString()} €</td>
+            <td>
+              {typeof data.capital_social === 'number'
+                ? `${data.capital_social.toLocaleString()} €`
+                : data.capital_social || '–'}
+            </td>
           </tr>
           <tr>
             <td className="font-bold">TVA intracommunautaire</td>
             <td>
               {data.tva?.numero || '–'}{' '}
-              {data.tva?.valide === true ? '✅' : data.tva?.valide === false ? '❌' : ''}
+              {data.tva?.valide === true
+                ? '✅'
+                : data.tva?.valide === false
+                ? '❌'
+                : ''}
             </td>
           </tr>
           <tr>
