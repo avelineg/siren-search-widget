@@ -22,8 +22,8 @@ export default function CompanyHeader(props: Props) {
       </p>
       <div className="mt-2 grid grid-cols-2 gap-4 text-sm">
         <div>
-          TVA intracom: {props.tva?.numero} (
-          {props.tva?.valide ? 'OK' : props.tva?.valide === false ? 'KO' : '–'})
+          TVA intracommunautaire : {props.tva?.numero ?? '–'}{' '}
+          {props.tva?.valide === true ? '✅' : props.tva?.valide === false ? '❌' : ''}
         </div>
         <div>
           Code APE : {props.code_ape} – {props.libelle_ape}
