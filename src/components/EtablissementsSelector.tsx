@@ -1,10 +1,12 @@
 import React from "react";
+import { formatDateFR } from "../services/mapping";
 
 type Etablissement = {
   siret: string;
   displayName: string;
   adresse?: string;
   actif?: boolean;
+  date_fermeture?: string | null;
 };
 
 type Props = {
@@ -13,10 +15,6 @@ type Props = {
   onSelect: (siret: string) => void;
 };
 
-/**
- * Affiche la liste des établissements d'un SIREN,
- * permet de naviguer de l'un à l'autre (clic sur fiche SIRET)
- */
 const EtablissementsSelector: React.FC<Props> = ({
   etablissements,
   selected,
@@ -45,6 +43,11 @@ const EtablissementsSelector: React.FC<Props> = ({
               title={etab.actif ? "Établissement actif" : "Établissement fermé"}
             >
               {etab.actif ? "Actif" : "Fermé"}
+              {!etab.actif && etab.date_fermeture && (
+                <span className="ml-1 text-xs text-gray-500">
+                  (le {formatDateFR(etab.date_fermeture)})
+                </span>
+              )}
             </span>
           </span>
           {selected === etab.siret ? (
