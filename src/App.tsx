@@ -1,141 +1,112 @@
-import React, { useState, useEffect } from 'react'
-import { useEtablissementData } from './hooks/useEtablissementData'
-import { searchEtablissementsByName } from './services/mapping'
-import Tabs from './components/Tabs'
-import CompanyHeader from './components/CompanyHeader'
-import Identity from './components/Identity'
-import Directors from './components/Directors'
-import FinancialData from './components/FinancialData'
-import Announcements from './components/Announcements'
-import LabelsCertifications from './components/LabelsCertifications'
-import Various from './components/Various'
-import Etablissements from './components/Etablissements'
-import EtablissementsSelector from './components/EtablissementsSelector'
+import React, { useState } from "react";
+import { useEtablissementData } from "./hooks/useEtablissementData";
+import Tabs from "./components/Tabs";
+import CompanyHeader from "./components/CompanyHeader";
+import Identity from "./components/Identity";
+import EtablissementsSelector from "./components/EtablissementsSelector";
+import Dirigeants from "./components/Dirigeants";
+import Finances from "./components/Finances";
+import Annonces from "./components/Annonces";
+import Labels from "./components/Labels";
+import Divers from "./components/Divers";
 
-export default function App() {
-  const [input, setInput] = useState('')
-  const [selected, setSelected] = useState('')
-  const [suggestions, setSuggestions] = useState<
-    { siren: string; nom_complet: string; nom_raison_sociale?: string }[]
-  >([])
-  const [tab, setTab] = useState(0)
-  const [selectedEtabSiret, setSelectedEtabSiret] = useState('')
+function App() {
+  const [search, setSearch] = useState("");
+  const [selectedSiret, setSelectedSiret] = useState("");
+  const [activeTab, setActiveTab] = useState("Identité");
+  const { data, loading, error } = useEtablissementData(search, selectedSiret);
 
-  const { data, loading, error } = useEtablissementData(selected)
-
-  async function onSearch() {
-    setSuggestions([])
-    setSelected('')
-    setSelectedEtabSiret('')
-    if (/^\d{9,14}$/.test(input)) {
-      setSelected(input)
-    } else if (input.trim()) {
-      try {
-        const res = await searchEtablissementsByName(input.trim(), 1, 5)
-        setSuggestions(res)
-      } catch (e) {
-        console.error(e)
-      }
-    }
-  }
-
-  // Quand une suggestion est cliquée, on recherche par SIREN
-  function handleSuggestion(siren: string) {
-    setSelected(siren)
-    setSuggestions([])
-    setSelectedEtabSiret('')
-  }
-
-  // Établissements du résultat (si dispo)
-  const etablissements = data?.etablissements || []
-  const selectedEtab =
-    etablissements.find(e => e.siret === selectedEtabSiret) ||
-    etablissements[0] ||
-    {}
-
-  // Si aucun établissement n'est sélectionné, sélectionner le premier automatiquement
-  useEffect(() => {
-    if (etablissements.length && !selectedEtabSiret) {
-      setSelectedEtabSiret(etablissements[0].siret)
-    }
-  }, [etablissements, selectedEtabSiret])
+  const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    setSelectedSiret("");
+    setActiveTab("Identité");
+  };
 
   return (
-    <div className="min-h-screen bg-gray-50 text-gray-800">
-      <header className="bg-white shadow p-4 flex items-center">
-        <h1 className="text-2xl font-semibold flex-1">Annuaire Widget</h1>
+    <div className="max-w-5xl mx-auto mt-5 p-4">
+      <h1 className="text-2xl font-bold mb-6">Annuaire Widget</h1>
+      <form
+        className="flex items-center gap-3 mb-7"
+        onSubmit={handleSearch}
+        autoComplete="off"
+      >
         <input
           type="text"
-          placeholder="SIREN/SIRET ou raison sociale"
-          value={input}
-          onChange={e => setInput(e.target.value)}
-          className="border px-2 py-1 rounded mr-2 flex-1"
+          placeholder="Recherche par SIREN/SIRET ou raison sociale"
+          className="border p-2 rounded flex-1"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
         />
-        <button onClick={onSearch} className="bg-blue-600 text-white px-4 py-1 rounded">
+        <button
+          type="submit"
+          className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+        >
           Rechercher
         </button>
-      </header>
-      <main className="p-4">
-        {suggestions.length > 0 && (
-          <ul className="bg-white border rounded p-2 space-y-1 mb-4">
-            {suggestions.map(s => (
-              <li
-                key={s.siren}
-                onClick={() => handleSuggestion(s.siren)}
-                className="cursor-pointer hover:bg-gray-100 p-2"
-              >
-                {s.nom_raison_sociale || s.nom_complet} ({s.siren})
-              </li>
-            ))}
-          </ul>
-        )}
-        {loading && <p>Chargement…</p>}
-        {error && <p className="text-red-600">{error}</p>}
-        {data && (
-          <>
-            <CompanyHeader
-              denomination={data.denomination}
-              siren={data.siren}
-              siret={selectedEtab?.siret || data.siret}
-              tva={data.tva}
-              code_ape={data.code_ape}
-              capital_social={data.capital_social}
+      </form>
+
+      {error && (
+        <div className="text-red-600 mb-4">Erreur : {error.toString()}</div>
+      )}
+      {loading && <div className="mb-4">Chargement...</div>}
+
+      {data && (
+        <div>
+          <CompanyHeader data={data} />
+
+          {/* Sélecteur d'établissements si plusieurs */}
+          {data.etablissements && data.etablissements.length > 1 && (
+            <EtablissementsSelector
+              etablissements={data.etablissements}
+              selected={selectedSiret}
+              onSelect={setSelectedSiret}
             />
-            {etablissements.length > 1 && (
+          )}
+
+          {/* Tabs */}
+          <Tabs
+            tabs={[
+              "Identité",
+              "Établissements",
+              "Dirigeants",
+              "Finances",
+              "Annonces",
+              "Labels",
+              "Divers",
+            ]}
+            activeTab={activeTab}
+            onTabClick={setActiveTab}
+          />
+
+          <div className="mt-4">
+            {activeTab === "Identité" && <Identity data={data} />}
+            {activeTab === "Établissements" && (
               <EtablissementsSelector
-                etablissements={etablissements.map(e => ({
-                  siret: e.siret,
-                  adresse: e.adresse
-                }))}
-                selected={selectedEtabSiret}
-                onSelect={setSelectedEtabSiret}
+                etablissements={data.etablissements}
+                selected={selectedSiret}
+                onSelect={setSelectedSiret}
               />
             )}
-            <Tabs
-              labels={[
-                'Identité',
-                'Établissements',
-                'Dirigeants',
-                'Finances',
-                'Annonces',
-                'Labels',
-                'Divers'
-              ]}
-              current={tab}
-              onChange={setTab}
-            />
-            <section className="mt-6 space-y-6">
-              {tab === 0 && <Identity data={{ ...data, ...selectedEtab }} />}
-              {tab === 1 && <Etablissements etablissements={etablissements} />}
-              {tab === 2 && <Directors dirigeants={data.dirigeants} />}
-              {tab === 3 && <FinancialData data={data} />}
-              {tab === 4 && <Announcements data={data} />}
-              {tab === 5 && <LabelsCertifications data={data} />}
-              {tab === 6 && <Various data={data} />}
-            </section>
-          </>
-        )}
-      </main>
+            {activeTab === "Dirigeants" && <Dirigeants dirigeants={data.dirigeants} />}
+            {activeTab === "Finances" && <Finances finances={data.finances} />}
+            {activeTab === "Annonces" && <Annonces annonces={data.annonces} />}
+            {activeTab === "Labels" && <Labels labels={data.labels} />}
+            {activeTab === "Divers" && <Divers data={data} />}
+          </div>
+
+          {/* Affichage du JSON brut INPI pour debug */}
+          {data.inpiRaw && (
+            <details className="mt-10 bg-gray-100 p-4 rounded text-xs overflow-auto" style={{ maxHeight: 400 }}>
+              <summary className="font-semibold cursor-pointer">
+                Détail brut de la requête INPI (JSON)
+              </summary>
+              <pre>{JSON.stringify(data.inpiRaw, null, 2)}</pre>
+            </details>
+          )}
+        </div>
+      )}
     </div>
-  )
+  );
 }
+
+export default App;
