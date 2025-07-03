@@ -41,6 +41,14 @@ function formatAdresseSIRENE(adresseObj: any): string {
   ].filter(Boolean).join(' ');
 }
 
+export function formatDateFR(date: string | undefined | null): string | null {
+  if (!date) return null;
+  // Format YYYY-MM-DD en DD/MM/YYYY
+  const [y, m, d] = date.split("-");
+  if (!y || !m || !d) return date;
+  return `${d}/${m}/${y}`;
+}
+
 /**
  * Recherche par nom de société (affiche aussi le statut d'activité).
  */
@@ -62,7 +70,8 @@ export async function searchEtablissementsByName(name: string) {
           r.name ||
           r.nom ||
           "-",
-        actif: (r.etat_administratif === "A" || r.etatAdministratifUniteLegale === "A" || r.etatAdministratifEtablissement === "A" || r.etat_administratif_unite_legale === "A")
+        actif: (r.etat_administratif === "A" || r.etatAdministratifUniteLegale === "A" || r.etatAdministratifEtablissement === "A" || r.etat_administratif_unite_legale === "A"),
+        date_fermeture: r.dateFermetureEtablissement || r.date_fermeture || null,
       }))
     : [];
 }
@@ -84,7 +93,6 @@ export async function fetchEtablissementBySiren(siren: string) {
   const rechercheData = rechercheDataRaw || {};
   const sireneUL = sireneULRaw || {};
 
-  // Liste des établissements (pour navigation)
   let etablissements = Array.isArray(etablissementsRaw)
     ? etablissementsRaw.map((etab: any) => ({
         ...etab,
@@ -96,7 +104,8 @@ export async function fetchEtablissementBySiren(siren: string) {
           etab.nom_commercial ||
           "-",
         adresse: formatAdresseSIRENE(etab.adresseEtablissement),
-        actif: etab.etatAdministratifEtablissement === "A"
+        actif: etab.etatAdministratifEtablissement === "A",
+        date_fermeture: etab.dateFermetureEtablissement || etab.date_fermeture || null
       }))
     : [];
 
@@ -153,15 +162,17 @@ export async function fetchEtablissementBySiren(siren: string) {
   // Adresse = celle du siège social (établissement ayant siege === true)
   let adresse = "-";
   let actif = false;
+  let date_fermeture = null;
+  let siege = null;
   if (Array.isArray(etablissementsRaw)) {
-    const siege = etablissementsRaw.find((etab: any) => etab.siege);
+    siege = etablissementsRaw.find((etab: any) => etab.siege);
     if (siege) {
       adresse = formatAdresseSIRENE(siege.adresseEtablissement);
       actif = siege.etatAdministratifEtablissement === "A";
+      date_fermeture = siege.dateFermetureEtablissement || siege.date_fermeture || null;
     }
   }
 
-  // Effectifs
   const tranche_effectifs_code =
     getInpi("formality.content.personneMorale.identite.entreprise.trancheEffectifs", inpiData) ||
     inpiData.workforceLabel ||
@@ -258,6 +269,7 @@ export async function fetchEtablissementBySiren(siren: string) {
     site_web,
     email,
     actif,
+    date_fermeture,
     inpiRaw: inpiDataRaw
   };
 }
@@ -291,7 +303,8 @@ export async function fetchEtablissementBySiret(siret: string) {
           etab.nom_commercial ||
           "-",
         adresse: formatAdresseSIRENE(etab.adresseEtablissement),
-        actif: etab.etatAdministratifEtablissement === "A"
+        actif: etab.etatAdministratifEtablissement === "A",
+        date_fermeture: etab.dateFermetureEtablissement || etab.date_fermeture || null
       }))
     : [];
 
@@ -406,6 +419,7 @@ export async function fetchEtablissementBySiret(siret: string) {
     "-";
 
   const actif = sireneEtab.etatAdministratifEtablissement === "A";
+  const date_fermeture = sireneEtab.dateFermetureEtablissement || sireneEtab.date_fermeture || null;
 
   return {
     denomination,
@@ -428,6 +442,7 @@ export async function fetchEtablissementBySiret(siret: string) {
     site_web,
     email,
     actif,
+    date_fermeture,
     inpiRaw: inpiDataRaw
   };
 }
