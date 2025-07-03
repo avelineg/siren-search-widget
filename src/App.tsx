@@ -8,6 +8,7 @@ import Dirigeants from "./components/Dirigeants";
 import Finances from "./components/Finances";
 import Labels from "./components/Labels";
 import Divers from "./components/Divers";
+import { formatDateFR } from "./services/mapping";
 
 function App() {
   const [search, setSearch] = useState("");
@@ -80,6 +81,11 @@ function App() {
                   title={r.actif ? "Établissement actif" : "Établissement fermé"}
                 >
                   {r.actif ? "Actif" : "Fermé"}
+                  {!r.actif && r.date_fermeture && (
+                    <span className="ml-1 text-xs text-gray-500">
+                      (le {formatDateFR(r.date_fermeture)})
+                    </span>
+                  )}
                 </span>
                 <button
                   className="ml-4 bg-blue-600 text-white px-2 py-1 rounded hover:bg-blue-700 text-sm"
@@ -115,6 +121,11 @@ function App() {
                               }
                             >
                               {etab.actif ? "Actif" : "Fermé"}
+                              {!etab.actif && etab.date_fermeture && (
+                                <span className="ml-1 text-xs text-gray-500">
+                                  (le {formatDateFR(etab.date_fermeture)})
+                                </span>
+                              )}
                             </span>
                           </span>
                           <button
@@ -178,6 +189,11 @@ function App() {
               title={data.actif ? "Établissement actif" : "Établissement fermé"}
             >
               {data.actif ? "Actif" : "Fermé"}
+              {!data.actif && data.date_fermeture && (
+                <span className="ml-1 text-xs text-gray-500">
+                  (le {formatDateFR(data.date_fermeture)})
+                </span>
+              )}
             </span>
           </div>
 
