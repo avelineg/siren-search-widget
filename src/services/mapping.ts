@@ -49,8 +49,28 @@ export function formatDateFR(date: string | undefined | null): string | null {
 }
 
 /**
- * Recherche par nom de société (affiche aussi le statut d'activité).
- * Désormais un établissement est "fermé" uniquement si une date de fermeture existe !
+ * Détermine le statut ("actif" / "ferme") et la date de fermeture éventuelle pour un établissement.
+ */
+function etablissementStatut(etab: any) {
+  const date_fermeture = etab.dateFermetureEtablissement || etab.date_fermeture || null;
+  if (date_fermeture) {
+    return { statut: "ferme", date_fermeture };
+  }
+  // Etat administratif ("A" = Actif, sinon fermé)
+  const etat =
+    etab.etatAdministratifEtablissement ||
+    etab.etat_administratif ||
+    etab.etatAdministratifUniteLegale ||
+    etab.etat_administratif_unite_legale ||
+    null;
+  if (etat && etat !== "A") {
+    return { statut: "ferme", date_fermeture: null };
+  }
+  return { statut: "actif", date_fermeture: null };
+}
+
+/**
+ * Recherche par nom de société (affiche aussi le statut d'activité + date fermeture si connue).
  */
 export async function searchEtablissementsByName(name: string) {
   const results = await recherche
@@ -62,7 +82,7 @@ export async function searchEtablissementsByName(name: string) {
 
   return Array.isArray(results)
     ? results.map(r => {
-        const date_fermeture = r.dateFermetureEtablissement || r.date_fermeture || null;
+        const { statut, date_fermeture } = etablissementStatut(r);
         return {
           ...r,
           displayName:
@@ -72,7 +92,7 @@ export async function searchEtablissementsByName(name: string) {
             r.name ||
             r.nom ||
             "-",
-          ferme: !!date_fermeture,
+          statut, // "actif" ou "ferme"
           date_fermeture,
         }
       })
@@ -98,7 +118,7 @@ export async function fetchEtablissementBySiren(siren: string) {
 
   let etablissements = Array.isArray(etablissementsRaw)
     ? etablissementsRaw.map((etab: any) => {
-        const date_fermeture = etab.dateFermetureEtablissement || etab.date_fermeture || null;
+        const { statut, date_fermeture } = etablissementStatut(etab);
         return {
           ...etab,
           displayName:
@@ -109,7 +129,7 @@ export async function fetchEtablissementBySiren(siren: string) {
             etab.nom_commercial ||
             "-",
           adresse: formatAdresseSIRENE(etab.adresseEtablissement),
-          ferme: !!date_fermeture,
+          statut,
           date_fermeture,
         }
       })
@@ -125,28 +145,25 @@ export async function fetchEtablissementBySiren(siren: string) {
     sireneUL.denominationUniteLegale ||
     "-";
 
-  // Adresse, fermé et date_fermeture = celles du siège (si trouvé)
+  // Adresse, statut et date_fermeture = celles du siège (si trouvé)
   let adresse = "-";
-  let ferme = false;
+  let statut = "actif";
   let date_fermeture = null;
   let siege = null;
   if (Array.isArray(etablissementsRaw)) {
     siege = etablissementsRaw.find((etab: any) => etab.siege);
     if (siege) {
       adresse = formatAdresseSIRENE(siege.adresseEtablissement);
-      date_fermeture = siege.dateFermetureEtablissement || siege.date_fermeture || null;
-      ferme = !!date_fermeture;
+      ({ statut, date_fermeture } = etablissementStatut(siege));
     }
   }
-
-  // ... autres mappings inchangés ...
 
   return {
     denomination,
     siren,
     adresse,
     etablissements,
-    ferme,
+    statut,
     date_fermeture,
     inpiRaw: inpiDataRaw
     // ... autres propriétés comme avant ...
@@ -173,7 +190,7 @@ export async function fetchEtablissementBySiret(siret: string) {
 
   let etablissements = Array.isArray(etablissementsRaw)
     ? etablissementsRaw.map((etab: any) => {
-        const date_fermeture = etab.dateFermetureEtablissement || etab.date_fermeture || null;
+        const { statut, date_fermeture } = etablissementStatut(etab);
         return {
           ...etab,
           displayName:
@@ -184,14 +201,13 @@ export async function fetchEtablissementBySiret(siret: string) {
             etab.nom_commercial ||
             "-",
           adresse: formatAdresseSIRENE(etab.adresseEtablissement),
-          ferme: !!date_fermeture,
+          statut,
           date_fermeture,
         }
       })
     : [];
 
-  const date_fermeture = sireneEtab.dateFermetureEtablissement || sireneEtab.date_fermeture || null;
-  const ferme = !!date_fermeture;
+  const { statut, date_fermeture } = etablissementStatut(sireneEtab);
 
   return {
     denomination:
@@ -204,7 +220,7 @@ export async function fetchEtablissementBySiret(siret: string) {
     siret,
     adresse: formatAdresseSIRENE(sireneEtab?.adresseEtablissement) || "-",
     etablissements,
-    ferme,
+    statut,
     date_fermeture,
     inpiRaw: inpiDataRaw
     // ... autres propriétés comme avant ...
