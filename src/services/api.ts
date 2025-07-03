@@ -4,10 +4,13 @@ import { fetchEtablissementByCode } from './mapping'
 // Client Sirene
 export const sirene = axios.create({
   baseURL: 'https://api.insee.fr/api-sirene/3.11',
-  headers: { 'X-INSEE-Api-Key-Integration': import.meta.env.VITE_SIRENE_API_KEY }
+  headers: {
+    'X-INSEE-Api-Key-Integration': import.meta.env.VITE_SIRENE_API_KEY,
+    Accept: 'application/json'
+  }
 })
 
-// Client INPI (entreprise & dirigeants)
+// Client INPI
 export const inpiEntreprise = axios.create({
   baseURL: `${import.meta.env.VITE_API_URL}/inpi/entreprise`,
   headers: { Accept: 'application/json' }
@@ -19,27 +22,25 @@ export const inpiDirigeants = axios.create({
 
 // Client VIES
 export const vies = axios.create({
-  baseURL: import.meta.env.VITE_VIES_API_URL
+  baseURL: import.meta.env.VITE_VIES_API_URL,
+  headers: { Accept: 'application/json' }
 })
 
-// Client Recherche d'entreprises (nom / adresse)
+// Client Recherche d'entreprises (nom)
 export const recherche = axios.create({
-  baseURL: import.meta.env.VITE_RECHERCHE_URL,
+  baseURL: 'https://recherche-entreprises.api.gouv.fr',
   headers: { Accept: 'application/json' }
 })
 
 /**
- * Recherche les entreprises par raison sociale ou nom via l'API Recherche.
- * @param name chaîne à rechercher
- * @param page numéro de page (défaut 1)
- * @param perPage résultats par page (défaut 5)
- * @returns tableau brut des résultats
+ * Recherche entreprises par nom / raison sociale
  */
 export async function searchCompaniesByName(
   name: string,
   page = 1,
   perPage = 5
 ): Promise<any[]> {
+  // appel GET https://recherche-entreprises.api.gouv.fr/search?q=xxx&page=1&per_page=5
   const { data } = await recherche.get<{ results: any[] }>('/search', {
     params: { q: name, page, per_page: perPage }
   })
@@ -47,9 +48,8 @@ export async function searchCompaniesByName(
 }
 
 /**
- * Wrapper pour lookup par code (SIREN ou SIRET).
- * @param code 9 ou 14 chiffres
+ * Wrapper lookup (SIREN / SIRET)
  */
-export async function fetchEtablissementData(code: string) {
+export function fetchEtablissementData(code: string) {
   return fetchEtablissementByCode(code)
 }
