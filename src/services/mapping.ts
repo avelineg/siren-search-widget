@@ -8,15 +8,15 @@ import {
 
 export interface UnifiedEtablissement {
   denomination: string
-  formeJuridique: string
+  forme_juridique: string
   siren: string
   siret: string
   tva: { numero: string; valide: boolean }
-  codeApe: string
-  libelleApe?: string
-  trancheEffectifs: string
-  capitalSocial?: number
-  dateCreation: string
+  code_ape: string
+  libelle_ape?: string
+  tranche_effectifs: string
+  capital_social: number
+  date_creation: string
   adresse: string
   geo?: [number, number]
   dirigeants: Array<{
@@ -32,7 +32,7 @@ export interface UnifiedEtablissement {
   divers: string[]
 }
 
-// Réexport recherche brut par nom
+// Réexport brut recherche par nom
 export { searchCompaniesByName }
 
 /**
@@ -52,7 +52,7 @@ export async function searchEtablissementsByName(
 }
 
 /**
- * Lookup par SIREN (9) ou SIRET (14) + enrichissements Sirene, VIES, INPI et Recherche
+ * Lookup SIREN(9)/SIRET(14) + Sirene / VIES / INPI / Recherche
  */
 export async function fetchEtablissementByCode(
   code: string
@@ -60,12 +60,11 @@ export async function fetchEtablissementByCode(
   let siren: string
   let siret: string
 
-  // 1) Détection et extraction du NIC siège si besoin
+  // 1) Extraction du NIC siège
   if (/^\d{9}$/.test(code)) {
     siren = code
     const { data: pl } = await sirene.get<{ uniteLegale: any }>(`/siren/${siren}`)
     const periodes = pl.uniteLegale.periodesUniteLegale || []
-    // on prend la période en cours (dateFin === null) ou la plus récente
     let current = periodes.find((p: any) => p.dateFin === null)
     if (!current && periodes.length) {
       current = periodes
@@ -81,13 +80,13 @@ export async function fetchEtablissementByCode(
     throw new Error('Le code doit être un SIREN (9 chiffres) ou un SIRET (14 chiffres)')
   }
 
-  // 2) Données Sirene
+  // 2) Sirene données unité et établissement
   const { data: dEtab } = await sirene.get<{ etablissement: any }>(`/siret/${siret}`)
   const etab = dEtab.etablissement
   const { data: dUL } = await sirene.get<{ uniteLegale: any }>(`/siren/${siren}`)
   const ul = dUL.uniteLegale
 
-  // 3) Vérif. TVA via VIES
+  // 3) TVA VIES
   const tvaNum =
     etab.numeroTvaIntracommunautaire ||
     ul.numeroTvaIntracommunautaireUniteLegale ||
@@ -104,15 +103,20 @@ export async function fetchEtablissementByCode(
     }
   }
 
-  // 4) Comptes annuels INPI
+  // 4) INPI comptes annuels (montantCapital dans content)
   let inpiEnt: any = {}
   try {
     inpiEnt = (await inpiEntreprise.get(`/${siren}`)).data
   } catch {
     console.warn('Échec récupération INPI comptes annuels')
   }
+  const content = inpiEnt.content || {}
+  const montantCapital =
+    typeof content.montantCapital === 'number'
+      ? content.montantCapital
+      : ul.capitalSocial || 0
 
-  // 5) Dirigeants via API Recherche
+  // 5) Dirigeants via Recherche-Entreprises API
   let rawDir: any[] = []
   try {
     const { data: searchRes } = await recherche.get<{ results: any[] }>('/search', {
@@ -124,7 +128,7 @@ export async function fetchEtablissementByCode(
     console.warn('Échec récupération dirigeants via Recherche API')
   }
 
-  // 6) Mapping unifié
+  // 6) Mapping final
   const dirigeants = rawDir.map(d => ({
     nom: d.nom,
     prenoms: d.prenoms,
@@ -153,29 +157,26 @@ export async function fetchEtablissementByCode(
     : []
 
   return {
-    denomination:
-      ul.denominationUniteLegale || etab.uniteLegale?.denomination || '',
-    formeJuridique:
+    denomination: ul.denominationUniteLegale || etab.uniteLegale?.denomination || '',
+    forme_juridique:
       ul.libelleCategorieJuridiqueUniteLegale ||
       ul.categorieJuridiqueUniteLegale ||
       '',
     siren,
     siret,
     tva: { numero: tvaNum, valide: tvaValide },
-    codeApe:
+    code_ape:
       ul.activitePrincipaleUniteLegale ||
       etab.activitePrincipaleEtablissement ||
       '',
-    libelleApe: ul.libelleActivitePrincipaleUniteLegale,
-    trancheEffectifs:
+    libelle_ape: ul.libelleActivitePrincipaleUniteLegale,
+    tranche_effectifs:
       etab.trancheEffectifsEtablissement ||
       ul.trancheEffectifsUniteLegale ||
       '',
-    capitalSocial: ul.capitalSocial,
-    dateCreation:
-      ul.dateCreationUniteLegale ||
-      etab.dateCreationEtablissement ||
-      '',
+    capital_social: montantCapital,
+    date_creation:
+      ul.dateCreationUniteLegale || etab.dateCreationEtablissement || '',
     adresse: [
       etab.adresseEtablissement.numeroVoieEtablissement,
       etab.adresseEtablissement.typeVoieEtablissement,
