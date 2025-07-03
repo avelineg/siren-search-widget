@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useEtablissementData } from "./hooks/useEtablissementData";
 import Tabs from "./components/Tabs";
 import CompanyHeader from "./components/CompanyHeader";
@@ -26,6 +26,13 @@ function App() {
   const [tabIndex, setTabIndex] = useState(0);
 
   const { data, loading, error, results } = useEtablissementData(search, selectedCode);
+
+  useEffect(() => {
+    console.log("[App] data:", data);
+    console.log("[App] results:", results);
+    console.log("[App] loading:", loading);
+    console.log("[App] error:", error);
+  }, [data, results, loading, error]);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -68,7 +75,13 @@ function App() {
             {results.map((r, idx) => (
               <li key={idx} className="mb-2">
                 <span>
-                  {r.denomination || r.nom_raison_sociale} — SIREN: {r.siren}
+                  {/* Dénomination prioritaire pour tous les cas */}
+                  {r.denomination ||
+                    r.nom_raison_sociale ||
+                    r.name ||
+                    r.raison_sociale ||
+                    "(Sans nom)"}{" "}
+                  — SIREN: {r.siren}
                 </span>
                 <button
                   className="ml-4 bg-blue-600 text-white px-2 py-1 rounded hover:bg-blue-700 text-sm"
@@ -76,6 +89,30 @@ function App() {
                 >
                   Voir la fiche
                 </button>
+                {/* Si r.matching_etablissements ou r.etablissements sont disponibles, on peut proposer la sélection */}
+                {Array.isArray(r.matching_etablissements) && r.matching_etablissements.length > 0 && (
+                  <ul className="ml-8 mt-1">
+                    {r.matching_etablissements.map((etab, eidx) => (
+                      <li key={eidx}>
+                        <span>
+                          {etab.denomination ||
+                            etab.nom_raison_sociale ||
+                            etab.name ||
+                            etab.raison_sociale ||
+                            etab.nom_commercial ||
+                            "(Établissement sans nom)"}{" "}
+                          — SIRET: {etab.siret}
+                        </span>
+                        <button
+                          className="ml-2 bg-green-600 text-white px-2 py-1 rounded hover:bg-green-700 text-xs"
+                          onClick={() => setSelectedCode(etab.siret)}
+                        >
+                          Voir établissement
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </li>
             ))}
           </ul>
