@@ -27,7 +27,7 @@ export async function fetchEtablissementByCode(code: string) {
   const sireneEtab = sireneEtabRaw || {}
   const sireneUL = sireneULRaw || {}
 
-  // Recherche - Raison sociale & Dirigeants
+  // Recherche entreprise (raison sociale & dirigeants)
   let raison_sociale = '-'
   let dirigeants = []
   if (rechercheData?.results?.length) {
@@ -58,11 +58,11 @@ export async function fetchEtablissementByCode(code: string) {
 
   // Capital social - INPI
   let capital_social =
-    inpiData.shareCapital !== undefined
-      ? inpiData.shareCapital
-      : (sireneUL.capitalSocial ||
-        (inpiData.financialStatements?.[0]?.shareCapital) ||
-        "-");
+    inpiData.content?.description?.montantCapital ??
+    inpiData.shareCapital ??
+    sireneUL.capitalSocial ??
+    (inpiData.financialStatements?.[0]?.shareCapital) ??
+    "-";
 
   // Calcul du numéro TVA intracom
   const tvaNum = tvaFRFromSiren(siren)
@@ -146,6 +146,7 @@ export async function fetchEtablissementByCode(code: string) {
     capital_social: capital_social !== undefined ? capital_social : "-",
 
     date_creation:
+      inpiData.content?.dateCreation ||
       inpiData.creationDate ||
       (rechercheData?.results?.[0]?.date_creation) ||
       sireneUL.dateCreationUniteLegale ||
@@ -153,10 +154,19 @@ export async function fetchEtablissementByCode(code: string) {
       "-",
 
     adresse:
-      inpiData.address ||
-      (rechercheData?.results?.[0]?.adresse) ||
-      sireneEtab.adresse ||
-      "-",
+      inpiData.content?.adresseEntreprise?.numVoie
+        ? [
+            inpiData.content.adresseEntreprise.numVoie,
+            inpiData.content.adresseEntreprise.voie,
+            inpiData.content.adresseEntreprise.codePostal,
+            inpiData.content.adresseEntreprise.commune,
+          ].filter(Boolean).join(' ')
+        : (
+            inpiData.address ||
+            (rechercheData?.results?.[0]?.adresse) ||
+            sireneEtab.adresse ||
+            "-"
+          ),
 
     etablissements,
     dirigeants,
@@ -184,5 +194,7 @@ export async function fetchEtablissementByCode(code: string) {
       inpiData.email ||
       (rechercheData?.results?.[0]?.email) ||
       "-",
+
+    inpiRaw: inpiDataRaw // Pour affichage du JSON brut sous le widget
   };
 }
