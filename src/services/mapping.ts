@@ -1,91 +1,84 @@
 import { getEntrepriseBySiren, searchEntreprisesByRaisonSociale } from './inpiBackend'
-import { sirene, vies, recherche } from './api' // à adapter selon ton projet
-
-export async function searchEtablissementsByName(name: string) {
-  // Recherche multi-source, ici INPI + SIRENE si besoin
-  const inpi = await searchEntreprisesByRaisonSociale(name);
-  // Ajoute ici la logique pour fusionner les résultats INPI + SIRENE si besoin
-  return inpi;
-}
+import { sirene, vies, recherche } from './api'
 
 export async function fetchEtablissementByCode(code: string) {
   const siren = code.length === 9 ? code : code.slice(0, 9);
+  const siret = code.length === 14 ? code : null;
 
-  // 1. Données SIRENE
-  const [{ data: dEtab }, { data: dUL }] = await Promise.all([
-    sirene.get<{ etablissement: any }>(`/siret/${code.length === 14 ? code : ''}`),
-    sirene.get<{ uniteLegale: any }>(`/siren/${siren}`)
+  // Appels en parallèle
+  const [
+    inpiData,
+    rechercheData,
+    sireneEtab,
+    sireneUL
+  ] = await Promise.all([
+    getEntrepriseBySiren(siren).catch(() => ({})),
+    recherche.get('/search', { params: { q: siren, page: 1, per_page: 1 } }).then(r => r.data).catch(() => ({})),
+    siret ? sirene.get(`/siret/${siret}`).then(r => r.data.etablissement).catch(() => ({})) : {},
+    sirene.get(`/siren/${siren}`).then(r => r.data.uniteLegale).catch(() => ({}))
   ]);
-  const etab = dEtab?.etablissement || {};
-  const ul = dUL?.uniteLegale || {};
 
-  // 2. Données INPI (backend)
-  let inpiData = {};
-  try {
-    inpiData = await getEntrepriseBySiren(siren);
-  } catch (e) {
-    console.warn('Erreur INPI', e);
-  }
-
-  // 3. Vérification TVA via VIES
-  let tvaNum = etab.numeroTvaIntracommunautaire || ul.numeroTvaIntracommunautaireUniteLegale || '';
-  let tvaValide = false;
-  if (tvaNum) {
-    try {
-      const { data: dv } = await vies.get<{ valid: boolean }>('/check-vat', {
-        params: { countryCode: 'FR', vatNumber: tvaNum }
-      });
-      tvaValide = dv.valid;
-    } catch {
-      tvaValide = false;
-    }
-  }
-
-  // 4. Recherche API pour dirigeants, labels, établissements enrichis, etc.
-  let etablissements: any[] = [];
-  let dirigeants: any[] = [];
-  try {
-    const { data: searchRes } = await recherche.get<{ results: any[] }>('/search', {
-      params: { q: siren, page: 1, per_page: 1 }
-    });
-    const match = searchRes.results.find(r => r.siren === siren);
+  // Recherche complémentaire pour les dirigeants/établissements enrichis
+  let etablissements = [];
+  let dirigeants = [];
+  if (rechercheData?.results?.length) {
+    const match = rechercheData.results.find(r => r.siren === siren);
     if (match) {
       etablissements = (match.matching_etablissements || []).concat(match.siege ? [match.siege] : []);
       dirigeants = match.dirigeants || [];
     }
-  } catch {
-    // Optionnel
   }
 
-  // 5. Fusion des données
-  // Prends priorité INPI > Recherche > SIRENE pour chaque champ
-  const finances = inpiData.financialStatements || [];
-  let capital_social = inpiData.shareCapital || ul.capitalSocial || 0;
-  if ((!capital_social || capital_social === 0) && finances.length) {
-    capital_social = finances[0].capital_social;
+  // TVA via VIES
+  let tvaNum = inpiData.vatNumber || sireneEtab.numeroTvaIntracommunautaire || sireneUL.numeroTvaIntracommunautaireUniteLegale || '';
+  let tvaValide = false;
+  if (tvaNum) {
+    try {
+      const { data: dv } = await vies.get('/check-vat', { params: { countryCode: 'FR', vatNumber: tvaNum } });
+      tvaValide = dv.valid;
+    } catch {/* ignore */}
   }
 
+  // Données financières (fusion INPI + fallback SIRENE)
+  const finances = inpiData.financialStatements?.length
+    ? inpiData.financialStatements.map((f: any) => ({
+        exercice: f.fiscalYear,
+        ca: f.turnover,
+        resultat_net: f.netResult,
+        effectif: f.workforce,
+        capital_social: f.shareCapital
+      }))
+    : [];
+
+  // Capital social (priorité INPI, sinon SIRENE, sinon Recherche)
+  let capital_social =
+    inpiData.shareCapital ||
+    sireneUL.capitalSocial ||
+    (finances.length ? finances[0].capital_social : undefined) ||
+    0;
+
+  // Mapping robuste pour chaque champ
   return {
-    denomination: inpiData.companyName || ul.denominationUniteLegale || '',
-    forme_juridique: inpiData.legalForm || ul.libelleCategorieJuridiqueUniteLegale || '',
-    categorie_juridique: inpiData.legalCategory || ul.categorieJuridiqueUniteLegale || '',
-    sigle: inpiData.acronym || ul.sigleUniteLegale || '',
-    nom_commercial: inpiData.tradeName || ul.nomCommercialUniteLegale || '',
+    denomination: inpiData.companyName || sireneUL.denominationUniteLegale || '',
+    forme_juridique: inpiData.legalForm || sireneUL.libelleCategorieJuridiqueUniteLegale || '',
+    categorie_juridique: inpiData.legalCategory || sireneUL.categorieJuridiqueUniteLegale || '',
+    sigle: inpiData.acronym || sireneUL.sigleUniteLegale || '',
+    nom_commercial: inpiData.tradeName || sireneUL.nomCommercialUniteLegale || '',
     siren,
-    siret: inpiData.siret || etab.siret,
+    siret: siret || inpiData.siret || (etablissements[0]?.siret),
     tva: { numero: tvaNum, valide: tvaValide },
-    code_ape: inpiData.ape || ul.activitePrincipaleUniteLegale || etab.activitePrincipaleEtablissement || '',
-    libelle_ape: inpiData.apeLabel || ul.libelleActivitePrincipaleUniteLegale || '',
-    tranche_effectifs: inpiData.workforceLabel || ul.trancheEffectifsUniteLegale || '',
-    tranche_effectif_salarie: inpiData.workforceRange || ul.trancheEffectifsUniteLegale || '',
+    code_ape: inpiData.ape || sireneUL.activitePrincipaleUniteLegale || sireneEtab.activitePrincipaleEtablissement || '',
+    libelle_ape: inpiData.apeLabel || sireneUL.libelleActivitePrincipaleUniteLegale || '',
+    tranche_effectifs: inpiData.workforceLabel || sireneUL.trancheEffectifsUniteLegale || '',
+    tranche_effectif_salarie: inpiData.workforceRange || sireneUL.trancheEffectifsUniteLegale || '',
     capital_social,
-    date_creation: inpiData.creationDate || ul.dateCreationUniteLegale || etab.dateCreationEtablissement || '',
-    adresse: inpiData.address || etab.adresse || '',
+    date_creation: inpiData.creationDate || sireneUL.dateCreationUniteLegale || sireneEtab.dateCreationEtablissement || '',
+    adresse: inpiData.address || sireneEtab.adresse || '',
     etablissements: etablissements.length ? etablissements : (inpiData.establishments || []),
     dirigeants: dirigeants.length ? dirigeants : (inpiData.representatives || []),
     finances,
-    statut_diffusion: inpiData.publicationStatus || ul.statutDiffusionUniteLegale || '',
-    caractere_employeur: inpiData.employerCharacteristic || ul.caractereEmployeurUniteLegale || '',
+    statut_diffusion: inpiData.publicationStatus || sireneUL.statutDiffusionUniteLegale || '',
+    caractere_employeur: inpiData.employerCharacteristic || sireneUL.caractereEmployeurUniteLegale || '',
     site_web: inpiData.website,
     email: inpiData.email
   };
