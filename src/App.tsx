@@ -72,14 +72,14 @@ function App() {
                 <span
                   className="ml-2 px-2 py-1 rounded text-xs"
                   style={{
-                    background: r.ferme ? "#fde8ea" : "#e6faea",
-                    color: r.ferme ? "#b71c1c" : "#208b42",
+                    background: r.statut === "ferme" ? "#fde8ea" : "#e6faea",
+                    color: r.statut === "ferme" ? "#b71c1c" : "#208b42",
                     fontWeight: 600,
                   }}
-                  title={r.ferme ? "Établissement fermé" : "Établissement actif"}
+                  title={r.statut === "ferme" ? "Établissement fermé" : "Établissement actif"}
                 >
-                  {r.ferme ? "Fermé" : "Actif"}
-                  {r.ferme && r.date_fermeture && (
+                  {r.statut === "ferme" ? "Fermé" : "Actif"}
+                  {r.statut === "ferme" && r.date_fermeture && (
                     <span className="ml-1 text-xs text-gray-500">
                       (le {formatDateFR(r.date_fermeture)})
                     </span>
@@ -108,18 +108,18 @@ function App() {
                             <span
                               className="ml-2 px-2 py-1 rounded text-xs"
                               style={{
-                                background: etab.ferme ? "#fde8ea" : "#e6faea",
-                                color: etab.ferme ? "#b71c1c" : "#208b42",
+                                background: etab.statut === "ferme" ? "#fde8ea" : "#e6faea",
+                                color: etab.statut === "ferme" ? "#b71c1c" : "#208b42",
                                 fontWeight: 600,
                               }}
                               title={
-                                etab.ferme
+                                etab.statut === "ferme"
                                   ? "Établissement fermé"
                                   : "Établissement actif"
                               }
                             >
-                              {etab.ferme ? "Fermé" : "Actif"}
-                              {etab.ferme && etab.date_fermeture && (
+                              {etab.statut === "ferme" ? "Fermé" : "Actif"}
+                              {etab.statut === "ferme" && etab.date_fermeture && (
                                 <span className="ml-1 text-xs text-gray-500">
                                   (le {formatDateFR(etab.date_fermeture)})
                                 </span>
@@ -179,15 +179,15 @@ function App() {
             <span
               className="px-2 py-1 rounded text-xs"
               style={{
-                background: data.ferme ? "#fde8ea" : "#e6faea",
-                color: data.ferme ? "#b71c1c" : "#208b42",
+                background: data.statut === "ferme" ? "#fde8ea" : "#e6faea",
+                color: data.statut === "ferme" ? "#b71c1c" : "#208b42",
                 fontWeight: 700,
                 marginLeft: "0.5rem",
               }}
-              title={data.ferme ? "Établissement fermé" : "Établissement actif"}
+              title={data.statut === "ferme" ? "Établissement fermé" : "Établissement actif"}
             >
-              {data.ferme ? "Fermé" : "Actif"}
-              {data.ferme && data.date_fermeture && (
+              {data.statut === "ferme" ? "Fermé" : "Actif"}
+              {data.statut === "ferme" && data.date_fermeture && (
                 <span className="ml-1 text-xs text-gray-500">
                   (le {formatDateFR(data.date_fermeture)})
                 </span>
