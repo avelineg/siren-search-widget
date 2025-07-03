@@ -18,7 +18,7 @@ const tabLabels = [
   "Divers",
 ];
 
-const isNonEmptyArray = arr => Array.isArray(arr) && arr.length > 0;
+const isNonEmptyArray = (arr: any) => Array.isArray(arr) && arr.length > 0;
 
 function App() {
   const [search, setSearch] = useState("");
@@ -86,7 +86,7 @@ function App() {
                 </button>
                 {Array.isArray(r.matching_etablissements) && r.matching_etablissements.length > 0 && (
                   <ul className="ml-8 mt-1">
-                    {r.matching_etablissements.map((etab, eidx) => (
+                    {r.matching_etablissements.map((etab: any, eidx: number) => (
                       <li key={eidx}>
                         <span>
                           {etab.displayName ||
@@ -147,14 +147,7 @@ function App() {
         <div>
           <CompanyHeader {...data} />
 
-          {isNonEmptyArray(data.etablissements) && (
-            <EtablissementsSelector
-              etablissements={data.etablissements}
-              selected={selectedCode}
-              onSelect={setSelectedCode}
-            />
-          )}
-
+          {/* Affiche la liste des établissements (navigation possible) dans l'onglet 1 */}
           <Tabs labels={tabLabels} current={tabIndex} onChange={setTabIndex} />
 
           <div className="mt-4">
