@@ -1,4 +1,4 @@
-import { sirene, vies } from './api'
+import { sirene, vies, searchCompaniesByName } from './api'
 
 export interface UnifiedEtablissement {
   denomination: string
@@ -20,25 +20,41 @@ export interface UnifiedEtablissement {
     dateNaissance?: string
     type: 'personne physique' | 'personne morale'
   }>
-  finances: Array<{
-    annee: string
-    ca?: number
-    resultatNet?: number
-  }>
-  annonces: Array<{
-    titre?: string
-    date?: string
-    lien?: string
-  }>
+  finances: Array<{ annee: string; ca?: number; resultatNet?: number }>
+  annonces: Array<{ titre?: string; date?: string; lien?: string }>
   labels: string[]
   divers: string[]
 }
 
+// Réexport de la recherche par nom pour composants UI
+export { searchCompaniesByName }
+
 /**
- * Récupère et assemble les données pour un SIREN (9 chiffres) ou un SIRET (14 chiffres).
- * - Pour un SIREN seul, on appelle /siren pour récupérer NIC siège, puis /siret.
- * - Pour un SIRET, on en extrait le SIREN et on appelle directement /siret.
- * @param code SIREN ou SIRET à 9 ou 14 chiffres
+ * Mappe les résultats bruts de searchCompaniesByName
+ * @param name chaîne à rechercher
+ * @param page numéro de page
+ * @param perPage résultats par page
+ */
+export async function searchEtablissementsByName(
+  name: string,
+  page?: number,
+  perPage?: number
+): Promise<Array<{
+  siren: string
+  nom_complet: string
+  nom_raison_sociale?: string
+}>> {
+  const raw = await searchCompaniesByName(name, page, perPage)
+  return raw.map(r => ({
+    siren: r.siren,
+    nom_complet: r.nom_complet || r.nom_raison_sociale || '',
+    nom_raison_sociale: r.nom_raison_sociale
+  }))
+}
+
+/**
+ * Lookup par code (SIREN/SIRET) uniquement via Sirene + VIES.
+ * @param code 9 ou 14 chiffres
  */
 export async function fetchEtablissementByCode(
   code: string
@@ -52,11 +68,9 @@ export async function fetchEtablissementByCode(
     const { data: payloadSiren } = await sirene.get<{ uniteLegale: any }>(
       `/siren/${siren}`
     )
-    const nicSiege = payloadSiren.uniteLegale.nicSiegeUniteLegale
-    if (!nicSiege) {
-      throw new Error(`NIC siège non trouvé pour le SIREN ${siren}`)
-    }
-    siret = `${siren}${nicSiege}`
+    const nic = payloadSiren.uniteLegale.nicSiegeUniteLegale
+    if (!nic) throw new Error(`NIC siège non trouvé pour le SIREN ${siren}`)
+    siret = `${siren}${nic}`
   } else if (/^\d{14}$/.test(code)) {
     // SIRET complet
     siret = code
@@ -65,20 +79,23 @@ export async function fetchEtablissementByCode(
     throw new Error('Le code doit être un SIREN (9 chiffres) ou un SIRET (14 chiffres)')
   }
 
-  // 1) Détails de l'établissement
+  // Détails établissement
   const { data: payloadEtab } = await sirene.get<{ etablissement: any }>(
     `/siret/${siret}`
   )
   const etab = payloadEtab.etablissement
 
-  // 2) Détails de l'unité légale
+  // Détails unité légale
   const { data: payloadUL } = await sirene.get<{ uniteLegale: any }>(
     `/siren/${siren}`
   )
   const ul = payloadUL.uniteLegale
 
-  // 3) Vérification TVA via VIES
-  const tvaNum = etab.numeroTvaIntracommunautaire || ''
+  // Vérification TVA via VIES
+  const tvaNum =
+    etab.numeroTvaIntracommunautaire ||
+    ul.numeroTvaIntracommunautaireUniteLegale ||
+    ''
   const { data: viesPayload } = await vies.get<{ valid: boolean }>(
     `/check-vat`,
     { params: { countryCode: 'FR', vatNumber: tvaNum } }
@@ -86,17 +103,16 @@ export async function fetchEtablissementByCode(
 
   return {
     denomination:
-      ul.denominationUniteLegale || etab.uniteLegale?.denomination || '',
+      ul.denominationUniteLegale ||
+      etab.uniteLegale?.denomination ||
+      '',
     formeJuridique:
       ul.libelleCategorieJuridiqueUniteLegale ||
       ul.categorieJuridiqueUniteLegale ||
       '',
     siren,
     siret,
-    tva: {
-      numero: tvaNum,
-      valide: viesPayload.valid
-    },
+    tva: { numero: tvaNum, valide: viesPayload.valid },
     codeApe:
       ul.activitePrincipaleUniteLegale ||
       etab.activitePrincipaleEtablissement ||
@@ -124,9 +140,9 @@ export async function fetchEtablissementByCode(
       etab.geoLatitude && etab.geoLongitude
         ? [etab.geoLatitude, etab.geoLongitude]
         : undefined,
-    dirigeants: [], // à enrichir via INPI / officialités si besoin
-    finances: [],   // à enrichir via INPI ou sources financières
-    annonces: [],   // à enrichir via INPI / publications légales
+    dirigeants: [],
+    finances: [],
+    annonces: [],
     labels: [],
     divers: []
   }
