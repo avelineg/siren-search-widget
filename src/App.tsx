@@ -9,9 +9,8 @@ import Finances from "./components/Finances";
 import Labels from "./components/LabelsCertifications";
 import Divers from "./components/Various";
 
-function isNonEmptyArray(arr) {
-  return Array.isArray(arr) && arr.length > 0;
-}
+// Helper pour vérifier si un tableau est non vide
+const isNonEmptyArray = arr => Array.isArray(arr) && arr.length > 0;
 
 function App() {
   const [search, setSearch] = useState("");
@@ -21,7 +20,7 @@ function App() {
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!search || search.length < 3) return; // Empêche la recherche trop courte
+    if (!search || search.trim().length < 3) return; // désactive recherche sur saisie trop courte
     setSelectedSiret("");
     setActiveTab("Identité");
   };
@@ -44,15 +43,13 @@ function App() {
         <button
           type="submit"
           className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
-          disabled={!search || search.length < 3}
+          disabled={!search || search.trim().length < 3}
         >
           Rechercher
         </button>
       </form>
 
-      {error && (
-        <div className="text-red-600 mb-4">Erreur : {error.toString()}</div>
-      )}
+      {error && <div className="text-red-600 mb-4">Erreur : {error.toString()}</div>}
       {loading && <div className="mb-4">Chargement...</div>}
 
       {data && (
