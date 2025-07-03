@@ -1,8 +1,5 @@
 import { sirene, recherche, vies } from './api'
 
-/**
- * Schéma unifié retourné à l’UI.
- */
 export interface UnifiedEtablissement {
   denomination: string
   formeJuridique: string
@@ -37,45 +34,57 @@ export interface UnifiedEtablissement {
   divers: string[]
 }
 
-/**
- * Récupère et assemble les données depuis :
- * - l’API Sirene (SIRET + SIREN)
- * - l’API Recherche d’entreprises (dirigeants, établissements secondaires, finances…)
- * - l’API VIES (TVA intracommunautaire)
- *
- * @param siret SIRET de l’établissement à rechercher
- */
 export async function fetchEtablissementData(
-  siret: string
+  code: string
 ): Promise<UnifiedEtablissement> {
-  const siren = siret.slice(0, 9)
+  let siren: string
+  let siret: string
 
-  // 1) Sirene - données SIRET
-  const { data: siretPayload } = await sirene.get<{
-    etablissement: any
-  }>(`/siret/${siret}`)
+  // Détecter SIREN (9 chiffres) vs SIRET (14 chiffres)
+  if (/^\d{9}$/.test(code)) {
+    siren = code
+    // 1) Récupérer l’unité légale pour trouver le NIC siège
+    const { data: sirenPayload } = await sirene.get<{ uniteLegale: any }>(
+      `/siren/${siren}`
+    )
+    const nicSiege = sirenPayload.uniteLegale.nicSiegeUniteLegale
+    if (!nicSiege) {
+      throw new Error(`NIC siège non trouvé pour le SIREN ${siren}`)
+    }
+    siret = `${siren}${nicSiege}`
+  } else if (/^\d{14}$/.test(code)) {
+    siret = code
+    siren = code.slice(0, 9)
+  } else {
+    throw new Error('Le code doit être un SIREN (9 chiffres) ou un SIRET (14 chiffres)')
+  }
+
+  // 2) Fetch données SIRET
+  const { data: siretPayload } = await sirene.get<{ etablissement: any }>(
+    `/siret/${siret}`
+  )
   const etab = siretPayload.etablissement
 
-  // 2) Sirene - données SIREN (unité légale)
-  const { data: sirenPayload } = await sirene.get<{
-    uniteLegale: any
-  }>(`/siren/${siren}`)
-  const ul = sirenPayload.uniteLegale
+  // 3) Fetch données SIREN (unité légale)
+  const { data: sirenPayload2 } = await sirene.get<{ uniteLegale: any }>(
+    `/siren/${siren}`
+  )
+  const ul = sirenPayload2.uniteLegale
 
-  // 3) Recherche Entreprises
-  const { data: rec } = await recherche.get<{
-    results: any[]
-  }>(`/entreprises/${siren}`)
+  // 4) Recherche d’entreprises pour compléments (dirigeants, finances…)
+  const { data: rec } = await recherche.get<{ results: any[] }>(
+    `/entreprises/${siren}`
+  )
   const rec0 = rec.results[0] || {}
 
-  // 4) VIES
+  // 5) Vérification TVA via VIES
   const tvaNum = rec0.siege?.numero_tva_intracom || ''
   const { data: viesPayload } = await vies.get<{ valid: boolean }>(
     `/check-vat`,
     { params: { countryCode: 'FR', vatNumber: tvaNum } }
   )
 
-  // 5) Mapping unifié
+  // 6) Assemblage du schéma unifié
   return {
     denomination:
       ul.denominationUniteLegale || rec0.nom_raison_sociale || '',
@@ -90,7 +99,8 @@ export async function fetchEtablissementData(
       numero: tvaNum,
       valide: viesPayload.valid
     },
-    codeApe: ul.activitePrincipaleUniteLegale || rec0.activite_principale || '',
+    codeApe:
+      ul.activitePrincipaleUniteLegale || rec0.activite_principale || '',
     libelleApe: ul.libelleActivitePrincipaleUniteLegale,
     trancheEffectifs:
       etab.trancheEffectifsEtablissement ||
@@ -110,8 +120,8 @@ export async function fetchEtablissementData(
       .filter(Boolean)
       .join(' '),
     geo:
-      etab.coordonneesGeoLat && etab.coordonneesGeoLong
-        ? [etab.coordonneesGeoLat, etab.coordonneesGeoLong]
+      etab.geoLatitude && etab.geoLongitude
+        ? [etab.geoLatitude, etab.geoLongitude]
         : rec0.siege?.coordonnees
         ? rec0.siege.coordonnees.split(',').map((v: string) => +v.trim())
         : undefined,
@@ -123,13 +133,13 @@ export async function fetchEtablissementData(
         dateNaissance: d.date_de_naissance,
         type: d.type_dirigeant
       })) || [],
-    finances: Object.entries(rec0.finances || {}).map(([annee, f]) => ({
+    finances: Object.entries(rec0.finances || {}).map(([annee, f]: any) => ({
       annee,
-      ca: (f as any).ca,
-      resultatNet: (f as any).resultat_net
+      ca: f.ca,
+      resultatNet: f.resultat_net
     })),
-    annonces: [],      // à remplir ultérieurement depuis l’API INPI ou un flux Kbis
+    annonces: [], // À remplir depuis INPI/formalités
     labels: rec0.complements?.liste_idcc || [],
-    divers: []         // champs divers à intégrer selon besoin
+    divers: []
   }
 }
