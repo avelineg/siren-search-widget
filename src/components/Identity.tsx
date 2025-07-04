@@ -27,10 +27,6 @@ export default function Identity({ data }: { data: any }) {
             <td>{data.forme_juridique}</td>
           </tr>
           <tr>
-            <td className="font-bold">Catégorie juridique</td>
-            <td>{data.categorie_juridique || '–'}</td>
-          </tr>
-          <tr>
             <td className="font-bold">Date de création</td>
             <td>{data.date_creation}</td>
           </tr>
