@@ -1,67 +1,71 @@
-import React from 'react'
-import { formatDateFR } from '../services/mapping'
+import React, { useEffect, useState } from 'react';
+import { fetchEtablissementsBySiren } from '../services/api';
+import { mapEtablissement } from '../services/mapping';
 
-type Etablissement = {
-  siret: string;
-  displayName?: string;
-  adresse?: string;
-  activite_principale?: string;
-  tranche_effectif_libelle?: string;
-  tranche_effectif_salarie?: string;
-  est_siege?: boolean;
-  statut?: "actif" | "ferme";
-  date_fermeture?: string | null;
-  date_creation?: string;
+interface EtablissementsProps {
+  siren: string;
+  onSelectEtablissement: (siret: string) => void;
+}
+
+const Etablissements: React.FC<EtablissementsProps> = ({ siren, onSelectEtablissement }) => {
+  const [etabs, setEtabs] = useState<any[]>([]);
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const parPage = 20;
+
+  useEffect(() => {
+    setPage(1); // Remet à la première page si le SIREN change
+  }, [siren]);
+
+  useEffect(() => {
+    if (!siren) return;
+    setLoading(true);
+    fetchEtablissementsBySiren(siren, page, parPage)
+      .then(data => {
+        setEtabs(data.etablissements.map(mapEtablissement));
+        setTotal(data.total);
+      })
+      .finally(() => setLoading(false));
+  }, [siren, page]);
+
+  const totalPages = Math.ceil(total / parPage);
+
+  return (
+    <div>
+      <h3>Établissements ({total})</h3>
+      {loading ? (
+        <p>Chargement…</p>
+      ) : (
+        <>
+          <ul>
+            {etabs.map(etab => (
+              <li
+                key={etab.siret}
+                style={{ cursor: 'pointer', margin: '0.4em 0', padding: '0.2em 0.4em', borderRadius: 6, background: etab.isSiege ? '#f0f6ff' : '#fff' }}
+                onClick={() => onSelectEtablissement(etab.siret)}
+                title="Voir la fiche de cet établissement"
+              >
+                <strong>{etab.isSiege ? 'Siège' : 'Établissement'}</strong> — <b>SIRET</b> {etab.siret} — {etab.denomination} <br />
+                <span style={{ color: '#666', fontSize: 13 }}>{etab.adresse}</span>
+                <span style={{ float: 'right', fontSize: 13, color: etab.etat === 'Actif' ? 'green' : 'red' }}>{etab.etat}</span>
+              </li>
+            ))}
+          </ul>
+          {totalPages > 1 && (
+            <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginTop: 12 }}>
+              <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}>Précédent</button>
+              <span>Page {page} / {totalPages}</span>
+              <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages}>Suivant</button>
+            </div>
+          )}
+        </>
+      )}
+      <small style={{ display: 'block', marginTop: 6, color: '#999' }}>
+        Cliquez sur une ligne pour charger la fiche de l’établissement.
+      </small>
+    </div>
+  );
 };
 
-export default function Etablissements({ etablissements }: { etablissements: Etablissement[] }) {
-  if (!etablissements?.length) return null
-  return (
-    <div className="bg-white p-4 rounded shadow">
-      <h3 className="font-semibold mb-2">Établissements</h3>
-      <table className="min-w-full text-sm">
-        <thead>
-          <tr>
-            <th>SIRET</th>
-            <th>Adresse</th>
-            <th>Activité principale</th>
-            <th>Effectifs</th>
-            <th>Siège</th>
-            <th>État</th>
-            <th>Date création</th>
-          </tr>
-        </thead>
-        <tbody>
-          {etablissements.map(e => (
-            <tr key={e.siret}>
-              <td>{e.siret}</td>
-              <td>{e.adresse}</td>
-              <td>{e.activite_principale}</td>
-              <td>{e.tranche_effectif_libelle || e.tranche_effectif_salarie}</td>
-              <td>{e.est_siege ? 'Oui' : 'Non'}</td>
-              <td>
-                <span
-                  className="px-2 py-1 rounded text-xs"
-                  style={{
-                    background: e.statut === "ferme" ? "#fde8ea" : "#e6faea",
-                    color: e.statut === "ferme" ? "#b71c1c" : "#208b42",
-                    fontWeight: 600,
-                  }}
-                  title={e.statut === "ferme" ? "Établissement fermé" : "Établissement actif"}
-                >
-                  {e.statut === "ferme" ? "Fermé" : "Actif"}
-                  {e.statut === "ferme" && e.date_fermeture && (
-                    <span className="ml-1 text-xs text-gray-500">
-                      (le {formatDateFR(e.date_fermeture)})
-                    </span>
-                  )}
-                </span>
-              </td>
-              <td>{e.date_creation}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  )
-}
+export default Etablissements;
