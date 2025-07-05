@@ -1,75 +1,81 @@
-import React, { useEffect, useState } from 'react';
-import { fetchEtablissementsBySiren } from '../services/api';
-import { mapEtablissement } from '../services/mapping';
+import { useEffect, useState } from "react";
+import { fetchEtablissementsBySiren } from "../services/api";
+import { mapEtablissement } from "../services/mapping";
 
-interface EtablissementsListPagineeProps {
+interface Props {
   siren: string;
   onSelectEtablissement: (siret: string) => void;
 }
 
-const EtablissementsListPaginee: React.FC<EtablissementsListPagineeProps> = ({ siren, onSelectEtablissement }) => {
-  const [etabs, setEtabs] = useState<any[]>([]);
+const EtablissementsListPaginee = ({ siren, onSelectEtablissement }: Props) => {
   const [page, setPage] = useState(1);
+  const [etabs, setEtabs] = useState<any[]>([]);
   const [total, setTotal] = useState(0);
-  const [loading, setLoading] = useState(false);
   const parPage = 20;
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    setPage(1); // Reset page quand SIREN change
-  }, [siren]);
-
-  useEffect(() => {
-    if (!siren) return;
     setLoading(true);
     fetchEtablissementsBySiren(siren, page, parPage)
-      .then(data => {
-        setEtabs(data.etablissements.map(mapEtablissement));
-        setTotal(data.total);
+      .then(({ etablissements, total }) => {
+        setEtabs(etablissements.map(mapEtablissement));
+        setTotal(total);
       })
       .finally(() => setLoading(false));
   }, [siren, page]);
 
-  const totalPages = Math.ceil(total / parPage);
+  if (!siren) return null;
 
   return (
-    <div>
-      <h3 className="font-semibold mb-2">Liste complète des établissements ({total})</h3>
-      {loading ? (
-        <p>Chargement…</p>
-      ) : (
-        <>
-          <ul>
-            {etabs.map(etab => (
-              <li
-                key={etab.siret}
-                style={{
-                  cursor: 'pointer',
-                  margin: '0.4em 0',
-                  padding: '0.2em 0.4em',
-                  borderRadius: 6,
-                  background: etab.isSiege ? '#f0f6ff' : '#fff'
-                }}
-                onClick={() => onSelectEtablissement(etab.siret)}
-                title="Voir la fiche de cet établissement"
-              >
-                <strong>{etab.isSiege ? 'Siège' : 'Établissement'}</strong> — <b>SIRET</b> {etab.siret} — {etab.denomination} <br />
-                <span style={{ color: '#666', fontSize: 13 }}>{etab.adresse}</span>
-                <span style={{ float: 'right', fontSize: 13, color: etab.etat === 'Actif' ? 'green' : 'red' }}>{etab.etat}</span>
-              </li>
-            ))}
-          </ul>
-          {totalPages > 1 && (
-            <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginTop: 12 }}>
-              <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}>Précédent</button>
-              <span>Page {page} / {totalPages}</span>
-              <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages}>Suivant</button>
-            </div>
-          )}
-        </>
+    <div className="mt-6">
+      <h3 className="text-lg font-bold mb-2">Liste complète des établissements ({total})</h3>
+      {loading && <div>Chargement...</div>}
+      {etabs.length === 0 && !loading && (
+        <div className="text-gray-400 mb-4">Aucun établissement trouvé.</div>
       )}
-      <small style={{ display: 'block', marginTop: 6, color: '#999' }}>
-        Cliquez sur une ligne pour charger la fiche de l’établissement.
-      </small>
+      <ul>
+        {etabs.map(etab => (
+          <li
+            key={etab.siret}
+            className="hover:bg-blue-50 cursor-pointer px-2 py-1 border-b flex justify-between items-center"
+            onClick={() => onSelectEtablissement(etab.siret)}
+          >
+            <div>
+              <strong>{etab.denomination}</strong>
+              <span className="ml-2 text-sm text-gray-600">{etab.adresse}</span>
+              {etab.isSiege && <span className="ml-2 text-green-600 text-xs">[Siège]</span>}
+            </div>
+            <div className="text-xs">
+              {etab.etat === "Actif" ? (
+                <span className="bg-green-100 text-green-800 px-2 py-1 rounded">Actif</span>
+              ) : (
+                <span className="bg-red-100 text-red-800 px-2 py-1 rounded">Fermé</span>
+              )}
+            </div>
+          </li>
+        ))}
+      </ul>
+      {/* PAGINATION */}
+      {total > parPage && (
+        <div className="flex gap-2 mt-4">
+          <button
+            disabled={page <= 1}
+            className="px-2 py-1 border rounded disabled:opacity-50"
+            onClick={() => setPage(p => Math.max(1, p - 1))}
+          >
+            Précédent
+          </button>
+          <span>Page {page} / {Math.ceil(total / parPage)}</span>
+          <button
+            disabled={page * parPage >= total}
+            className="px-2 py-1 border rounded disabled:opacity-50"
+            onClick={() => setPage(p => p + 1)}
+          >
+            Suivant
+          </button>
+        </div>
+      )}
+      <div className="text-xs text-gray-400 mt-2">Cliquez sur une ligne pour charger la fiche de l'établissement.</div>
     </div>
   );
 };
