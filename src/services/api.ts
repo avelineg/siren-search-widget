@@ -28,47 +28,16 @@ export const recherche = axios.create({
   headers: { Accept: 'application/json' }
 })
 
+// ======================
+// AJOUT FONCTION ETABS PAGINEE
+// ======================
 /**
- * Recherche entreprises par nom / raison sociale
+ * Récupère la liste paginée des établissements pour un SIREN.
+ * @param siren - le SIREN recherché
+ * @param page - page courante (début = 1)
+ * @param nombre - nombre d'établissements par page (défaut : 20)
+ * @returns { total, etablissements }
  */
-export async function searchCompaniesByName(
-  name: string,
-  page = 1,
-  perPage = 5
-): Promise<any[]> {
-  const { data } = await recherche.get<{ results: any[] }>('/search', {
-    params: { q: name, page, per_page: perPage }
-  })
-  return data.results
-}
-
-/**
- * Wrapper lookup (SIREN ou SIRET)
- */
-export function fetchEtablissementData(code: string) {
-  return fetchEtablissementByCode(code)
-}
-// Récupère les établissements d'un SIREN paginés (20 par page)
-export async function fetchEtablissementsBySiren(
-  siren: string,
-  page: number = 1,
-  nombre: number = 20
-) {
-  const offset = (page - 1) * nombre;
-  const res = await sirene.get(`/siret`, {
-    params: {
-      q: `siren:${siren}`,
-      nombre,
-      debut: offset,
-      tri: 'desc'
-    }
-  });
-  return {
-    total: res.data.header?.total || 0,
-    etablissements: res.data.etablissements || []
-  };
-}
-// Récupère les établissements d'un SIREN paginés (20 par page)
 export async function fetchEtablissementsBySiren(
   siren: string,
   page: number = 1,
