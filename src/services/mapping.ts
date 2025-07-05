@@ -61,7 +61,7 @@ function etablissementStatut(etab: any) {
   return { statut: "actif", date_fermeture: null };
 }
 
-// ----------- Fonction de recherche principale ----------
+// Recherche d'établissements par raison sociale
 export async function searchEtablissementsByName(name: string) {
   const results = await recherche
     .get('/search', {
@@ -107,7 +107,7 @@ export async function searchEtablissementsByName(name: string) {
     : [];
 }
 
-// ----------- Recherche UNITE LEGALE + Liste Etablissements --------
+// ====== SIREN ======
 export async function fetchEtablissementBySiren(siren: string) {
   const [
     inpiDataRaw,
@@ -116,12 +116,11 @@ export async function fetchEtablissementBySiren(siren: string) {
   ] = await Promise.all([
     getEntrepriseBySiren(siren).catch(() => ({})),
     sirene.get(`/siren/${siren}`).then(r => r.data.uniteLegale).catch(() => ({})),
-    recherche.get('/search', { params: { q: siren, per_page: 1 } }).then(r => r.data).catch(() => ({ results: [] })),
+    recherche.get('/search', { params: { q: `siren:${siren}`, per_page: 1 } }).then(r => r.data).catch(() => ({ results: [] })),
   ]);
 
   const inpiData = inpiDataRaw || {};
   const sireneUL = sireneULRaw || {};
-  // !! Liste établissements depuis le champ 'etablissements' du premier résultat !!
   const etabsFromRecherche = (rechercheEtabResp.results && rechercheEtabResp.results[0]?.etablissements) || [];
 
   let etablissements = etabsFromRecherche.map((etab: any) => {
@@ -297,7 +296,7 @@ export async function fetchEtablissementBySiren(siren: string) {
   };
 }
 
-// ----------- FONCTION SIRET (idem mais pour un établissement) ---------
+// ====== SIRET ======
 export async function fetchEtablissementBySiret(siret: string) {
   const siren = siret.slice(0, 9);
 
@@ -310,7 +309,7 @@ export async function fetchEtablissementBySiret(siret: string) {
     getEntrepriseBySiren(siren).catch(() => ({})),
     sirene.get(`/siret/${siret}`).then(r => r.data.etablissement).catch(() => ({})),
     sirene.get(`/siren/${siren}`).then(r => r.data.uniteLegale).catch(() => ({})),
-    recherche.get('/search', { params: { q: siren, per_page: 1 } }).then(r => r.data).catch(() => ({ results: [] })),
+    recherche.get('/search', { params: { q: `siren:${siren}`, per_page: 1 } }).then(r => r.data).catch(() => ({ results: [] })),
   ]);
 
   const inpiData = inpiDataRaw || {};
@@ -494,7 +493,7 @@ export async function fetchEtablissementBySiret(siret: string) {
   };
 }
 
-// Pour affichage individuel d’un établissement dans une liste paginée (ex : EtablissementsListPaginee)
+// Pour affichage individuel d’un établissement dans une liste paginée (ex : EtablissementsListPaginee)
 export function mapEtablissement(etab: any) {
   const adresse =
     [
@@ -524,7 +523,7 @@ export function mapEtablissement(etab: any) {
   };
 }
 
-// Fonction de compatibilité pour SIREN ou SIRET
+// Compatibilité SIREN ou SIRET
 export async function fetchEtablissementByCode(code: string) {
   if (/^\d{14}$/.test(code)) {
     return fetchEtablissementBySiret(code);
