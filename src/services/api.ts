@@ -48,3 +48,23 @@ export async function searchCompaniesByName(
 export function fetchEtablissementData(code: string) {
   return fetchEtablissementByCode(code)
 }
+// Ajout de la récupération paginée des établissements d’un SIREN
+export async function fetchEtablissementsBySiren(
+  siren: string,
+  page: number = 1,
+  nombre: number = 20
+) {
+  const offset = (page - 1) * nombre;
+  const url = `https://api.insee.fr/api-sirene/3.11/siret?q=siren:${siren}&nombre=${nombre}&debut=${offset}`;
+  const headers = {
+    Authorization: `Bearer ${import.meta.env.VITE_INSEE_API_KEY}`,
+    Accept: 'application/json'
+  };
+  const response = await fetch(url, { headers });
+  if (!response.ok) throw new Error('Erreur lors de la récupération des établissements');
+  const data = await response.json();
+  return {
+    total: data.header?.total || 0,
+    etablissements: data.etablissements || []
+  };
+}
