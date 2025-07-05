@@ -68,3 +68,23 @@ export async function fetchEtablissementsBySiren(
     etablissements: res.data.etablissements || []
   };
 }
+// Récupère les établissements d'un SIREN paginés (20 par page)
+export async function fetchEtablissementsBySiren(
+  siren: string,
+  page: number = 1,
+  nombre: number = 20
+) {
+  const offset = (page - 1) * nombre;
+  const res = await sirene.get(`/siret`, {
+    params: {
+      q: `siren:${siren}`,
+      nombre,
+      debut: offset,
+      tri: 'desc'
+    }
+  });
+  return {
+    total: res.data.header?.total || 0,
+    etablissements: res.data.etablissements || []
+  };
+}
