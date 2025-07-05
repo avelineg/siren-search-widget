@@ -1,6 +1,6 @@
 import axios from 'axios'
 
-// Client Sirene (API officielle INSEE, nécessite clé API)
+// Client Sirene
 export const sirene = axios.create({
   baseURL: 'https://api.insee.fr/api-sirene/3.11',
   headers: {
@@ -9,7 +9,7 @@ export const sirene = axios.create({
   }
 })
 
-// Client INPI (comptes annuels, souvent interne à ta stack)
+// Client INPI (comptes annuels)
 export const inpiEntreprise = axios.create({
   baseURL: `${import.meta.env.VITE_API_URL}/inpi/entreprise`,
   headers: { Accept: 'application/json' }
@@ -27,6 +27,9 @@ export const recherche = axios.create({
   headers: { Accept: 'application/json' }
 })
 
+// ======================
+// ETABLISSEMENTS PAGINES SIREN
+// ======================
 /**
  * Récupère la liste paginée des établissements pour un SIREN.
  * @param siren - le SIREN recherché
@@ -39,17 +42,17 @@ export async function fetchEtablissementsBySiren(
   page: number = 1,
   nombre: number = 20
 ) {
+  // ⚠️ Utilisation stricte du paramètre siren:...
   const res = await recherche.get('/search', {
     params: {
-      q: siren,
-      per_page: 1000 // récupère jusqu'à 1000 établissements
+      q: `siren:${siren}`,
+      per_page: 1000 // on récupère tout, pagination front
     }
   });
-  // Les établissements ont .siren === siren et un SIRET différent chacun
-  const allEtab = (res.data.results || []).filter((e: any) =>
-    e.siren === siren && e.siret // On ne garde que les vrais établissements (avec siret)
-  );
+
+  const allEtab = (res.data.results && res.data.results[0]?.etablissements) || [];
   const total = allEtab.length;
   const etablissements = allEtab.slice((page - 1) * nombre, page * nombre);
+
   return { total, etablissements };
 }
