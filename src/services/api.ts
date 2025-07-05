@@ -1,6 +1,25 @@
 import axios from 'axios'
 
-// ... autres clients axios
+// Client Sirene (INSEE)
+export const sirene = axios.create({
+  baseURL: 'https://api.insee.fr/api-sirene/3.11',
+  headers: {
+    'X-INSEE-Api-Key-Integration': import.meta.env.VITE_SIRENE_API_KEY,
+    Accept: 'application/json'
+  }
+})
+
+// Client INPI (comptes annuels)
+export const inpiEntreprise = axios.create({
+  baseURL: `${import.meta.env.VITE_API_URL}/inpi/entreprise`,
+  headers: { Accept: 'application/json' }
+})
+
+// Client VIES pour TVA
+export const vies = axios.create({
+  baseURL: import.meta.env.VITE_VIES_API_URL,
+  headers: { Accept: 'application/json' }
+})
 
 // Client Recherche d'entreprises (texte & détails)
 export const recherche = axios.create({
@@ -22,8 +41,8 @@ export async function fetchEtablissementsBySiren(
 ) {
   const res = await recherche.get('/search', {
     params: {
-      q: siren,
-      per_page: 1 // On récupère l'unité légale uniquement
+      q: `siren:${siren}`,
+      per_page: 1 // On ne veut que l'unité légale principale
     }
   });
 
