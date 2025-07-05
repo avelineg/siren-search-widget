@@ -8,6 +8,7 @@ import Dirigeants from "./components/Dirigeants";
 import Finances from "./components/Finances";
 import Divers from "./components/Divers";
 import { formatDateFR } from "./services/mapping";
+import EtablissementsListPaginee from "./components/EtablissementsListPaginee"; // <-- AJOUT
 
 function App() {
   const [search, setSearch] = useState("");
@@ -22,6 +23,13 @@ function App() {
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     setSelectedCode("");
+  };
+
+  // Gère la navigation SIRET depuis la liste paginée
+  const handleSelectEtablissement = (siret: string) => {
+    setSearch(siret);
+    setSelectedCode(siret);
+    setTabIndex(0); // Revenir à l’onglet Identité
   };
 
   const tabLabels = [
@@ -200,11 +208,20 @@ function App() {
           <div className="mt-4">
             {tabIndex === 0 && <Identity data={data} />}
             {tabIndex === 1 && (
-              <EtablissementsSelector
-                etablissements={data.etablissements || []}
-                selected={selectedCode}
-                onSelect={setSelectedCode}
-              />
+              <>
+                <EtablissementsSelector
+                  etablissements={data.etablissements || []}
+                  selected={selectedCode}
+                  onSelect={setSelectedCode}
+                />
+                {/* ===== AJOUT DE LA LISTE PAGINÉE ===== */}
+                {data.siren && (
+                  <EtablissementsListPaginee
+                    siren={data.siren}
+                    onSelectEtablissement={handleSelectEtablissement}
+                  />
+                )}
+              </>
             )}
             {tabIndex === 2 && <Dirigeants dirigeants={data.dirigeants || []} />}
             {tabIndex === 3 && <Finances data={data} />}
