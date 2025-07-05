@@ -29,7 +29,7 @@ export const recherche = axios.create({
 })
 
 // ======================
-// AJOUT FONCTION ETABS PAGINEE
+// FONCTION ETABS PAGINEE (corrigée)
 // ======================
 /**
  * Récupère la liste paginée des établissements pour un SIREN.
@@ -47,7 +47,7 @@ export async function fetchEtablissementsBySiren(
   const res = await recherche.get('/search', {
     params: {
       q: siren,
-      per_page: 1 // On récupère l'unité légale uniquement
+      per_page: 1 // On récupère l’unité légale uniquement
     }
   });
 
