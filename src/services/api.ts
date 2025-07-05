@@ -1,25 +1,6 @@
 import axios from 'axios'
 
-// Client Sirene
-export const sirene = axios.create({
-  baseURL: 'https://api.insee.fr/api-sirene/3.11',
-  headers: {
-    'X-INSEE-Api-Key-Integration': import.meta.env.VITE_SIRENE_API_KEY,
-    Accept: 'application/json'
-  }
-})
-
-// Client INPI (comptes annuels)
-export const inpiEntreprise = axios.create({
-  baseURL: `${import.meta.env.VITE_API_URL}/inpi/entreprise`,
-  headers: { Accept: 'application/json' }
-})
-
-// Client VIES pour TVA
-export const vies = axios.create({
-  baseURL: import.meta.env.VITE_VIES_API_URL,
-  headers: { Accept: 'application/json' }
-})
+// ... autres clients axios
 
 // Client Recherche d'entreprises (texte & détails)
 export const recherche = axios.create({
@@ -27,9 +8,6 @@ export const recherche = axios.create({
   headers: { Accept: 'application/json' }
 })
 
-// ======================
-// ETABLISSEMENTS PAGINES SIREN
-// ======================
 /**
  * Récupère la liste paginée des établissements pour un SIREN.
  * @param siren - le SIREN recherché
@@ -42,17 +20,17 @@ export async function fetchEtablissementsBySiren(
   page: number = 1,
   nombre: number = 20
 ) {
-  // ⚠️ Utilisation stricte du paramètre siren:...
   const res = await recherche.get('/search', {
     params: {
-      q: `siren:${siren}`,
-      per_page: 1000 // on récupère tout, pagination front
+      q: siren,
+      per_page: 1 // On récupère l'unité légale uniquement
     }
   });
 
+  // Les établissements sont dans le champ .etablissements du premier résultat
   const allEtab = (res.data.results && res.data.results[0]?.etablissements) || [];
   const total = allEtab.length;
+  // Pagination côté front
   const etablissements = allEtab.slice((page - 1) * nombre, page * nombre);
-
   return { total, etablissements };
 }
