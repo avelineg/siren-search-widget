@@ -42,14 +42,12 @@ export async function fetchEtablissementsBySiren(
   const res = await recherche.get('/search', {
     params: {
       q: siren,
-      per_page: 1 // On veut juste l’unité légale principale, qui contient la liste des établissements
+      per_page: 1000 // on récupère tout
     }
   });
-
-  // Les établissements sont dans .etablissements du premier résultat
-  const allEtab = (res.data.results && res.data.results[0]?.etablissements) || [];
+  // Chaque result = établissement, il faut filtrer ceux du SIREN
+  const allEtab = (res.data.results || []).filter((e: any) => e.siren === siren);
   const total = allEtab.length;
-  // Pagination côté front
   const etablissements = allEtab.slice((page - 1) * nombre, page * nombre);
   return { total, etablissements };
 }
