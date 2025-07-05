@@ -493,25 +493,34 @@ export async function fetchEtablissementBySiret(siret: string) {
 
 // Pour affichage individuel d’un établissement dans une liste paginée (ex : EtablissementsListPaginee)
 export function mapEtablissement(etab: any) {
-  const adresse = [
-    etab.adresseEtablissement?.numeroVoieEtablissement,
-    etab.adresseEtablissement?.typeVoieEtablissement,
-    etab.adresseEtablissement?.libelleVoieEtablissement,
-    etab.adresseEtablissement?.codePostalEtablissement,
-    etab.adresseEtablissement?.libelleCommuneEtablissement,
-  ].filter(Boolean).join(' ');
+  const adresse =
+    [
+      etab.numero_voie || etab.adresseEtablissement?.numeroVoieEtablissement,
+      etab.type_voie || etab.adresseEtablissement?.typeVoieEtablissement,
+      etab.libelle_voie || etab.adresseEtablissement?.libelleVoieEtablissement,
+      etab.code_postal || etab.adresseEtablissement?.codePostalEtablissement,
+      etab.libelle_commune || etab.adresseEtablissement?.libelleCommuneEtablissement,
+    ].filter(Boolean).join(' ');
+
   return {
     siret: etab.siret,
-    denomination: etab.denominationUsuelleEtablissement
-      || etab.enseigne1Etablissement
-      || etab.uniteLegale?.denominationUniteLegale
-      || "—",
+    denomination:
+      etab.denomination ||
+      etab.denomination_usuelle_entreprise ||
+      etab.nom_raison_sociale ||
+      etab.nom_commercial ||
+      etab.enseigne1 ||
+      etab.uniteLegale?.denominationUniteLegale ||
+      "—",
     adresse,
-    etat: etab.etatAdministratifEtablissement === "A" ? "Actif" : "Fermé",
-    isSiege: !!etab.etablissementSiege,
+    etat:
+      (etab.etatAdministratifEtablissement || etab.etat_administratif) === "A"
+        ? "Actif"
+        : "Fermé",
+    isSiege: !!(etab.etablissementSiege || etab.siege || etab.est_siege),
   };
 }
-
+console.log("Résultats bruts recherche-entreprises:", res.data.results);
 // Fonction de compatibilité pour SIREN ou SIRET
 export async function fetchEtablissementByCode(code: string) {
   if (/^\d{14}$/.test(code)) {
