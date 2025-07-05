@@ -61,6 +61,7 @@ function etablissementStatut(etab: any) {
   return { statut: "actif", date_fermeture: null };
 }
 
+// ----------- Fonction de recherche principale ----------
 export async function searchEtablissementsByName(name: string) {
   const results = await recherche
     .get('/search', {
@@ -106,6 +107,7 @@ export async function searchEtablissementsByName(name: string) {
     : [];
 }
 
+// ----------- Recherche UNITE LEGALE + Liste Etablissements --------
 export async function fetchEtablissementBySiren(siren: string) {
   const [
     inpiDataRaw,
@@ -114,13 +116,12 @@ export async function fetchEtablissementBySiren(siren: string) {
   ] = await Promise.all([
     getEntrepriseBySiren(siren).catch(() => ({})),
     sirene.get(`/siren/${siren}`).then(r => r.data.uniteLegale).catch(() => ({})),
-    // 💡 Ici la correction :
-    recherche.get('/search', { params: { q: `siren:${siren}`, per_page: 1000 } }).then(r => r.data).catch(() => ({ results: [] })),
+    recherche.get('/search', { params: { q: siren, per_page: 1 } }).then(r => r.data).catch(() => ({ results: [] })),
   ]);
 
   const inpiData = inpiDataRaw || {};
   const sireneUL = sireneULRaw || {};
-  // 💡 Correction ici aussi :
+  // !! Liste établissements depuis le champ 'etablissements' du premier résultat !!
   const etabsFromRecherche = (rechercheEtabResp.results && rechercheEtabResp.results[0]?.etablissements) || [];
 
   let etablissements = etabsFromRecherche.map((etab: any) => {
@@ -296,7 +297,7 @@ export async function fetchEtablissementBySiren(siren: string) {
   };
 }
 
-// ====== FONCTION SIRET CORRIGÉE ======
+// ----------- FONCTION SIRET (idem mais pour un établissement) ---------
 export async function fetchEtablissementBySiret(siret: string) {
   const siren = siret.slice(0, 9);
 
@@ -309,14 +310,12 @@ export async function fetchEtablissementBySiret(siret: string) {
     getEntrepriseBySiren(siren).catch(() => ({})),
     sirene.get(`/siret/${siret}`).then(r => r.data.etablissement).catch(() => ({})),
     sirene.get(`/siren/${siren}`).then(r => r.data.uniteLegale).catch(() => ({})),
-    // 💡 Ici la correction :
-    recherche.get('/search', { params: { q: `siren:${siren}`, per_page: 1000 } }).then(r => r.data).catch(() => ({ results: [] })),
+    recherche.get('/search', { params: { q: siren, per_page: 1 } }).then(r => r.data).catch(() => ({ results: [] })),
   ]);
 
   const inpiData = inpiDataRaw || {};
   const sireneEtab = sireneEtabRaw || {};
   const sireneUL = sireneULRaw || {};
-  // 💡 Correction ici aussi :
   const etabsFromRecherche = (rechercheEtabResp.results && rechercheEtabResp.results[0]?.etablissements) || [];
 
   let etablissements = etabsFromRecherche.map((etab: any) => {
