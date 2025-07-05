@@ -47,7 +47,7 @@ export async function fetchEtablissementsBySiren(
   const res = await recherche.get('/search', {
     params: {
       q: siren,
-      per_page: 1 // On veut juste le bloc principal de l'entreprise
+      per_page: 1 // On récupère l'unité légale uniquement
     }
   });
 
@@ -58,4 +58,3 @@ export async function fetchEtablissementsBySiren(
   const etablissements = allEtab.slice((page - 1) * nombre, page * nombre);
   return { total, etablissements };
 }
-
