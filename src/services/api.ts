@@ -42,11 +42,13 @@ export async function fetchEtablissementsBySiren(
   const res = await recherche.get('/search', {
     params: {
       q: siren,
-      per_page: 1000 // on récupère tout
+      per_page: 1000 // récupère jusqu'à 1000 établissements
     }
   });
-  // Chaque result = établissement, il faut filtrer ceux du SIREN
-  const allEtab = (res.data.results || []).filter((e: any) => e.siren === siren);
+  // Les établissements ont .siren === siren et un SIRET différent chacun
+  const allEtab = (res.data.results || []).filter((e: any) =>
+    e.siren === siren && e.siret // On ne garde que les vrais établissements (avec siret)
+  );
   const total = allEtab.length;
   const etablissements = allEtab.slice((page - 1) * nombre, page * nombre);
   return { total, etablissements };
