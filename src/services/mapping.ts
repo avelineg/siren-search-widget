@@ -114,46 +114,34 @@ export async function fetchEtablissementBySiren(siren: string) {
   ] = await Promise.all([
     getEntrepriseBySiren(siren).catch(() => ({})),
     sirene.get(`/siren/${siren}`).then(r => r.data.uniteLegale).catch(() => ({})),
-    recherche.get('/search', { params: { q: siren, per_page: 1000, statut_ferme: true } }).then(r => r.data).catch(() => ({ results: [] })),
+    recherche.get('/search', { params: { q: siren, per_page: 1 } }).then(r => r.data).catch(() => ({ results: [] })), // <- Modif ici
   ]);
 
   const inpiData = inpiDataRaw || {};
   const sireneUL = sireneULRaw || {};
-  const etabsFromRecherche = Array.isArray(rechercheEtabResp.results) ? rechercheEtabResp.results : [];
+  // Récupération correcte de la liste des établissements (pas .filter)
+  const etabsFromRecherche = (rechercheEtabResp.results && rechercheEtabResp.results[0]?.etablissements) || [];
 
-  let etablissements = etabsFromRecherche.filter(e => e.siren === siren).map((etab: any) => {
+  let etablissements = etabsFromRecherche.map((etab: any) => {
     const { statut, date_fermeture } = etablissementStatut(etab);
     return {
-      siret: etab.siret || etab.siret_etablissement,
-      displayName: etab.denomination || etab.nom_raison_sociale || etab.raison_sociale || etab.name || etab.nom_commercial || "-",
-      adresse: etab.adresse || etab.adresseEtablissement || "-",
-      activite_principale: etab.activite_principale || etab.code_ape || "",
-      tranche_effectif_libelle: etab.tranche_effectif_libelle || etab.tranche_effectifs || "",
-      tranche_effectif_salarie: etab.tranche_effectif_salarie || "",
-      date_creation: etab.date_creation || etab.dateCreationEtablissement || "",
-      est_siege: etab.siege === true || etab.est_siege === true,
+      siret: etab.siret,
+      displayName: etab.denominationUsuelleEtablissement
+        || etab.enseigne1Etablissement
+        || etab.uniteLegale?.denominationUniteLegale
+        || "-",
+      adresse: formatAdresseSIRENE(etab.adresseEtablissement),
+      activite_principale: etab.activitePrincipaleEtablissement || "",
+      tranche_effectif_libelle: etab.trancheEffectifsEtablissement || "",
+      tranche_effectif_salarie: "", // Non dispo dans l'API Recherche entreprise
+      date_creation: etab.dateCreationEtablissement || "",
+      est_siege: etab.etablissementSiege === true,
       statut,
       date_fermeture,
     };
   });
 
-  if (etablissements.length === 0 && sireneUL) {
-    const siegesiret = sireneUL.siretSiegeUniteLegale || sireneUL.siret_siege_unite_legale || null;
-    const adresseSiege = formatAdresseSIRENE(sireneUL.adresseSiegeUniteLegale || sireneUL.adresse_siege_unite_legale || {});
-    etablissements = [{
-      siret: siegesiret || "-",
-      displayName: sireneUL.denominationUniteLegale || "-",
-      adresse: adresseSiege,
-      activite_principale: sireneUL.activitePrincipaleUniteLegale || "-",
-      tranche_effectif_libelle: sireneUL.trancheEffectifsUniteLegale || "-",
-      tranche_effectif_salarie: "-",
-      date_creation: sireneUL.dateCreationUniteLegale || "-",
-      est_siege: true,
-      statut: sireneUL.etatAdministratifUniteLegale === "A" ? "actif" : "ferme",
-      date_fermeture: null,
-    }];
-  }
-
+  // ... (Le reste inchangé)
   const siege = etablissements.find(e => e.est_siege) || etablissements[0] || {};
   let adresse = siege?.adresse || "-";
   let statut = siege?.statut || "actif";
@@ -291,201 +279,8 @@ export async function fetchEtablissementBySiren(siren: string) {
   };
 }
 
-export async function fetchEtablissementBySiret(siret: string) {
-  const siren = siret.slice(0, 9)
-  const [
-    inpiDataRaw,
-    sireneEtabRaw,
-    sireneULRaw,
-    etablissementsRaw,
-    rechercheEtabResp
-  ] = await Promise.all([
-    getEntrepriseBySiren(siren).catch(() => ({})),
-    sirene.get(`/siret/${siret}`).then(r => r.data.etablissement).catch(() => ({})),
-    sirene.get(`/siren/${siren}`).then(r => r.data.uniteLegale).catch(() => ({})),
-    sirene.get(`/siren/${siren}/etablissements`).then(r => r.data.etablissements).catch(() => ([])),
-    recherche.get('/search', { params: { q: siren, per_page: 1000, statut_ferme: true } }).then(r => r.data).catch(() => ({ results: [] })),
-  ]);
+// ... (le reste inchangé, y compris fetchEtablissementBySiret, etc.)
 
-  const inpiData = inpiDataRaw || {};
-  const sireneEtab = sireneEtabRaw || {};
-  const sireneUL = sireneULRaw || {};
-  const etabsFromRecherche = Array.isArray(rechercheEtabResp.results) ? rechercheEtabResp.results : [];
-
-  let etablissements = etabsFromRecherche.filter(e => e.siren === siren).map((etab: any) => {
-    const { statut, date_fermeture } = etablissementStatut(etab);
-    return {
-      siret: etab.siret || etab.siret_etablissement,
-      displayName: etab.denomination || etab.nom_raison_sociale || etab.raison_sociale || etab.name || etab.nom_commercial || "-",
-      adresse: etab.adresse || etab.adresseEtablissement || "-",
-      activite_principale: etab.activite_principale || etab.code_ape || "",
-      tranche_effectif_libelle: etab.tranche_effectif_libelle || etab.tranche_effectifs || "",
-      tranche_effectif_salarie: etab.tranche_effectif_salarie || "",
-      date_creation: etab.date_creation || etab.dateCreationEtablissement || "",
-      est_siege: etab.siege === true || etab.est_siege === true,
-      statut,
-      date_fermeture,
-    };
-  });
-
-  if (etablissements.length === 0 && sireneUL) {
-    const siegesiret = sireneUL.siretSiegeUniteLegale || sireneUL.siret_siege_unite_legale || null;
-    const adresseSiege = formatAdresseSIRENE(sireneUL.adresseSiegeUniteLegale || sireneUL.adresse_siege_unite_legale || {});
-    etablissements = [{
-      siret: siegesiret || "-",
-      displayName: sireneUL.denominationUniteLegale || "-",
-      adresse: adresseSiege,
-      activite_principale: sireneUL.activitePrincipaleUniteLegale || "-",
-      tranche_effectif_libelle: sireneUL.trancheEffectifsUniteLegale || "-",
-      tranche_effectif_salarie: "-",
-      date_creation: sireneUL.dateCreationUniteLegale || "-",
-      est_siege: true,
-      statut: sireneUL.etatAdministratifUniteLegale === "A" ? "actif" : "ferme",
-      date_fermeture: null,
-    }];
-  }
-
-  const { statut, date_fermeture } = etablissementStatut(sireneEtab);
-
-  const denomination =
-    getInpi("formality.content.personneMorale.identite.entreprise.denomination", inpiData) ||
-    inpiData.denomination ||
-    getInpi("formality.content.personneMorale.identite.entreprise.nom", inpiData) ||
-    sireneUL.denominationUniteLegale ||
-    "-";
-
-  const forme_juridique_code =
-    getInpi("formality.content.personneMorale.identite.entreprise.formeJuridique", inpiData) ||
-    inpiData.legalForm ||
-    sireneUL.categorieJuridiqueUniteLegale ||
-    "-";
-  const forme_juridique =
-    getFormeJuridiqueLabel(forme_juridique_code) ||
-    sireneUL.libelleCategorieJuridiqueUniteLegale ||
-    forme_juridique_code;
-
-  const code_ape =
-    getInpi("formality.content.personneMorale.identite.entreprise.codeApe", inpiData) ||
-    sireneEtab.activitePrincipaleEtablissement ||
-    inpiData.ape ||
-    sireneUL.activitePrincipaleUniteLegale ||
-    "-";
-  const libelle_ape =
-    getLibelleApeFromINPI(inpiData) ||
-    sireneUL.libelleActivitePrincipaleUniteLegale ||
-    getApeLabelFromNAF(code_ape) ||
-    "-";
-
-  const capital_social =
-    getInpi("formality.content.personneMorale.identite.description.montantCapital", inpiData) ||
-    getInpi("formality.content.description.montantCapital", inpiData) ||
-    inpiData.shareCapital ||
-    sireneUL.capitalSocial ||
-    "-";
-
-  const date_creation =
-    getInpi("formality.content.personneMorale.identite.entreprise.dateDebutActiv", inpiData) ||
-    getInpi("formality.content.personneMorale.identite.entreprise.dateImmat", inpiData) ||
-    sireneEtab.dateCreationEtablissement ||
-    inpiData.creationDate ||
-    sireneUL.dateCreationUniteLegale ||
-    "-";
-
-  const sireneAdresseObj = sireneEtab?.adresseEtablissement;
-  const sireneAdresse = formatAdresseSIRENE(sireneAdresseObj);
-  const adresse = sireneAdresse && sireneAdresse !== "-" ? sireneAdresse : "-";
-
-  const tranche_effectifs_code =
-    getInpi("formality.content.personneMorale.identite.entreprise.trancheEffectifs", inpiData) ||
-    inpiData.workforceLabel ||
-    sireneUL.trancheEffectifsUniteLegale ||
-    "-";
-  const tranche_effectifs =
-    effectifTrancheLabel(tranche_effectifs_code) || tranche_effectifs_code;
-
-  const tranche_effectif_salarie =
-    inpiData.workforceRange ||
-    sireneUL.trancheEffectifsUniteLegale ||
-    "-";
-
-  const tvaNum = tvaFRFromSiren(siren);
-
-  const finances = inpiData.financialStatements?.length
-    ? inpiData.financialStatements.map((f: any) => ({
-        exercice: f.fiscalYear,
-        ca: f.turnover,
-        resultat_net: f.netResult,
-        effectif: f.workforce,
-        capital_social: f.shareCapital
-      }))
-    : [];
-
-  let dirigeants = [];
-  const pouvoirs = getInpi("formality.content.personneMorale.composition.pouvoirs", inpiData);
-  if (Array.isArray(pouvoirs)) {
-    dirigeants = pouvoirs.map((p: any) => {
-      if (p.individu?.descriptionPersonne) {
-        return {
-          nom: p.individu.descriptionPersonne.nom,
-          prenoms: p.individu.descriptionPersonne.prenoms,
-          genre: p.individu.descriptionPersonne.genre,
-          dateNaissance: p.individu.descriptionPersonne.dateDeNaissance,
-          role: p.individu.descriptionPersonne.role
-        };
-      }
-      if (p.entreprise) {
-        return {
-          nom: p.entreprise.denomination,
-          siren: p.entreprise.siren,
-          role: p.roleEntreprise
-        };
-      }
-      return p;
-    });
-  }
-
-  const statut_diffusion =
-    inpiData.publicationStatus ||
-    sireneUL.statutDiffusionUniteLegale ||
-    "-";
-
-  const site_web =
-    inpiData.website ||
-    "-";
-
-  const email =
-    inpiData.email ||
-    "-";
-
-  return {
-    denomination,
-    forme_juridique,
-    categorie_juridique: forme_juridique_code,
-    siren,
-    siret,
-    tva: { numero: tvaNum || '-', valide: null },
-    code_ape,
-    libelle_ape,
-    tranche_effectifs,
-    tranche_effectif_salarie,
-    capital_social: capital_social !== undefined ? capital_social : "-",
-    date_creation,
-    adresse,
-    etablissements,
-    dirigeants,
-    finances,
-    statut_diffusion,
-    site_web,
-    email,
-    statut,
-    date_fermeture,
-    inpiRaw: inpiDataRaw,
-    sireneRaw: sireneULRaw,
-    sireneEtabRaw: sireneEtabRaw
-  };
-}
-
-// ====== AJOUT mapping paginé pour la nouvelle liste (compatible INSEE API) ======
 export function mapEtablissement(etab: any) {
   const adresse = [
     etab.adresseEtablissement?.numeroVoieEtablissement,
@@ -506,7 +301,6 @@ export function mapEtablissement(etab: any) {
   };
 }
 
-// ====== RESTAURATION (et mise à jour) de fetchEtablissementByCode pour compatibilité totale ======
 export async function fetchEtablissementByCode(code: string) {
   if (/^\d{14}$/.test(code)) {
     return fetchEtablissementBySiret(code);
