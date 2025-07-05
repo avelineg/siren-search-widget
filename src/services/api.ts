@@ -38,22 +38,22 @@ export const recherche = axios.create({
  * @param nombre - nombre d'établissements par page (défaut : 20)
  * @returns { total, etablissements }
  */
+import { recherche } from './api';
+
 export async function fetchEtablissementsBySiren(
   siren: string,
   page: number = 1,
   nombre: number = 20
 ) {
-  const offset = (page - 1) * nombre;
-  const res = await sirene.get(`/siret`, {
+  const res = await recherche.get('/search', {
     params: {
-      q: `siren:${siren}`,
-      nombre,
-      debut: offset,
-      tri: 'desc'
+      q: siren,
+      per_page: 1000 // on récupère tout
     }
   });
-  return {
-    total: res.data.header?.total || 0,
-    etablissements: res.data.etablissements || []
-  };
+  const allEtab = (res.data.results || []).filter((e: any) => e.siren === siren);
+  const total = allEtab.length;
+  // Pagination côté front
+  const etablissements = allEtab.slice((page - 1) * nombre, page * nombre);
+  return { total, etablissements };
 }
