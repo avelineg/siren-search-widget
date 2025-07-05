@@ -47,12 +47,15 @@ export async function fetchEtablissementsBySiren(
   const res = await recherche.get('/search', {
     params: {
       q: siren,
-      per_page: 1000 // on récupère tout
+      per_page: 1 // On veut juste le bloc principal de l'entreprise
     }
   });
-  const allEtab = (res.data.results || []).filter((e: any) => e.siren === siren);
+
+  // Les établissements sont dans le champ .etablissements du premier résultat
+  const allEtab = (res.data.results && res.data.results[0]?.etablissements) || [];
   const total = allEtab.length;
   // Pagination côté front
   const etablissements = allEtab.slice((page - 1) * nombre, page * nombre);
   return { total, etablissements };
 }
+
