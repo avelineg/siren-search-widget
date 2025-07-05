@@ -520,3 +520,22 @@ export function mapEtablissement(etab: any) {
     isSiege: !!etab.etablissementSiege,
   };
 }
+export function mapEtablissement(etab: any) {
+  const adresse = [
+    etab.adresseEtablissement?.numeroVoieEtablissement,
+    etab.adresseEtablissement?.typeVoieEtablissement,
+    etab.adresseEtablissement?.libelleVoieEtablissement,
+    etab.adresseEtablissement?.codePostalEtablissement,
+    etab.adresseEtablissement?.libelleCommuneEtablissement,
+  ].filter(Boolean).join(' ');
+  return {
+    siret: etab.siret,
+    denomination: etab.denominationUsuelleEtablissement
+      || etab.enseigne1Etablissement
+      || etab.uniteLegale?.denominationUniteLegale
+      || '—',
+    adresse,
+    etat: etab.etatAdministratifEtablissement === 'A' ? 'Actif' : 'Fermé',
+    isSiege: !!etab.etablissementSiege,
+  };
+}
