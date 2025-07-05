@@ -38,7 +38,6 @@ export const recherche = axios.create({
  * @param nombre - nombre d'établissements par page (défaut : 20)
  * @returns { total, etablissements }
  */
-import { recherche } from './api';
 
 export async function fetchEtablissementsBySiren(
   siren: string,
