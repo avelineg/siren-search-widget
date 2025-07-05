@@ -106,6 +106,7 @@ export async function searchEtablissementsByName(name: string) {
     : [];
 }
 
+// ====== FONCTION SIREN CORRIGÉE ======
 export async function fetchEtablissementBySiren(siren: string) {
   const [
     inpiDataRaw,
@@ -114,12 +115,19 @@ export async function fetchEtablissementBySiren(siren: string) {
   ] = await Promise.all([
     getEntrepriseBySiren(siren).catch(() => ({})),
     sirene.get(`/siren/${siren}`).then(r => r.data.uniteLegale).catch(() => ({})),
-    recherche.get('/search', { params: { q: siren, per_page: 1 } }).then(r => r.data).catch(() => ({ results: [] })),
+    recherche.get('/search', { params: { q: siren, per_page: 1000 } }).then(r => r.data).catch(() => ({ results: [] })),
   ]);
 
   const inpiData = inpiDataRaw || {};
   const sireneUL = sireneULRaw || {};
-  const etabsFromRecherche = (rechercheEtabResp.results && rechercheEtabResp.results[0]?.etablissements) || [];
+
+  // Correction ici :
+  const etabsFromRecherche = Array.isArray(rechercheEtabResp.results)
+    ? rechercheEtabResp.results.filter((e: any) => e.siren === siren && e.siret)
+    : [];
+
+  // Pour debug :
+  console.log("Résultats bruts recherche-entreprises:", rechercheEtabResp.results);
 
   let etablissements = etabsFromRecherche.map((etab: any) => {
     const { statut, date_fermeture } = etablissementStatut(etab);
@@ -307,13 +315,19 @@ export async function fetchEtablissementBySiret(siret: string) {
     getEntrepriseBySiren(siren).catch(() => ({})),
     sirene.get(`/siret/${siret}`).then(r => r.data.etablissement).catch(() => ({})),
     sirene.get(`/siren/${siren}`).then(r => r.data.uniteLegale).catch(() => ({})),
-    recherche.get('/search', { params: { q: siren, per_page: 1 } }).then(r => r.data).catch(() => ({ results: [] })),
+    recherche.get('/search', { params: { q: siren, per_page: 1000 } }).then(r => r.data).catch(() => ({ results: [] })),
   ]);
 
   const inpiData = inpiDataRaw || {};
   const sireneEtab = sireneEtabRaw || {};
   const sireneUL = sireneULRaw || {};
-  const etabsFromRecherche = (rechercheEtabResp.results && rechercheEtabResp.results[0]?.etablissements) || [];
+  // Correction ici :
+  const etabsFromRecherche = Array.isArray(rechercheEtabResp.results)
+    ? rechercheEtabResp.results.filter((e: any) => e.siren === siren && e.siret)
+    : [];
+
+  // Pour debug :
+  console.log("Résultats bruts recherche-entreprises:", rechercheEtabResp.results);
 
   let etablissements = etabsFromRecherche.map((etab: any) => {
     const { statut, date_fermeture } = etablissementStatut(etab);
@@ -520,7 +534,7 @@ export function mapEtablissement(etab: any) {
     isSiege: !!(etab.etablissementSiege || etab.siege || etab.est_siege),
   };
 }
-console.log("Résultats bruts recherche-entreprises:", res.data.results);
+
 // Fonction de compatibilité pour SIREN ou SIRET
 export async function fetchEtablissementByCode(code: string) {
   if (/^\d{14}$/.test(code)) {
