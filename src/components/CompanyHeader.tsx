@@ -14,9 +14,11 @@ interface Props {
 export default function CompanyHeader(props: Props) {
   return (
     <div className="bg-white p-6 rounded shadow mb-6">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-2">
+      {/* En-tête : dénomination centrée et en gras */}
+      <div className="text-2xl font-bold text-center mb-6">{props.denomination}</div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
         {/* Colonne gauche */}
-        <ul className="space-y-1 list-disc list-inside">
+        <ul className="space-y-2 list-disc list-inside">
           <li>
             <span className="font-bold">SIREN :</span> {props.siren}
           </li>
@@ -37,9 +39,8 @@ export default function CompanyHeader(props: Props) {
             <span className="font-bold">TVA intracommunautaire :</span> {props.tva?.numero || '–'}
           </li>
         </ul>
-
         {/* Colonne droite */}
-        <ul className="space-y-1 list-disc list-inside">
+        <ul className="space-y-2 list-disc list-inside">
           <li>
             <span className="font-bold">Code APE :</span> {props.code_ape ? props.code_ape : '–'}
           </li>
@@ -49,7 +50,6 @@ export default function CompanyHeader(props: Props) {
           </li>
         </ul>
       </div>
-      <div className="mt-3 text-lg font-semibold">{props.denomination}</div>
     </div>
   );
 }
