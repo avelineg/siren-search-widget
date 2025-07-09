@@ -4,8 +4,11 @@ import { tvaFRFromSiren } from './tva'
 import naf from '../naf.json'
 import formesJuridique from '../formeJuridique.json'
 import { effectifTrancheLabel } from './effectifs'
-import ROLE_DIRIGEANT from './dirigeantRoles'
 
+// Si tu as ajouté la correspondance des rôles dans un fichier séparé
+import dirigeantRoles from './dirigeantRoles'
+
+// Petit utilitaire pour extraire une valeur profonde
 function getInpi(path: string, obj: any) {
   return path.split('.').reduce((acc, key) => (acc && acc[key] != null ? acc[key] : undefined), obj);
 }
@@ -68,7 +71,7 @@ function etablissementStatut(etab: any) {
   return { statut: "actif", date_fermeture: null };
 }
 
-// Recherche d'établissements par raison sociale (exportée pour hook !)
+// Recherche d'établissements par raison sociale
 export async function searchEtablissementsByName(name: string) {
   const results = await recherche
     .get('/search', {
@@ -94,6 +97,9 @@ export async function searchEtablissementsByName(name: string) {
                   etab.name ||
                   etab.nom_commercial ||
                   "-",
+                ville: etab.libelle_commune ||
+                  etab.adresseEtablissement?.libelleCommuneEtablissement ||
+                  "-"
               }
             })
           : [];
@@ -109,6 +115,9 @@ export async function searchEtablissementsByName(name: string) {
           statut,
           date_fermeture,
           matching_etablissements,
+          ville: r.libelle_commune ||
+            r.adresseEtablissement?.libelleCommuneEtablissement ||
+            "-"
         }
       })
     : [];
@@ -153,9 +162,14 @@ export async function fetchEtablissementBySiren(siren: string) {
     const adresse = etab.adresse || {};
     const activite = Array.isArray(etab.activites) ? etab.activites[0] : {};
     const { statut, date_fermeture } = etablissementStatut(desc);
+    const ville =
+      adresse.commune ||
+      adresse.libelleCommuneEtablissement ||
+      "-";
     return {
       siret: desc.siret || "-",
       displayName: inpiData.formality?.content?.identite?.entreprise?.denomination || "-",
+      ville,
       adresse: formatAdresseINPI(adresse),
       activite_principale: activite.codeApe || "",
       tranche_effectif_libelle: "",
@@ -167,13 +181,15 @@ export async function fetchEtablissementBySiren(siren: string) {
     };
   });
 
-  // Si aucun établissement en INPI, fallback SIRENE/Recherche comme avant
+  // Si aucun établissement en INPI, fallback SIRENE/Recherche
   if (etablissements.length === 0 && sireneUL) {
     const siegesiret = sireneUL.siretSiegeUniteLegale || sireneUL.siret_siege_unite_legale || null;
     const adresseSiege = formatAdresseSIRENE(sireneUL.adresseSiegeUniteLegale || sireneUL.adresse_siege_unite_legale || {});
+    const villeSiege = sireneUL.libelleCommuneEtablissement || "-";
     etablissements = [{
       siret: siegesiret || "-",
       displayName: sireneUL.denominationUniteLegale || "-",
+      ville: villeSiege,
       adresse: adresseSiege,
       activite_principale: sireneUL.activitePrincipaleUniteLegale || "-",
       tranche_effectif_libelle: sireneUL.trancheEffectifsUniteLegale || "-",
@@ -249,7 +265,7 @@ export async function fetchEtablissementBySiren(siren: string) {
 
   const tvaNum = tvaFRFromSiren(siren);
 
-  // Dirigeants (ajout du label de rôle)
+  // Dirigeants enrichis avec la correspondance des rôles
   let dirigeants = [];
   const pouvoirs = getInpi("formality.content.personneMorale.composition.pouvoirs", inpiData);
   if (Array.isArray(pouvoirs)) {
@@ -260,16 +276,14 @@ export async function fetchEtablissementBySiren(siren: string) {
           prenoms: p.individu.descriptionPersonne.prenoms,
           genre: p.individu.descriptionPersonne.genre,
           dateNaissance: p.individu.descriptionPersonne.dateDeNaissance,
-          role: p.individu.descriptionPersonne.role,
-          roleLabel: ROLE_DIRIGEANT[p.individu.descriptionPersonne.role] || p.individu.descriptionPersonne.role
+          role: dirigeantRoles[p.individu.descriptionPersonne.role] || p.individu.descriptionPersonne.role,
         };
       }
       if (p.entreprise) {
         return {
           nom: p.entreprise.denomination,
           siren: p.entreprise.siren,
-          role: p.roleEntreprise,
-          roleLabel: ROLE_DIRIGEANT[p.roleEntreprise] || p.roleEntreprise
+          role: dirigeantRoles[p.roleEntreprise] || p.roleEntreprise
         };
       }
       return p;
@@ -328,17 +342,17 @@ export async function fetchEtablissementBySiret(siret: string) {
   // Sélectionner établissement courant pour les infos principales
   const selected = base.etablissements.find(e => e.siret === siret) || base.etablissements[0];
 
-  // Sur l'objet retourné, on met à jour :
   return {
     ...base,
     siret: selected?.siret || "-",
     adresse: selected?.adresse || "-",
     statut: selected?.statut,
     date_fermeture: selected?.date_fermeture,
+    ville: selected?.ville || "-"
   }
 }
 
-// Pour affichage individuel d’un établissement dans une liste paginée (ex : EtablissementsListPaginee)
+// Pour affichage individuel d’un établissement dans une liste paginée
 export function mapEtablissement(etab: any) {
   const adresse =
     [
@@ -349,12 +363,17 @@ export function mapEtablissement(etab: any) {
       etab.libelle_commune || etab.adresseEtablissement?.libelleCommuneEtablissement,
     ].filter(Boolean).join(' ');
 
-  // Statut vraiment fermé seulement si date_fermeture
   let statut = "Actif";
   if (etab.date_fermeture) statut = "Fermé";
 
+  const ville =
+    etab.libelle_commune ||
+    etab.adresseEtablissement?.libelleCommuneEtablissement ||
+    "-";
+
   return {
     siret: etab.siret,
+    ville: ville,
     denomination:
       etab.denomination ||
       etab.denomination_usuelle_entreprise ||
