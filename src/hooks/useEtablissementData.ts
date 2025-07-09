@@ -25,12 +25,18 @@ export function useEtablissementData(query: string, selectedCode: string = "") {
 
     if (isSiret || isSiren) {
       fetchEtablissementByCode(query)
-        .then(res => setData(res))
+        .then(res => {
+          setData(res);
+          setResults([]);
+        })
         .catch(err => setError(err.message))
         .finally(() => setLoading(false));
     } else {
       searchEtablissementsByName(query)
-        .then(list => setResults(list))
+        .then(list => {
+          setResults(list || []);
+          setData(null);
+        })
         .catch(err => setError(err.message))
         .finally(() => setLoading(false));
     }
