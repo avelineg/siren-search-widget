@@ -13,47 +13,43 @@ interface Props {
 
 export default function CompanyHeader(props: Props) {
   return (
-    <div className="bg-white p-4 rounded shadow mb-6 flex flex-wrap">
-      <div className="flex-1 space-y-1">
-        <div className="text-lg font-semibold">{props.denomination}</div>
+    <div className="bg-white p-6 rounded shadow mb-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-2">
+        {/* Colonne gauche */}
         <ul className="space-y-1 list-disc list-inside">
           <li>
-            <strong>SIREN :</strong> {props.siren}
+            <span className="font-bold">SIREN :</span> {props.siren}
           </li>
           <li>
-            <strong>SIRET :</strong> {props.siret}
+            <span className="font-bold">SIRET :</span> {props.siret}
           </li>
           {props.ville && (
             <li>
-              <strong>Ville :</strong> {props.ville}
+              <span className="font-bold">Ville :</span> {props.ville}
             </li>
           )}
           {props.adresse && (
             <li>
-              <strong>Adresse :</strong> {props.adresse}
+              <span className="font-bold">Adresse :</span> {props.adresse}
             </li>
           )}
           <li>
-            <strong>TVA intracommunautaire :</strong> {props.tva?.numero || '–'}{' '}
-            {props.tva?.valide === true
-              ? '✅'
-              : props.tva?.valide === false
-              ? '❌'
-              : ''}
+            <span className="font-bold">TVA intracommunautaire :</span> {props.tva?.numero || '–'}
           </li>
         </ul>
-      </div>
-      <div className="flex-1 space-y-1">
+
+        {/* Colonne droite */}
         <ul className="space-y-1 list-disc list-inside">
           <li>
-            <strong>Code APE :</strong> {props.code_ape ? props.code_ape : '–'}
+            <span className="font-bold">Code APE :</span> {props.code_ape ? props.code_ape : '–'}
           </li>
           <li>
-            <strong>Capital social :</strong>{' '}
+            <span className="font-bold">Capital social :</span>{' '}
             {props.capital_social?.toLocaleString() || '–'} €
           </li>
         </ul>
       </div>
+      <div className="mt-3 text-lg font-semibold">{props.denomination}</div>
     </div>
   );
 }
