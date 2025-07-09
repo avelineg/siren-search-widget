@@ -30,6 +30,18 @@ function getFormeJuridiqueLabel(code: string): string | undefined {
   return formesJuridique[code] || formesJuridique[code.padStart(4, '0')];
 }
 
+function formatAdresseINPI(adresseObj: any): string {
+  if (!adresseObj || typeof adresseObj !== "object") return "-";
+  return [
+    adresseObj.numVoie || adresseObj.numVoiePresent && adresseObj.numVoie,
+    adresseObj.typeVoie || adresseObj.typeVoiePresent && adresseObj.typeVoie,
+    adresseObj.voie || adresseObj.voiePresent && adresseObj.voie,
+    adresseObj.codePostal || adresseObj.codePostalPresent && adresseObj.codePostal,
+    adresseObj.commune || adresseObj.communePresent && adresseObj.commune,
+    adresseObj.complementLocalisation || adresseObj.complementLocalisationPresent && adresseObj.complementLocalisation,
+  ].filter(Boolean).join(' ');
+}
+
 function formatAdresseSIRENE(adresseObj: any): string {
   if (!adresseObj || typeof adresseObj !== "object") return "-";
   return [
@@ -49,19 +61,69 @@ export function formatDateFR(date: string | undefined | null): string | null {
 }
 
 function etablissementStatut(etab: any) {
-  const date_fermeture = etab.dateFermetureEtablissement || etab.date_fermeture || null;
+  const date_fermeture = etab.dateFermetureEtablissement || etab.date_fermeture || etab.dateEffetFermeture || null;
   if (date_fermeture) return { statut: "ferme", date_fermeture };
   const etat =
     etab.etatAdministratifEtablissement ||
     etab.etat_administratif ||
     etab.etatAdministratifUniteLegale ||
     etab.etat_administratif_unite_legale ||
+    etab.statut ||
+    etab.statutPourFormalite ||
     null;
-  if (etat && etat !== "A") return { statut: "ferme", date_fermeture: null };
+  if (etat && (etat !== "A" && etat !== 4)) return { statut: "ferme", date_fermeture: null };
   return { statut: "actif", date_fermeture: null };
 }
 
-// Recherche d'établissements par raison sociale
+/** Retourne tous les établissements à partir de la structure INPI. */
+function etablissementsFromINPI(inpiData: any): any[] {
+  const pm = getInpi('formality.content.personneMorale', inpiData);
+  if (!pm) return [];
+  const etablissements: any[] = [];
+
+  // Principal
+  const principal = pm.etablissementPrincipal;
+  if (principal && principal.descriptionEtablissement) {
+    const { siret, codeApe, statutPourFormalite } = principal.descriptionEtablissement;
+    const { statut, date_fermeture } = etablissementStatut({ ...principal.descriptionEtablissement });
+    etablissements.push({
+      siret: siret || "-",
+      displayName: getInpi("formality.content.personneMorale.identite.entreprise.denomination", inpiData) || "-",
+      adresse: formatAdresseINPI(principal.adresse),
+      activite_principale: codeApe || "",
+      tranche_effectif_libelle: "", // Non fourni dans INPI par défaut
+      tranche_effectif_salarie: "",
+      date_creation: principal.descriptionEtablissement.dateDebut || "",
+      est_siege: true,
+      statut,
+      date_fermeture,
+    });
+  }
+
+  // Secondaires
+  if (Array.isArray(pm.autresEtablissements)) {
+    for (const autretab of pm.autresEtablissements) {
+      if (!autretab || !autretab.descriptionEtablissement) continue;
+      const { siret, codeApe, dateEffetFermeture } = autretab.descriptionEtablissement;
+      const { statut, date_fermeture } = etablissementStatut(autretab.descriptionEtablissement);
+      etablissements.push({
+        siret: siret || "-",
+        displayName: getInpi("formality.content.personneMorale.identite.entreprise.denomination", inpiData) || "-",
+        adresse: formatAdresseINPI(autretab.adresse),
+        activite_principale: codeApe || "",
+        tranche_effectif_libelle: "",
+        tranche_effectif_salarie: "",
+        date_creation: autretab.descriptionEtablissement.dateDebut || "",
+        est_siege: false,
+        statut,
+        date_fermeture: dateEffetFermeture || date_fermeture,
+      });
+    }
+  }
+  return etablissements;
+}
+
+// Recherche d'établissements par raison sociale (inchangé)
 export async function searchEtablissementsByName(name: string) {
   const results = await recherche
     .get('/search', {
@@ -107,63 +169,38 @@ export async function searchEtablissementsByName(name: string) {
     : [];
 }
 
-// ====== SIREN (nouvelle version, nécessite la dénomination fournie) ======
-export async function fetchEtablissementBySiren(siren: string, denomination: string) {
+// ====== SIREN ======
+export async function fetchEtablissementBySiren(siren: string) {
   const [
     inpiDataRaw,
-    sireneULRaw
+    sireneULRaw,
+    rechercheEtabResp
   ] = await Promise.all([
     getEntrepriseBySiren(siren).catch(() => ({})),
     sirene.get(`/siren/${siren}`).then(r => r.data.uniteLegale).catch(() => ({})),
+    recherche.get('/search', { params: { q: `siren:${siren}`, per_page: 1 } }).then(r => r.data).catch(() => ({ results: [] })),
   ]);
 
-  // Recherche par nom pour retrouver tous les établissements du groupe
-  const rechercheEtabResp = await recherche.get('/search', { params: { q: denomination, per_page: 50 } }).catch(() => ({ data: { results: [] } }));
-  const results = rechercheEtabResp.data.results || [];
+  const inpiData = inpiDataRaw || {};
+  const sireneUL = sireneULRaw || {};
 
-  // On prend tous les établissements dont le siret commence par le siren
-  let etabsFromRecherche: any[] = [];
-  results.forEach(ent => {
-    if (Array.isArray(ent.matching_etablissements)) {
-      etabsFromRecherche.push(...ent.matching_etablissements.filter(etab => etab.siret && etab.siret.startsWith(siren)));
-    }
-    if (Array.isArray(ent.etablissements)) {
-      etabsFromRecherche.push(...ent.etablissements.filter(etab => etab.siret && etab.siret.startsWith(siren)));
-    }
-  });
+  // Essaye d'abord INPI pour tous les établissements
+  let etablissements = etablissementsFromINPI(inpiData);
 
-  let etablissements = etabsFromRecherche.map((etab: any) => {
-    const { statut, date_fermeture } = etablissementStatut(etab);
-    return {
-      siret: etab.siret,
-      displayName: etab.denominationUsuelleEtablissement
-        || etab.enseigne1Etablissement
-        || etab.uniteLegale?.denominationUniteLegale
-        || "-",
-      adresse: formatAdresseSIRENE(etab.adresseEtablissement),
-      activite_principale: etab.activitePrincipaleEtablissement || "",
-      tranche_effectif_libelle: etab.trancheEffectifsEtablissement || "",
-      tranche_effectif_salarie: "",
-      date_creation: etab.dateCreationEtablissement || "",
-      est_siege: etab.etablissementSiege === true,
-      statut,
-      date_fermeture,
-    };
-  });
-
-  if (etablissements.length === 0 && sireneULRaw) {
-    const siegesiret = sireneULRaw.siretSiegeUniteLegale || sireneULRaw.siret_siege_unite_legale || null;
-    const adresseSiege = formatAdresseSIRENE(sireneULRaw.adresseSiegeUniteLegale || sireneULRaw.adresse_siege_unite_legale || {});
+  // Fallback sur Sirene si pas d'établissements INPI
+  if (!etablissements.length && sireneUL) {
+    const siegesiret = sireneUL.siretSiegeUniteLegale || sireneUL.siret_siege_unite_legale || null;
+    const adresseSiege = formatAdresseSIRENE(sireneUL.adresseSiegeUniteLegale || sireneUL.adresse_siege_unite_legale || {});
     etablissements = [{
       siret: siegesiret || "-",
-      displayName: sireneULRaw.denominationUniteLegale || "-",
+      displayName: sireneUL.denominationUniteLegale || "-",
       adresse: adresseSiege,
-      activite_principale: sireneULRaw.activitePrincipaleUniteLegale || "-",
-      tranche_effectif_libelle: sireneULRaw.trancheEffectifsUniteLegale || "-",
+      activite_principale: sireneUL.activitePrincipaleUniteLegale || "-",
+      tranche_effectif_libelle: sireneUL.trancheEffectifsUniteLegale || "-",
       tranche_effectif_salarie: "-",
-      date_creation: sireneULRaw.dateCreationUniteLegale || "-",
+      date_creation: sireneUL.dateCreationUniteLegale || "-",
       est_siege: true,
-      statut: sireneULRaw.etatAdministratifUniteLegale === "A" ? "actif" : "ferme",
+      statut: sireneUL.etatAdministratifUniteLegale === "A" ? "actif" : "ferme",
       date_fermeture: null,
     }];
   }
@@ -173,67 +210,66 @@ export async function fetchEtablissementBySiren(siren: string, denomination: str
   let statut = siege?.statut || "actif";
   let date_fermeture = siege?.date_fermeture || null;
 
-  const denominationFinale =
-    getInpi("formality.content.personneMorale.identite.entreprise.denomination", inpiDataRaw) ||
-    inpiDataRaw.denomination ||
-    getInpi("formality.content.personneMorale.identite.entreprise.nom", inpiDataRaw) ||
-    (sireneULRaw.denominationUniteLegale) ||
-    denomination ||
+  const denomination =
+    getInpi("formality.content.personneMorale.identite.entreprise.denomination", inpiData) ||
+    inpiData.denomination ||
+    getInpi("formality.content.personneMorale.identite.entreprise.nom", inpiData) ||
+    (sireneUL.denominationUniteLegale) ||
     "-";
 
   const forme_juridique_code =
-    getInpi("formality.content.personneMorale.identite.entreprise.formeJuridique", inpiDataRaw) ||
-    inpiDataRaw.legalForm ||
-    sireneULRaw.categorieJuridiqueUniteLegale ||
+    getInpi("formality.content.personneMorale.identite.entreprise.formeJuridique", inpiData) ||
+    inpiData.legalForm ||
+    sireneUL.categorieJuridiqueUniteLegale ||
     "-";
   const forme_juridique =
     getFormeJuridiqueLabel(forme_juridique_code) ||
-    sireneULRaw.libelleCategorieJuridiqueUniteLegale ||
+    sireneUL.libelleCategorieJuridiqueUniteLegale ||
     forme_juridique_code;
 
   const code_ape =
-    getInpi("formality.content.personneMorale.identite.entreprise.codeApe", inpiDataRaw) ||
-    inpiDataRaw.ape ||
-    sireneULRaw.activitePrincipaleUniteLegale ||
+    getInpi("formality.content.personneMorale.identite.entreprise.codeApe", inpiData) ||
+    inpiData.ape ||
+    sireneUL.activitePrincipaleUniteLegale ||
     "-";
   const libelle_ape =
-    getLibelleApeFromINPI(inpiDataRaw) ||
-    sireneULRaw.libelleActivitePrincipaleUniteLegale ||
+    getLibelleApeFromINPI(inpiData) ||
+    sireneUL.libelleActivitePrincipaleUniteLegale ||
     getApeLabelFromNAF(code_ape) ||
     "-";
 
   const capital_social =
-    getInpi("formality.content.personneMorale.identite.description.montantCapital", inpiDataRaw) ||
-    getInpi("formality.content.description.montantCapital", inpiDataRaw) ||
-    inpiDataRaw.shareCapital ||
-    sireneULRaw.capitalSocial ||
-    (inpiDataRaw.financialStatements?.[0]?.shareCapital) ||
+    getInpi("formality.content.personneMorale.identite.description.montantCapital", inpiData) ||
+    getInpi("formality.content.description.montantCapital", inpiData) ||
+    inpiData.shareCapital ||
+    sireneUL.capitalSocial ||
+    (inpiData.financialStatements?.[0]?.shareCapital) ||
     "-";
 
   const date_creation =
-    getInpi("formality.content.personneMorale.identite.entreprise.dateDebutActiv", inpiDataRaw) ||
-    getInpi("formality.content.personneMorale.identite.entreprise.dateImmat", inpiDataRaw) ||
-    inpiDataRaw.creationDate ||
-    sireneULRaw.dateCreationUniteLegale ||
+    getInpi("formality.content.personneMorale.identite.entreprise.dateDebutActiv", inpiData) ||
+    getInpi("formality.content.personneMorale.identite.entreprise.dateImmat", inpiData) ||
+    inpiData.creationDate ||
+    sireneUL.dateCreationUniteLegale ||
     "-";
 
   const tranche_effectifs_code =
-    getInpi("formality.content.personneMorale.identite.entreprise.trancheEffectifs", inpiDataRaw) ||
-    inpiDataRaw.workforceLabel ||
-    sireneULRaw.trancheEffectifsUniteLegale ||
+    getInpi("formality.content.personneMorale.identite.entreprise.trancheEffectifs", inpiData) ||
+    inpiData.workforceLabel ||
+    sireneUL.trancheEffectifsUniteLegale ||
     "-";
   const tranche_effectifs =
     effectifTrancheLabel(tranche_effectifs_code) || tranche_effectifs_code;
 
   const tranche_effectif_salarie =
-    inpiDataRaw.workforceRange ||
-    sireneULRaw.trancheEffectifsUniteLegale ||
+    inpiData.workforceRange ||
+    sireneUL.trancheEffectifsUniteLegale ||
     "-";
 
   const tvaNum = tvaFRFromSiren(siren);
 
-  const finances = inpiDataRaw.financialStatements?.length
-    ? inpiDataRaw.financialStatements.map((f: any) => ({
+  const finances = inpiData.financialStatements?.length
+    ? inpiData.financialStatements.map((f: any) => ({
         exercice: f.fiscalYear,
         ca: f.turnover,
         resultat_net: f.netResult,
@@ -243,7 +279,7 @@ export async function fetchEtablissementBySiren(siren: string, denomination: str
     : [];
 
   let dirigeants = [];
-  const pouvoirs = getInpi("formality.content.personneMorale.composition.pouvoirs", inpiDataRaw);
+  const pouvoirs = getInpi("formality.content.personneMorale.composition.pouvoirs", inpiData);
   if (Array.isArray(pouvoirs)) {
     dirigeants = pouvoirs.map((p: any) => {
       if (p.individu?.descriptionPersonne) {
@@ -267,20 +303,20 @@ export async function fetchEtablissementBySiren(siren: string, denomination: str
   }
 
   const statut_diffusion =
-    inpiDataRaw.publicationStatus ||
-    sireneULRaw.statutDiffusionUniteLegale ||
+    inpiData.publicationStatus ||
+    sireneUL.statutDiffusionUniteLegale ||
     "-";
 
   const site_web =
-    inpiDataRaw.website ||
+    inpiData.website ||
     "-";
 
   const email =
-    inpiDataRaw.email ||
+    inpiData.email ||
     "-";
 
   return {
-    denomination: denominationFinale,
+    denomination,
     forme_juridique,
     categorie_juridique: forme_juridique_code,
     siren,
@@ -306,15 +342,181 @@ export async function fetchEtablissementBySiren(siren: string, denomination: str
   };
 }
 
-// ====== SIRET (nécessite aussi la dénomination) ======
-export async function fetchEtablissementBySiret(siret: string, denomination: string) {
+// ====== SIRET ======
+export async function fetchEtablissementBySiret(siret: string) {
   const siren = siret.slice(0, 9);
-  const data = await fetchEtablissementBySiren(siren, denomination);
-  const etab = data.etablissements.find((e: any) => e.siret === siret);
+
+  const [inpiDataRaw, sireneEtabRaw, sireneULRaw] = await Promise.all([
+    getEntrepriseBySiren(siren).catch(() => ({})),
+    sirene.get(`/siret/${siret}`).then(r => r.data.etablissement).catch(() => ({})),
+    sirene.get(`/siren/${siren}`).then(r => r.data.uniteLegale).catch(() => ({})),
+  ]);
+
+  const inpiData = inpiDataRaw || {};
+  const sireneEtab = sireneEtabRaw || {};
+  const sireneUL = sireneULRaw || {};
+
+  // Établissements issus d’INPI, filtrés sur le SIRET recherché
+  let etablissements = etablissementsFromINPI(inpiData)
+    .filter(e => e.siret === siret);
+
+  // Si rien côté INPI, fallback Sirene
+  if (!etablissements.length && sireneUL) {
+    const adresseSirene = formatAdresseSIRENE(sireneEtab.adresseEtablissement || {});
+    etablissements = [{
+      siret,
+      displayName: sireneUL.denominationUniteLegale || "-",
+      adresse: adresseSirene || "-",
+      activite_principale: sireneEtab.activitePrincipaleEtablissement || "-",
+      tranche_effectif_libelle: sireneEtab.trancheEffectifsEtablissement || "-",
+      tranche_effectif_salarie: "-",
+      date_creation: sireneEtab.dateCreationEtablissement || "-",
+      est_siege: !!sireneEtab.etablissementSiege,
+      statut: sireneEtab.etatAdministratifEtablissement === "A" ? "actif" : "ferme",
+      date_fermeture: sireneEtab.dateFermetureEtablissement || null,
+    }];
+  }
+
+  const siege = etablissements[0] || {};
+  const { statut, date_fermeture } = etablissementStatut(siege);
+
+  const denomination =
+    getInpi("formality.content.personneMorale.identite.entreprise.denomination", inpiData) ||
+    inpiData.denomination ||
+    getInpi("formality.content.personneMorale.identite.entreprise.nom", inpiData) ||
+    sireneUL.denominationUniteLegale ||
+    "-";
+
+  const forme_juridique_code =
+    getInpi("formality.content.personneMorale.identite.entreprise.formeJuridique", inpiData) ||
+    inpiData.legalForm ||
+    sireneUL.categorieJuridiqueUniteLegale ||
+    "-";
+  const forme_juridique =
+    getFormeJuridiqueLabel(forme_juridique_code) ||
+    sireneUL.libelleCategorieJuridiqueUniteLegale ||
+    forme_juridique_code;
+
+  const code_ape =
+    getInpi("formality.content.personneMorale.identite.entreprise.codeApe", inpiData) ||
+    siege.activite_principale ||
+    sireneEtab.activitePrincipaleEtablissement ||
+    inpiData.ape ||
+    sireneUL.activitePrincipaleUniteLegale ||
+    "-";
+  const libelle_ape =
+    getLibelleApeFromINPI(inpiData) ||
+    sireneUL.libelleActivitePrincipaleUniteLegale ||
+    getApeLabelFromNAF(code_ape) ||
+    "-";
+
+  const capital_social =
+    getInpi("formality.content.personneMorale.identite.description.montantCapital", inpiData) ||
+    getInpi("formality.content.description.montantCapital", inpiData) ||
+    inpiData.shareCapital ||
+    sireneUL.capitalSocial ||
+    "-";
+
+  const date_creation =
+    getInpi("formality.content.personneMorale.identite.entreprise.dateDebutActiv", inpiData) ||
+    getInpi("formality.content.personneMorale.identite.entreprise.dateImmat", inpiData) ||
+    siege.date_creation ||
+    sireneEtab.dateCreationEtablissement ||
+    inpiData.creationDate ||
+    sireneUL.dateCreationUniteLegale ||
+    "-";
+
+  // L'adresse : d'abord l'adresse de l'établissement INPI, sinon Sirene
+  const adresse2 = siege.adresse && siege.adresse !== "-" ? siege.adresse :
+    (sireneEtab.adresseEtablissement ? formatAdresseSIRENE(sireneEtab.adresseEtablissement) : "-");
+
+  const tranche_effectifs_code =
+    getInpi("formality.content.personneMorale.identite.entreprise.trancheEffectifs", inpiData) ||
+    inpiData.workforceLabel ||
+    sireneUL.trancheEffectifsUniteLegale ||
+    "-";
+  const tranche_effectifs =
+    effectifTrancheLabel(tranche_effectifs_code) || tranche_effectifs_code;
+
+  const tranche_effectif_salarie =
+    inpiData.workforceRange ||
+    sireneUL.trancheEffectifsUniteLegale ||
+    "-";
+
+  const tvaNum = tvaFRFromSiren(siren);
+
+  const finances = inpiData.financialStatements?.length
+    ? inpiData.financialStatements.map((f: any) => ({
+        exercice: f.fiscalYear,
+        ca: f.turnover,
+        resultat_net: f.netResult,
+        effectif: f.workforce,
+        capital_social: f.shareCapital
+      }))
+    : [];
+
+  let dirigeants = [];
+  const pouvoirs = getInpi("formality.content.personneMorale.composition.pouvoirs", inpiData);
+  if (Array.isArray(pouvoirs)) {
+    dirigeants = pouvoirs.map((p: any) => {
+      if (p.individu?.descriptionPersonne) {
+        return {
+          nom: p.individu.descriptionPersonne.nom,
+          prenoms: p.individu.descriptionPersonne.prenoms,
+          genre: p.individu.descriptionPersonne.genre,
+          dateNaissance: p.individu.descriptionPersonne.dateDeNaissance,
+          role: p.individu.descriptionPersonne.role
+        };
+      }
+      if (p.entreprise) {
+        return {
+          nom: p.entreprise.denomination,
+          siren: p.entreprise.siren,
+          role: p.roleEntreprise
+        };
+      }
+      return p;
+    });
+  }
+
+  const statut_diffusion =
+    inpiData.publicationStatus ||
+    sireneUL.statutDiffusionUniteLegale ||
+    "-";
+
+  const site_web =
+    inpiData.website ||
+    "-";
+
+  const email =
+    inpiData.email ||
+    "-";
+
   return {
-    ...data,
-    etablissements: etab ? [etab] : [],
+    denomination,
+    forme_juridique,
+    categorie_juridique: forme_juridique_code,
+    siren,
     siret,
+    tva: { numero: tvaNum || '-', valide: null },
+    code_ape,
+    libelle_ape,
+    tranche_effectifs,
+    tranche_effectif_salarie,
+    capital_social: capital_social !== undefined ? capital_social : "-",
+    date_creation,
+    adresse: adresse2,
+    etablissements,
+    dirigeants,
+    finances,
+    statut_diffusion,
+    site_web,
+    email,
+    statut,
+    date_fermeture,
+    inpiRaw: inpiDataRaw,
+    sireneRaw: sireneULRaw,
+    sireneEtabRaw: sireneEtabRaw
   };
 }
 
@@ -348,12 +550,12 @@ export function mapEtablissement(etab: any) {
   };
 }
 
-// Compatibilité SIREN ou SIRET (besoin de la dénomination pour les 2)
-export async function fetchEtablissementByCode(code: string, denomination: string) {
+// Compatibilité SIREN ou SIRET
+export async function fetchEtablissementByCode(code: string) {
   if (/^\d{14}$/.test(code)) {
-    return fetchEtablissementBySiret(code, denomination);
+    return fetchEtablissementBySiret(code);
   } else if (/^\d{9}$/.test(code)) {
-    return fetchEtablissementBySiren(code, denomination);
+    return fetchEtablissementBySiren(code);
   } else {
     throw new Error('Code SIREN/SIRET invalide');
   }
