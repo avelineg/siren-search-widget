@@ -4,49 +4,46 @@ interface Props {
   denomination: string;
   siren: string;
   siret: string;
+  ville?: string;
+  adresse?: string;
   tva?: { numero: string; valide: boolean };
   code_ape: string;
-  capital_social: number | string;
-  adresse?: string;
-  ville?: string;
+  capital_social: number;
 }
 
 export default function CompanyHeader(props: Props) {
   return (
-    <div className="bg-white p-6 rounded shadow mb-6">
-      {/* En-tête : dénomination centrée et en gras */}
-      <div className="text-2xl font-bold text-center mb-6">{props.denomination}</div>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-        {/* Colonne gauche */}
-        <ul className="space-y-2 list-disc list-inside">
+    <div className="bg-white p-6 rounded shadow mb-6 max-w-5xl mx-auto">
+      <div className="text-2xl font-bold text-center mb-4">{props.denomination}</div>
+      <div className="flex flex-wrap">
+        <ul className="flex-1 space-y-2 min-w-[260px] list-disc pl-6">
           <li>
-            <span className="font-bold">SIREN :</span> {props.siren}
+            <b>SIREN :</b> {props.siren}
           </li>
           <li>
-            <span className="font-bold">SIRET :</span> {props.siret}
+            <b>SIRET :</b> {props.siret}
           </li>
           {props.ville && (
             <li>
-              <span className="font-bold">Ville :</span> {props.ville}
+              <b>Ville :</b> {props.ville}
             </li>
           )}
           {props.adresse && (
             <li>
-              <span className="font-bold">Adresse :</span> {props.adresse}
+              <b>Adresse :</b> {props.adresse}
             </li>
           )}
           <li>
-            <span className="font-bold">TVA intracommunautaire :</span> {props.tva?.numero || '–'}
+            <b>TVA intracommunautaire :</b> {props.tva?.numero || '–'}
+            {props.tva?.valide === true ? ' ✅' : props.tva?.valide === false ? ' ❌' : ''}
           </li>
         </ul>
-        {/* Colonne droite */}
-        <ul className="space-y-2 list-disc list-inside">
+        <ul className="flex-1 space-y-2 min-w-[220px] list-disc pl-6">
           <li>
-            <span className="font-bold">Code APE :</span> {props.code_ape ? props.code_ape : '–'}
+            <b>Code APE :</b> {props.code_ape ? props.code_ape : '–'}
           </li>
           <li>
-            <span className="font-bold">Capital social :</span>{' '}
-            {props.capital_social?.toLocaleString() || '–'} €
+            <b>Capital social :</b> {props.capital_social?.toLocaleString() || '–'} €
           </li>
         </ul>
       </div>
