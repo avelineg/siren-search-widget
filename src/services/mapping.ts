@@ -4,8 +4,6 @@ import { tvaFRFromSiren } from './tva'
 import naf from '../naf.json'
 import formesJuridique from '../formeJuridique.json'
 import { effectifTrancheLabel } from './effectifs'
-
-// Si tu as ajouté la correspondance des rôles dans un fichier séparé
 import dirigeantRoles from './dirigeantRoles'
 
 // Petit utilitaire pour extraire une valeur profonde
@@ -97,9 +95,11 @@ export async function searchEtablissementsByName(name: string) {
                   etab.name ||
                   etab.nom_commercial ||
                   "-",
-                ville: etab.libelle_commune ||
+                ville:
+                  etab.libelle_commune ||
                   etab.adresseEtablissement?.libelleCommuneEtablissement ||
-                  "-"
+                  "-",
+                adresse: formatAdresseSIRENE(etab.adresseEtablissement || etab)
               }
             })
           : [];
@@ -115,7 +115,8 @@ export async function searchEtablissementsByName(name: string) {
           statut,
           date_fermeture,
           matching_etablissements,
-          ville: r.libelle_commune ||
+          ville:
+            r.libelle_commune ||
             r.adresseEtablissement?.libelleCommuneEtablissement ||
             "-"
         }
@@ -206,6 +207,7 @@ export async function fetchEtablissementBySiren(siren: string) {
   let adresse = siege?.adresse || "-";
   let statut = siege?.statut || "actif";
   let date_fermeture = siege?.date_fermeture || null;
+  let ville = siege?.ville || "-";
 
   const denomination =
     getInpi("formality.content.personneMorale.identite.entreprise.denomination", inpiData) ||
@@ -321,6 +323,7 @@ export async function fetchEtablissementBySiren(siren: string) {
     capital_social: capital_social !== undefined ? capital_social : "-",
     date_creation,
     adresse,
+    ville,
     etablissements,
     dirigeants,
     finances,
@@ -346,9 +349,9 @@ export async function fetchEtablissementBySiret(siret: string) {
     ...base,
     siret: selected?.siret || "-",
     adresse: selected?.adresse || "-",
+    ville: selected?.ville || "-",
     statut: selected?.statut,
     date_fermeture: selected?.date_fermeture,
-    ville: selected?.ville || "-"
   }
 }
 
@@ -369,11 +372,12 @@ export function mapEtablissement(etab: any) {
   const ville =
     etab.libelle_commune ||
     etab.adresseEtablissement?.libelleCommuneEtablissement ||
+    etab.ville ||
     "-";
 
   return {
     siret: etab.siret,
-    ville: ville,
+    ville,
     denomination:
       etab.denomination ||
       etab.denomination_usuelle_entreprise ||
