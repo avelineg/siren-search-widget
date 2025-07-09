@@ -4,6 +4,7 @@ import { tvaFRFromSiren } from './tva'
 import naf from '../naf.json'
 import formesJuridique from '../formeJuridique.json'
 import { effectifTrancheLabel } from './effectifs'
+import ROLE_DIRIGEANT from './dirigeantRoles'
 
 function getInpi(path: string, obj: any) {
   return path.split('.').reduce((acc, key) => (acc && acc[key] != null ? acc[key] : undefined), obj);
@@ -248,7 +249,7 @@ export async function fetchEtablissementBySiren(siren: string) {
 
   const tvaNum = tvaFRFromSiren(siren);
 
-  // Dirigeants (inchangé)
+  // Dirigeants (ajout du label de rôle)
   let dirigeants = [];
   const pouvoirs = getInpi("formality.content.personneMorale.composition.pouvoirs", inpiData);
   if (Array.isArray(pouvoirs)) {
@@ -259,14 +260,16 @@ export async function fetchEtablissementBySiren(siren: string) {
           prenoms: p.individu.descriptionPersonne.prenoms,
           genre: p.individu.descriptionPersonne.genre,
           dateNaissance: p.individu.descriptionPersonne.dateDeNaissance,
-          role: p.individu.descriptionPersonne.role
+          role: p.individu.descriptionPersonne.role,
+          roleLabel: ROLE_DIRIGEANT[p.individu.descriptionPersonne.role] || p.individu.descriptionPersonne.role
         };
       }
       if (p.entreprise) {
         return {
           nom: p.entreprise.denomination,
           siren: p.entreprise.siren,
-          role: p.roleEntreprise
+          role: p.roleEntreprise,
+          roleLabel: ROLE_DIRIGEANT[p.roleEntreprise] || p.roleEntreprise
         };
       }
       return p;
