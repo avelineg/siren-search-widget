@@ -36,13 +36,19 @@ const Etablissements: React.FC<EtablissementsProps> = ({ siren, onSelectEtabliss
       <h3>Établissements ({total})</h3>
       {loading ? (
         <p>Chargement…</p>
-      ) : (
+      ) : etabs.length > 0 ? (
         <>
           <ul>
             {etabs.map(etab => (
               <li
                 key={etab.siret}
-                style={{ cursor: 'pointer', margin: '0.4em 0', padding: '0.2em 0.4em', borderRadius: 6, background: etab.isSiege ? '#f0f6ff' : '#fff' }}
+                style={{
+                  cursor: 'pointer',
+                  margin: '0.4em 0',
+                  padding: '0.2em 0.4em',
+                  borderRadius: 6,
+                  background: etab.isSiege ? '#f0f6ff' : '#fff'
+                }}
                 onClick={() => onSelectEtablissement(etab.siret)}
                 title="Voir la fiche de cet établissement"
               >
@@ -59,11 +65,14 @@ const Etablissements: React.FC<EtablissementsProps> = ({ siren, onSelectEtabliss
               <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages}>Suivant</button>
             </div>
           )}
+          <small style={{ display: 'block', marginTop: 6, color: '#999' }}>
+            Cliquez sur une ligne pour charger la fiche de l’établissement.
+          </small>
         </>
+      ) : (
+        // Rien n'est affiché si pas d'établissements
+        null
       )}
-      <small style={{ display: 'block', marginTop: 6, color: '#999' }}>
-        Cliquez sur une ligne pour charger la fiche de l’établissement.
-      </small>
     </div>
   );
 };
