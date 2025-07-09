@@ -67,6 +67,52 @@ function etablissementStatut(etab: any) {
   return { statut: "actif", date_fermeture: null };
 }
 
+// Recherche d'établissements par raison sociale (exportée pour hook !)
+export async function searchEtablissementsByName(name: string) {
+  const results = await recherche
+    .get('/search', {
+      params: { q: name, page: 1, per_page: 20 }
+    })
+    .then(r => r.data.results || [])
+    .catch(() => []);
+
+  return Array.isArray(results)
+    ? results.map(r => {
+        const { statut, date_fermeture } = etablissementStatut(r);
+        let matching_etablissements = Array.isArray(r.matching_etablissements)
+          ? r.matching_etablissements.map((etab: any) => {
+              const { statut, date_fermeture } = etablissementStatut(etab);
+              return {
+                ...etab,
+                statut,
+                date_fermeture,
+                displayName:
+                  etab.denomination ||
+                  etab.nom_raison_sociale ||
+                  etab.raison_sociale ||
+                  etab.name ||
+                  etab.nom_commercial ||
+                  "-",
+              }
+            })
+          : [];
+        return {
+          ...r,
+          displayName:
+            r.denomination ||
+            r.nom_raison_sociale ||
+            r.raison_sociale ||
+            r.name ||
+            r.nom ||
+            "-",
+          statut,
+          date_fermeture,
+          matching_etablissements,
+        }
+      })
+    : [];
+}
+
 // ======= Recherche par SIREN =======
 export async function fetchEtablissementBySiren(siren: string) {
   const [
