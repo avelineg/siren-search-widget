@@ -3,31 +3,43 @@ import { MapContainer, TileLayer, Marker, Popup } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import { fetchEtablissementsBySiren } from "../services/api";
 import { mapEtablissement } from "../services/mapping";
-
-interface Props {
-  siren: string;
-  onSelectEtablissement: (siret: string) => void;
-}
+import { geocodeAdresse } from "../services/geocode";
 
 const parPage = 20;
 
-const EtablissementsListPaginee = ({ siren, onSelectEtablissement }: Props) => {
+const EtablissementsListPaginee = ({ siren, onSelectEtablissement }) => {
   const [page, setPage] = useState(1);
-  const [etabs, setEtabs] = useState<any[]>([]);
+  const [etabs, setEtabs] = useState([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
+
+  // Ajoute l'état pour stocker les coordonnées géocodées
+  const [geoEtabs, setGeoEtabs] = useState([]);
 
   useEffect(() => {
     if (!siren) {
       setEtabs([]);
       setTotal(0);
+      setGeoEtabs([]);
       return;
     }
     setLoading(true);
     fetchEtablissementsBySiren(siren, page, parPage)
-      .then(({ etablissements, total }) => {
-        setEtabs(etablissements.map(mapEtablissement));
+      .then(async ({ etablissements, total }) => {
+        const mapped = etablissements.map(mapEtablissement);
+        setEtabs(mapped);
         setTotal(total);
+        // Géocode les adresses pour les établissements SANS coordonnées
+        const withGeo = await Promise.all(mapped.map(async (etab) => {
+          if (etab.lat && etab.lng) return etab;
+          if (!etab.adresse) return etab;
+          const coords = await geocodeAdresse(etab.adresse);
+          if (coords) {
+            return { ...etab, lat: coords.lat, lng: coords.lng };
+          }
+          return etab;
+        }));
+        setGeoEtabs(withGeo);
       })
       .finally(() => setLoading(false));
   }, [siren, page]);
@@ -36,21 +48,19 @@ const EtablissementsListPaginee = ({ siren, onSelectEtablissement }: Props) => {
     setPage(1);
   }, [siren]);
 
-  if (!siren || total === 0) return null;
+  // La carte doit TOUJOURS s'afficher si siren est présent
+  if (!siren) return null;
 
-  // On cherche le premier établissement avec coordonnées pour centrer la carte
-  const firstEtabWithCoords = etabs.find(e => e.lat && e.lng);
-  const defaultPosition = firstEtabWithCoords
-    ? [firstEtabWithCoords.lat, firstEtabWithCoords.lng]
-    : [48.8566, 2.3522]; // Paris fallback
+  // Centre sur Paris par défaut ou sur le premier point
+  const first = geoEtabs.find(e => e.lat && e.lng);
+  const defaultPosition = first ? [first.lat, first.lng] : [48.8566, 2.3522];
 
   return (
     <div className="mt-6">
-      {/* Carte affichant les établissements */}
       <div style={{ height: "400px", width: "100%" }}>
         <MapContainer center={defaultPosition as [number, number]} zoom={6} style={{ height: "100%", width: "100%" }}>
           <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-          {etabs.filter(e => e.lat && e.lng).map(etab => (
+          {geoEtabs.filter(e => e.lat && e.lng).map(etab => (
             <Marker key={etab.siret} position={[etab.lat, etab.lng]}>
               <Popup>
                 <div style={{ minWidth: 180 }}>
