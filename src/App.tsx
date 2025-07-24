@@ -43,7 +43,7 @@ function App() {
   if (!selectedCode && results && results.length > 0) {
     return (
       <div className="max-w-5xl mx-auto mt-5 p-4">
-        <h1 className="text-2xl font-bold mb-6">Annuaire Widget</h1>
+        <h1 className="text-2xl font-bold mb-6">Recherche d'entreprises</h1>
         <form
           className="flex items-center gap-3 mb-7"
           onSubmit={handleSearch}
