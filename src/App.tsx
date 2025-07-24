@@ -8,7 +8,7 @@ import Dirigeants from "./components/Dirigeants";
 import Finances from "./components/Finances";
 import Divers from "./components/Divers";
 import { formatDateFR } from "./services/mapping";
-import EtablissementsListPaginee from "./components/EtablissementsListPaginee"; // <-- AJOUT
+//import EtablissementsListPaginee from "./components/EtablissementsListPaginee"; // <-- AJOUT
 
 function App() {
   const [search, setSearch] = useState("");
