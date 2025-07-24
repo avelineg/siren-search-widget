@@ -8,6 +8,7 @@ import Dirigeants from "./components/Dirigeants";
 import Finances from "./components/Finances";
 import Divers from "./components/Divers";
 import { formatDateFR } from "./services/mapping";
+import "leaflet/dist/leaflet.css";
 import EtablissementsListPaginee from "./components/EtablissementsListPaginee"; // <-- AJOUT
 
 function App() {
