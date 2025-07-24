@@ -74,28 +74,6 @@ export default function Identity({ data }: { data: any }) {
                 : '–'}
             </td>
           </tr>
-          <tr>
-            <td className="font-bold">Site internet</td>
-            <td>
-              {data.site_web ? (
-                <a href={data.site_web} target="_blank" rel="noopener noreferrer">
-                  {data.site_web}
-                </a>
-              ) : (
-                '–'
-              )}
-            </td>
-          </tr>
-          <tr>
-            <td className="font-bold">Email</td>
-            <td>
-              {data.email ? (
-                <a href={`mailto:${data.email}`}>{data.email}</a>
-              ) : (
-                '–'
-              )}
-            </td>
-          </tr>
         </tbody>
       </table>
     </div>
