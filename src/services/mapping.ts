@@ -102,12 +102,18 @@ export async function searchEtablissementsByName(name: string) {
     .then(r => r.data.results || [])
     .catch(() => []);
 
+  // Patch: mapping explicite des noms pour EI/personnes physiques (nom_complet),
+  // sinon fallback sur les champs classiques
   return Array.isArray(results)
     ? results.map(r => {
         const { statut, date_fermeture } = etablissementStatut(r);
+        // nom_complet => EI/personne physique (API recherche-entreprises)
+        // nom_raison_sociale => société classique (API recherche-entreprises)
+        // fallback classique
         const displayName =
-          r.denomination ||
+          r.nom_complet ||
           r.nom_raison_sociale ||
+          r.denomination ||
           r.raison_sociale ||
           r.name ||
           r.nom ||
@@ -120,8 +126,9 @@ export async function searchEtablissementsByName(name: string) {
                 statut,
                 date_fermeture,
                 displayName:
-                  etab.denomination ||
+                  etab.nom_complet ||
                   etab.nom_raison_sociale ||
+                  etab.denomination ||
                   etab.raison_sociale ||
                   etab.name ||
                   etab.nom_commercial ||
@@ -253,7 +260,12 @@ export async function fetchEtablissementBySiren(siren: string) {
   let date_fermeture = siege?.date_fermeture || null;
   let ville = siege?.ville || "-";
 
-  const denomination = displayName || "-";
+  // Patch: priorité à nom_complet et nom_raison_sociale pour le displayName
+  const denomination =
+    inpiData.nom_complet ||
+    inpiData.nom_raison_sociale ||
+    displayName ||
+    "-";
 
   const forme_juridique_code =
     getInpi("formality.content.personneMorale.identite.entreprise.formeJuridique", inpiData) ||
@@ -420,7 +432,7 @@ export function mapEtablissement(etab: any) {
   return {
     siret: etab.siret,
     ville,
-    denomination: etab.displayName || etab.denomination || etab.nom_raison_sociale || etab.nom_commercial || etab.enseigne1 || etab.uniteLegale?.denominationUniteLegale || "—",
+    denomination: etab.displayName || etab.nom_complet || etab.nom_raison_sociale || etab.denomination || etab.nom_commercial || etab.enseigne1 || etab.uniteLegale?.denominationUniteLegale || "—",
     adresse,
     etat: statut,
     isSiege: !!(etab.est_siege),
