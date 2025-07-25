@@ -131,7 +131,10 @@ function App() {
                       {r.matching_etablissements.map((etab: any, eidx: number) => (
                         <li key={eidx}>
                           <span>
-                            {getSocieteDisplayName(etab, getSocieteDisplayName(r))}
+                            {getSocieteDisplayName(
+                              etab,
+                              getSocieteDisplayName(r)
+                            )}
                             {" — SIRET: "}{etab.siret}
                             <span
                               className="ml-2 px-2 py-1 rounded text-xs"
