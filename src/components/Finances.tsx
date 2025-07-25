@@ -1,5 +1,5 @@
-import React from "react";
-// Installer recharts avec : npm install recharts
+import React, { useEffect, useState } from "react";
+import { inpiEntreprise } from "../services/api";
 import {
   ResponsiveContainer,
   LineChart,
@@ -11,18 +11,71 @@ import {
   CartesianGrid,
 } from "recharts";
 
-export default function FinancialData({ data }: { data: any }) {
-  const finances = (data.finances || [])
-    .filter((f: any) => f && f.exercice)
-    .sort((a: any, b: any) => Number(a.exercice) - Number(b.exercice));
+export default function FinancialData({ siren }) {
+  const [finances, setFinances] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
+  useEffect(() => {
+    setLoading(true);
+    setError(null);
+    inpiEntreprise
+      .get(`/${siren}/comptes-annuels`)
+      .then((res) => {
+        const ca = res.data.comptes_annuels || [];
+        setFinances(
+          ca
+            .filter((f) => f.date_cloture)
+            .map((f) => ({
+              exercice: String(f.date_cloture).slice(0, 4),
+              chiffre_affaires: f.chiffre_affaires ?? f.chiffre_affaires_net ?? null,
+              resultat_net: f.resultat_net ?? null,
+              effectif: f.effectif ?? null,
+              capital_social: f.capital_social ?? null,
+            }))
+            .sort((a, b) => Number(a.exercice) - Number(b.exercice))
+        );
+      })
+      .catch((err) => {
+        setError("Aucune donnée financière disponible via l’INPI.");
+      })
+      .finally(() => setLoading(false));
+  }, [siren]);
+
+  if (loading) return <div>Chargement des données financières…</div>;
+  if (error)
+    return (
+      <div>
+        {error}
+        <br />
+        <a
+          href={`https://annuaire-entreprises.data.gouv.fr/donnees-financieres/${siren}`}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          Voir les données financières sur Annuaire-Entreprises
+        </a>
+      </div>
+    );
   if (!finances.length)
-    return <div>Aucune donnée financière disponible.</div>;
+    return (
+      <div>
+        Aucune donnée financière disponible.
+        <br />
+        <a
+          href={`https://annuaire-entreprises.data.gouv.fr/donnees-financieres/${siren}`}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          Voir les données financières sur Annuaire-Entreprises
+        </a>
+      </div>
+    );
 
-  // Préparation des données pour le graphique (chiffre d'affaires et résultat net)
-  const chartData = finances.map((f: any) => ({
+  // Préparation pour le graphique
+  const chartData = finances.map((f) => ({
     exercice: f.exercice,
-    "Chiffre d'affaires": typeof f.ca === "number" ? f.ca : null,
+    "Chiffre d'affaires": typeof f.chiffre_affaires === "number" ? f.chiffre_affaires : null,
     "Résultat net": typeof f.resultat_net === "number" ? f.resultat_net : null,
   }));
 
@@ -89,8 +142,8 @@ export default function FinancialData({ data }: { data: any }) {
             <tr key={f.exercice}>
               <td>{f.exercice}</td>
               <td>
-                {typeof f.ca === "number"
-                  ? f.ca.toLocaleString("fr-FR") + " €"
+                {typeof f.chiffre_affaires === "number"
+                  ? f.chiffre_affaires.toLocaleString("fr-FR") + " €"
                   : "–"}
               </td>
               <td>
