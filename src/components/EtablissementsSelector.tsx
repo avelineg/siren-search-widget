@@ -3,37 +3,7 @@ import { formatDateFR } from "../services/mapping";
 import { MapContainer, TileLayer, Marker, Popup } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import { geocodeAdresse } from "../services/geocode";
-
-// Fonction de nettoyage d'adresse pour améliorer le géocodage
-function cleanAdresse(adresse: string): string {
-  // Liste des mots/expressions à retirer pour clarifier l'adresse
-  const toRemove = [
-    /BAT[^ ]*/gi,
-    /BÂT[^ ]*/gi,
-    /RESIDENCE .+?(?= \d|$)/gi,
-    /RÉSIDENCE .+?(?= \d|$)/gi,
-    /LE PLEIN CENTRE/gi,
-    /TECH IROISE/gi
-  ];
-  let cleaned = adresse;
-
-  // Corrige quelques abréviations courantes
-  cleaned = cleaned.replace(/PRESIDT/gi, "PRESIDENT");
-  cleaned = cleaned.replace(/AV /gi, "AVENUE ");
-  cleaned = cleaned.replace(/BD /gi, "BOULEVARD ");
-  cleaned = cleaned.replace(/STE /gi, "SAINTE ");
-  cleaned = cleaned.replace(/ST /gi, "SAINT ");
-
-  // Supprime les mots inutiles
-  toRemove.forEach(regex => {
-    cleaned = cleaned.replace(regex, "");
-  });
-
-  // Enlève les espaces multiples
-  cleaned = cleaned.replace(/\s{2,}/g, " ").trim();
-
-  return cleaned;
-}
+import { cleanAdresse } from "../services/cleanAdresse";
 
 type Etablissement = {
   siret: string;
@@ -80,7 +50,7 @@ const EtablissementsSelector: React.FC<Props> = ({
           console.warn("Géocodage échoué:", cleanedAdresse);
           withGeo.push(etab);
         }
-        await new Promise(r => setTimeout(r, 1200)); // Respecter le quota Nominatim
+        await new Promise(r => setTimeout(r, 1200)); // Respecte le quota Nominatim
         if (cancelled) break;
       }
       if (!cancelled) setGeoEtabs(withGeo);
