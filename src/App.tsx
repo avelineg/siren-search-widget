@@ -10,7 +10,7 @@ import Divers from "./components/Divers";
 import { formatDateFR } from "./services/mapping";
 import EtablissementsListPaginee from "./components/EtablissementsListPaginee";
 
-// Fallback nom établissement <=> nom unité légale
+// Fonction utilitaire avec fallback explicite sur le nom unité légale
 function getSocieteDisplayName(r: any, legalUnitName?: string): string {
   return (
     r?.nom_complet ||
@@ -57,7 +57,7 @@ function App() {
     "Divers",
   ];
 
-  // Fallback nom unité légale
+  // Fallback nom unité légale principal
   const legalUnitName =
     data?.nom_complet ||
     data?.nom_raison_sociale ||
@@ -99,6 +99,7 @@ function App() {
         <div>
           <ul>
             {results.map((r, idx) => {
+              // On calcule le nom de l’unité légale pour fallback sur ses établissements
               const nomLegal =
                 r?.nom_complet ||
                 r?.nom_raison_sociale ||
@@ -181,6 +182,7 @@ function App() {
     );
   }
 
+  // --- Affichage fiche détaillée établissement ---
   return (
     <div className="max-w-5xl mx-auto mt-5 p-4">
       <h1 className="text-2xl font-bold mb-6">Recherche entreprises</h1>
