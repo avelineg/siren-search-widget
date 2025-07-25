@@ -1,7 +1,9 @@
 import React from 'react';
 
 interface Props {
-  denomination: string;
+  denomination?: string; // <- optionnel pour fallback
+  nom_complet?: string;  // <- nom EI/personne physique (recherche-entreprises)
+  nom_raison_sociale?: string; // <- nom société (recherche-entreprises)
   siren: string;
   siret: string;
   ville?: string;
@@ -11,10 +13,21 @@ interface Props {
   capital_social: number;
 }
 
+function getCompanyDisplayName(props: Props): string {
+  return (
+    props.nom_complet ||
+    props.nom_raison_sociale ||
+    props.denomination ||
+    '(\u00c9tablissement sans nom)'
+  );
+}
+
 export default function CompanyHeader(props: Props) {
   return (
     <div className="bg-white p-6 rounded shadow mb-6 max-w-5xl mx-auto">
-      <div className="text-2xl font-bold text-center mb-4">{props.denomination}</div>
+      <div className="text-2xl font-bold text-center mb-4">
+        {getCompanyDisplayName(props)}
+      </div>
       <div className="flex flex-wrap">
         <ul className="flex-1 space-y-2 min-w-[260px] list-disc pl-6">
           <li>
