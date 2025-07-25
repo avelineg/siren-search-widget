@@ -46,7 +46,7 @@ export default function FinancialData({ siren }) {
       .finally(() => setLoading(false));
   }, [siren]);
 
-  // Chargement des actes INPI
+  // Chargement des actes INPI (toujours affichés, même si finances absentes)
   useEffect(() => {
     setLoadingActes(true);
     setActes([]);
@@ -57,126 +57,111 @@ export default function FinancialData({ siren }) {
   }, [siren]);
 
   if (loading) return <div>Chargement des données financières…</div>;
-  if (error)
-    return (
-      <div>
-        {error}
-        <br />
-        <a
-          href={`https://annuaire-entreprises.data.gouv.fr/donnees-financieres/${siren}`}
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Voir les données financières sur Annuaire-Entreprises
-        </a>
-      </div>
-    );
-  if (!finances.length)
-    return (
-      <div>
-        Aucune donnée financière disponible.
-        <br />
-        <a
-          href={`https://annuaire-entreprises.data.gouv.fr/donnees-financieres/${siren}`}
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Voir les données financières sur Annuaire-Entreprises
-        </a>
-      </div>
-    );
-
-  // Préparation pour le graphique
-  const chartData = finances.map((f) => ({
-    exercice: f.exercice,
-    "Chiffre d'affaires": typeof f.chiffre_affaires === "number" ? f.chiffre_affaires : null,
-    "Résultat net": typeof f.resultat_net === "number" ? f.resultat_net : null,
-  }));
 
   return (
     <div className="bg-white p-4 rounded shadow">
       <h3 className="font-semibold mb-2">Données financières (INPI)</h3>
-      <div style={{ width: "100%", height: 320, marginBottom: 24 }}>
-        <ResponsiveContainer>
-          <LineChart data={chartData}>
-            <CartesianGrid strokeDasharray="3 3" />
-            <XAxis dataKey="exercice" />
-            <YAxis
-              tickFormatter={(v) =>
-                v === 0
-                  ? "0"
-                  : v >= 1_000_000
-                  ? `${(v / 1_000_000).toLocaleString("fr-FR")} M€`
-                  : v >= 1_000
-                  ? `${(v / 1_000).toLocaleString("fr-FR")} k€`
-                  : v.toLocaleString("fr-FR")
-              }
-            />
-            <Tooltip
-              formatter={(value: any) =>
-                typeof value === "number"
-                  ? value.toLocaleString("fr-FR") + " €"
-                  : value
-              }
-            />
-            <Legend />
-            <Line
-              type="monotone"
-              dataKey="Chiffre d'affaires"
-              stroke="#8884d8"
-              strokeWidth={3}
-              dot={{ r: 4 }}
-              activeDot={{ r: 6 }}
-              connectNulls
-            />
-            <Line
-              type="monotone"
-              dataKey="Résultat net"
-              stroke="#82ca9d"
-              strokeWidth={3}
-              dot={{ r: 4 }}
-              activeDot={{ r: 6 }}
-              connectNulls
-            />
-          </LineChart>
-        </ResponsiveContainer>
-      </div>
-      <table className="min-w-full text-sm">
-        <thead>
-          <tr>
-            <th>Exercice</th>
-            <th>Chiffre d'affaires</th>
-            <th>Résultat net</th>
-            <th>Effectif</th>
-            <th>Capital social</th>
-          </tr>
-        </thead>
-        <tbody>
-          {finances.map((f: any) => (
-            <tr key={f.exercice}>
-              <td>{f.exercice}</td>
-              <td>
-                {typeof f.chiffre_affaires === "number"
-                  ? f.chiffre_affaires.toLocaleString("fr-FR") + " €"
-                  : "–"}
-              </td>
-              <td>
-                {typeof f.resultat_net === "number"
-                  ? f.resultat_net.toLocaleString("fr-FR") + " €"
-                  : "–"}
-              </td>
-              <td>{f.effectif ?? "–"}</td>
-              <td>
-                {typeof f.capital_social === "number"
-                  ? f.capital_social.toLocaleString("fr-FR") + " €"
-                  : "–"}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      {error || !finances.length ? (
+        <div>
+          {error || "Aucune donnée financière disponible."}
+          <br />
+          <a
+            href={`https://annuaire-entreprises.data.gouv.fr/donnees-financieres/${siren}`}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Voir les données financières sur Annuaire-Entreprises
+          </a>
+        </div>
+      ) : (
+        <>
+          <div style={{ width: "100%", height: 320, marginBottom: 24 }}>
+            <ResponsiveContainer>
+              <LineChart data={finances.map((f) => ({
+                exercice: f.exercice,
+                "Chiffre d'affaires": typeof f.chiffre_affaires === "number" ? f.chiffre_affaires : null,
+                "Résultat net": typeof f.resultat_net === "number" ? f.resultat_net : null,
+              }))}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="exercice" />
+                <YAxis
+                  tickFormatter={(v) =>
+                    v === 0
+                      ? "0"
+                      : v >= 1_000_000
+                      ? `${(v / 1_000_000).toLocaleString("fr-FR")} M€`
+                      : v >= 1_000
+                      ? `${(v / 1_000).toLocaleString("fr-FR")} k€`
+                      : v.toLocaleString("fr-FR")
+                  }
+                />
+                <Tooltip
+                  formatter={(value: any) =>
+                    typeof value === "number"
+                      ? value.toLocaleString("fr-FR") + " €"
+                      : value
+                  }
+                />
+                <Legend />
+                <Line
+                  type="monotone"
+                  dataKey="Chiffre d'affaires"
+                  stroke="#8884d8"
+                  strokeWidth={3}
+                  dot={{ r: 4 }}
+                  activeDot={{ r: 6 }}
+                  connectNulls
+                />
+                <Line
+                  type="monotone"
+                  dataKey="Résultat net"
+                  stroke="#82ca9d"
+                  strokeWidth={3}
+                  dot={{ r: 4 }}
+                  activeDot={{ r: 6 }}
+                  connectNulls
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+          <table className="min-w-full text-sm">
+            <thead>
+              <tr>
+                <th>Exercice</th>
+                <th>Chiffre d'affaires</th>
+                <th>Résultat net</th>
+                <th>Effectif</th>
+                <th>Capital social</th>
+              </tr>
+            </thead>
+            <tbody>
+              {finances.map((f: any) => (
+                <tr key={f.exercice}>
+                  <td>{f.exercice}</td>
+                  <td>
+                    {typeof f.chiffre_affaires === "number"
+                      ? f.chiffre_affaires.toLocaleString("fr-FR") + " €"
+                      : "–"}
+                  </td>
+                  <td>
+                    {typeof f.resultat_net === "number"
+                      ? f.resultat_net.toLocaleString("fr-FR") + " €"
+                      : "–"}
+                  </td>
+                  <td>{f.effectif ?? "–"}</td>
+                  <td>
+                    {typeof f.capital_social === "number"
+                      ? f.capital_social.toLocaleString("fr-FR") + " €"
+                      : "–"}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </>
+      )}
 
-      {/* Liste des actes INPI */}
+      {/* Liste des actes INPI — toujours visible */}
       <div className="mt-6">
         <h4 className="font-semibold mb-2">Actes déposés (INPI)</h4>
         {loadingActes ? (
