@@ -101,9 +101,13 @@ const EtablissementsSelector: React.FC<Props> = ({
           <li key={etab.siret} className="py-2 flex items-center">
             <span className="flex-1">
               <strong>{getEtablissementDisplayName(etab, legalUnitName)}</strong>
-              <span className="ml-2 text-gray-600">SIRET : {etab.siret}</span>
+              <span className="ml-2 text-gray-600" style={{ fontSize: "0.9em" }}>
+                SIRET&nbsp;: {etab.siret}
+              </span>
               {etab.adresse && (
-                <span className="ml-2 text-gray-500">{etab.adresse}</span>
+                <span className="ml-2 text-gray-500" style={{ fontSize: "0.9em" }}>
+                  {etab.adresse}
+                </span>
               )}
               <span
                 className="ml-2 px-2 py-1 rounded text-xs"
