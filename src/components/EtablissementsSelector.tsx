@@ -13,6 +13,7 @@ type Etablissement = {
   name?: string;
   raison_sociale?: string;
   nom_commercial?: string;
+  siegeRaisonSociale?: string; // <-- Ajouté
   adresse?: string;
   statut?: "actif" | "ferme";
   date_fermeture?: string | null;
@@ -37,6 +38,7 @@ function getEtablissementDisplayName(etab: Etablissement): string {
     etab.name ||
     etab.raison_sociale ||
     etab.nom_commercial ||
+    etab.siegeRaisonSociale || // fallback siège
     "(\u00c9tablissement sans nom)"
   );
 }
@@ -71,7 +73,6 @@ const EtablissementsSelector: React.FC<Props> = ({
         }
         const cleanedAdresse = cleanAdresse(etab.adresse);
         const expectedCity = extractCity(etab.adresse);
-        console.log("Adresse envoyée au géocodeur:", cleanedAdresse, "Ville attendue:", expectedCity);
         const coords = await geocodeAdresse(cleanedAdresse, expectedCity);
         if (coords) {
           withGeo.push({
@@ -83,10 +84,9 @@ const EtablissementsSelector: React.FC<Props> = ({
             geocodeSource: coords.source
           });
         } else {
-          console.warn("Géocodage échoué:", cleanedAdresse);
           withGeo.push(etab);
         }
-        await new Promise(r => setTimeout(r, 1200)); // Respecte le quota
+        await new Promise(r => setTimeout(r, 1200));
         if (cancelled) break;
       }
       if (!cancelled) setGeoEtabs(withGeo);
@@ -145,7 +145,6 @@ const EtablissementsSelector: React.FC<Props> = ({
           </li>
         ))}
       </ul>
-      {/* Carte avec popup enrichi */}
       <div style={{ height: "400px", width: "100%", marginTop: 24 }}>
         <MapContainer
           center={defaultPosition}
