@@ -8,7 +8,7 @@ import Dirigeants from "./components/Dirigeants";
 import Finances from "./components/Finances";
 import Divers from "./components/Divers";
 import { formatDateFR } from "./services/mapping";
-import EtablissementsListPaginee from "./components/EtablissementsListPaginee";
+// ❌ Suppression de l'import EtablissementsListPaginee
 
 function App() {
   const [search, setSearch] = useState("");
@@ -221,12 +221,7 @@ function App() {
                   onSelect={setSelectedCode}
                   legalUnitName={data.displayName}
                 />
-                {data.siren && (
-                  <EtablissementsListPaginee
-                    siren={data.siren}
-                    onSelectEtablissement={handleSelectEtablissement}
-                  />
-                )}
+                {/* ❌ Suppression de la pagination et de la carte paginée */}
               </>
             )}
             {tabIndex === 2 && (
