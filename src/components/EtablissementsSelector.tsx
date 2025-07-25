@@ -25,15 +25,18 @@ type Etablissement = {
   foundAddress?: string;
   cityMatch?: boolean;
   geocodeSource?: string;
+  // Ajout pour fallback sur l'unité légale si non trouvé sur l'établissement
+  legal_unit_name?: string; // ce champ sera passé par le parent
 };
 
 type Props = {
   etablissements: Etablissement[];
   selected: string;
   onSelect: (siret: string) => void;
+  legalUnitName?: string; // nom_complet ou nom_raison_sociale de l'unité légale (parent)
 };
 
-function getEtablissementDisplayName(etab: Etablissement): string {
+function getEtablissementDisplayName(etab: Etablissement, legalUnitName?: string): string {
   return (
     etab.nom_complet ||
     etab.nom_raison_sociale ||
@@ -45,6 +48,7 @@ function getEtablissementDisplayName(etab: Etablissement): string {
     ((etab.nom_usage || etab.nom)
       ? [etab.prenom, etab.nom_usage || etab.nom].filter(Boolean).join(" ")
       : null) ||
+    legalUnitName || // fallback sur le nom de l'unité légale si rien trouvé
     "(\u00c9tablissement sans nom)"
   );
 }
@@ -61,6 +65,7 @@ const EtablissementsSelector: React.FC<Props> = ({
   etablissements,
   selected,
   onSelect,
+  legalUnitName,
 }) => {
   const [geoEtabs, setGeoEtabs] = useState<Etablissement[]>([]);
 
@@ -114,7 +119,7 @@ const EtablissementsSelector: React.FC<Props> = ({
         {etablissements.map((etab) => (
           <li key={etab.siret} className="py-2 flex items-center">
             <span className="flex-1">
-              <strong>{getEtablissementDisplayName(etab)}</strong>
+              <strong>{getEtablissementDisplayName(etab, legalUnitName)}</strong>
               <span className="ml-2 text-gray-600">SIRET : {etab.siret}</span>
               {etab.adresse && (
                 <span className="ml-2 text-gray-500">{etab.adresse}</span>
@@ -161,7 +166,7 @@ const EtablissementsSelector: React.FC<Props> = ({
           {geoEtabs.filter(e => e.lat && e.lng).map(etab => (
             <Marker key={etab.siret} position={[etab.lat!, etab.lng!]}>
               <Popup>
-                <strong>{getEtablissementDisplayName(etab)}</strong>
+                <strong>{getEtablissementDisplayName(etab, legalUnitName)}</strong>
                 <br />
                 <span>Adresse d'origine : {etab.adresse}</span>
                 <br />
