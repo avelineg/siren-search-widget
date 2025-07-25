@@ -10,7 +10,7 @@ import Divers from "./components/Divers";
 import { formatDateFR } from "./services/mapping";
 import EtablissementsListPaginee from "./components/EtablissementsListPaginee";
 
-// Utilise prioritairement les champs fournis par recherche-entreprises.api.gouv.fr
+// Affichage du nom (EI/Société) avec fallback sur le nom de l'unité légale si fourni
 function getSocieteDisplayName(r: any, legalUnitName?: string): string {
   return (
     r.nom_complet ||
@@ -58,9 +58,12 @@ function App() {
     "Divers",
   ];
 
-  // Calcule le nom de l'unité légale pour fallback
+  // Nom de l'unité légale pour fallback établissement
   const legalUnitName =
-    (data?.nom_complet || data?.nom_raison_sociale || data?.denomination || data?.raison_sociale) ??
+    data?.nom_complet ||
+    data?.nom_raison_sociale ||
+    data?.denomination ||
+    data?.raison_sociale ||
     undefined;
 
   if (!selectedCode && results && results.length > 0) {
@@ -198,7 +201,12 @@ function App() {
 
       {data && (
         <div>
-          <CompanyHeader {...data} />
+          <CompanyHeader
+            {...data}
+            nom_complet={data.nom_complet}
+            nom_raison_sociale={data.nom_raison_sociale}
+            denomination={data.denomination}
+          />
           {/* Affichage de l'indicateur actif/fermé dans l'en-tête */}
           <div className="mb-4">
             <span
