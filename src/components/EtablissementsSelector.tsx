@@ -25,15 +25,13 @@ type Etablissement = {
   foundAddress?: string;
   cityMatch?: boolean;
   geocodeSource?: string;
-  // Ajout pour fallback sur l'unité légale si non trouvé sur l'établissement
-  legal_unit_name?: string; // ce champ sera passé par le parent
 };
 
 type Props = {
   etablissements: Etablissement[];
   selected: string;
   onSelect: (siret: string) => void;
-  legalUnitName?: string; // nom_complet ou nom_raison_sociale de l'unité légale (parent)
+  legalUnitName?: string;
 };
 
 function getEtablissementDisplayName(etab: Etablissement, legalUnitName?: string): string {
@@ -48,7 +46,7 @@ function getEtablissementDisplayName(etab: Etablissement, legalUnitName?: string
     ((etab.nom_usage || etab.nom)
       ? [etab.prenom, etab.nom_usage || etab.nom].filter(Boolean).join(" ")
       : null) ||
-    legalUnitName || // fallback sur le nom de l'unité légale si rien trouvé
+    legalUnitName ||
     "(\u00c9tablissement sans nom)"
   );
 }
