@@ -11,18 +11,19 @@ import { formatDateFR } from "./services/mapping";
 import EtablissementsListPaginee from "./components/EtablissementsListPaginee";
 
 // Utilise prioritairement les champs fournis par recherche-entreprises.api.gouv.fr
-function getSocieteDisplayName(r: any): string {
+function getSocieteDisplayName(r: any, legalUnitName?: string): string {
   return (
-    r.nom_complet || // recherche-entreprises.api.gouv.fr (EI)
-    r.nom_raison_sociale || // recherche-entreprises.api.gouv.fr (sociétés)
-    r.denomination || // recherche-entreprises.api.gouv.fr (sociétés)
-    r.raison_sociale || // fallback (autres sources)
-    r.nom_commercial || // fallback (autres sources)
-    r.displayName || // fallback interne
+    r.nom_complet ||
+    r.nom_raison_sociale ||
+    r.denomination ||
+    r.raison_sociale ||
+    r.nom_commercial ||
+    r.displayName ||
     r.siegeRaisonSociale ||
     ((r.nom_usage || r.nom)
       ? [r.prenom, r.nom_usage || r.nom].filter(Boolean).join(" ")
       : null) ||
+    legalUnitName ||
     "(\u00c9tablissement sans nom)"
   );
 }
@@ -56,6 +57,11 @@ function App() {
     "Finances",
     "Divers",
   ];
+
+  // Calcule le nom de l'unité légale pour fallback
+  const legalUnitName =
+    (data?.nom_complet || data?.nom_raison_sociale || data?.denomination || data?.raison_sociale) ??
+    undefined;
 
   if (!selectedCode && results && results.length > 0) {
     return (
@@ -122,8 +128,8 @@ function App() {
                       {r.matching_etablissements.map((etab: any, eidx: number) => (
                         <li key={eidx}>
                           <span>
-                            {getSocieteDisplayName(etab)}{" "}
-                            — SIRET: {etab.siret}
+                            {getSocieteDisplayName(etab, getSocieteDisplayName(r))}
+                            {" — SIRET: "}{etab.siret}
                             <span
                               className="ml-2 px-2 py-1 rounded text-xs"
                               style={{
@@ -224,6 +230,7 @@ function App() {
                   etablissements={data.etablissements || []}
                   selected={selectedCode}
                   onSelect={setSelectedCode}
+                  legalUnitName={legalUnitName}
                 />
                 {/* ===== AJOUT DE LA LISTE PAGINÉE ===== */}
                 {data.siren && (
