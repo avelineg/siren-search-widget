@@ -77,18 +77,6 @@ function getEtablissementAdresse(etab: any): string {
   );
 }
 
-// Fonction utilitaire pour choisir le SIRET principal pour l'avis SIRENE
-const getSiretPrincipal = (data: any): string | undefined => {
-  if (data?.siret) return data.siret;
-  if (data?.etablissements && Array.isArray(data.etablissements)) {
-    const siege = data.etablissements.find((e: any) => e.siege);
-    if (siege && siege.siret) return siege.siret;
-    if (data.etablissements.length > 0 && data.etablissements[0].siret)
-      return data.etablissements[0].siret;
-  }
-  return undefined;
-};
-
 function App() {
   const [search, setSearch] = useState("");
   const [selectedCode, setSelectedCode] = useState("");
@@ -136,8 +124,8 @@ function App() {
       })
     : [];
 
-  // Récupération du SIRET principal pour le bouton SIRENE
-  const siretPrincipal = data ? getSiretPrincipal(data) : undefined;
+  // Le SIRET à utiliser pour l'avis de situation SIRENE est celui de l'établissement affiché (ou sélectionné)
+  const siretAffiche = data?.siret || selectedCode || (data?.etablissements?.[0]?.siret);
 
   if (!selectedCode && safeResults.length > 0) {
     return (
@@ -316,10 +304,10 @@ function App() {
         <div>
           <CompanyHeader {...data} />
           {/* Bouton de téléchargement de l'avis de situation SIRENE juste sous l'en-tête */}
-          {siretPrincipal && (
+          {siretAffiche && (
             <div className="mb-4 mt-2">
               <a
-                href={`https://api-avis-situation-sirene.insee.fr/identification/pdf/${siretPrincipal}`}
+                href={`https://api-avis-situation-sirene.insee.fr/identification/pdf/${siretAffiche}`}
                 target="_blank"
                 rel="noopener noreferrer"
               >
