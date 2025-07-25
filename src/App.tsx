@@ -10,18 +10,17 @@ import Divers from "./components/Divers";
 import { formatDateFR } from "./services/mapping";
 import EtablissementsListPaginee from "./components/EtablissementsListPaginee";
 
-// Fonction utilitaire pour afficher le nom d'entreprise ou EI avec fallback sur le nom d'unité légale
 function getSocieteDisplayName(r: any, legalUnitName?: string): string {
   return (
-    r.nom_complet ||
-    r.nom_raison_sociale ||
-    r.denomination ||
-    r.raison_sociale ||
-    r.nom_commercial ||
-    r.displayName ||
-    r.siegeRaisonSociale ||
-    ((r.nom_usage || r.nom)
-      ? [r.prenom, r.nom_usage || r.nom].filter(Boolean).join(" ")
+    r?.nom_complet ||
+    r?.nom_raison_sociale ||
+    r?.denomination ||
+    r?.raison_sociale ||
+    r?.nom_commercial ||
+    r?.displayName ||
+    r?.siegeRaisonSociale ||
+    ((r?.nom_usage || r?.nom)
+      ? [r?.prenom, r?.nom_usage || r?.nom].filter(Boolean).join(" ")
       : null) ||
     legalUnitName ||
     "(\u00c9tablissement sans nom)"
@@ -43,11 +42,10 @@ function App() {
     setSelectedCode("");
   };
 
-  // Gère la navigation SIRET depuis la liste paginée
   const handleSelectEtablissement = (siret: string) => {
     setSearch(siret);
     setSelectedCode(siret);
-    setTabIndex(0); // Revenir à l’onglet Identité
+    setTabIndex(0);
   };
 
   const tabLabels = [
@@ -58,7 +56,6 @@ function App() {
     "Divers",
   ];
 
-  // Nom de l'unité légale pour fallback établissement
   const legalUnitName =
     data?.nom_complet ||
     data?.nom_raison_sociale ||
@@ -67,7 +64,7 @@ function App() {
     data?.displayName ||
     undefined;
 
-  if (!selectedCode && results && results.length > 0) {
+  if (!selectedCode && Array.isArray(results) && results.length > 0) {
     return (
       <div className="max-w-5xl mx-auto mt-5 p-4">
         <h1 className="text-2xl font-bold mb-6">Recherche d'entreprises</h1>
@@ -100,7 +97,7 @@ function App() {
         <div>
           <ul>
             {results.map((r, idx) => {
-              // Calcule le nom de l'unité légale pour fallback sur chaque bloc SIREN
+              if (!r) return null;
               const legalUnitName =
                 r.nom_complet ||
                 r.nom_raison_sociale ||
@@ -135,10 +132,11 @@ function App() {
                   >
                     Voir la fiche
                   </button>
-                  {Array.isArray(r.matching_etablissements) &&
-                    r.matching_etablissements.length > 0 && (
-                      <ul className="ml-8 mt-1">
-                        {r.matching_etablissements.map((etab: any, eidx: number) => (
+                  {Array.isArray(r.matching_etablissements) && r.matching_etablissements.length > 0 ? (
+                    <ul className="ml-8 mt-1">
+                      {r.matching_etablissements.map((etab: any, eidx: number) => {
+                        if (!etab) return null;
+                        return (
                           <li key={eidx}>
                             <span>
                               {getSocieteDisplayName(etab, legalUnitName)}{" "}
@@ -171,9 +169,10 @@ function App() {
                               Voir établissement
                             </button>
                           </li>
-                        ))}
-                      </ul>
-                    )}
+                        );
+                      })}
+                    </ul>
+                  ) : null}
                 </li>
               );
             })}
@@ -218,7 +217,6 @@ function App() {
             nom_raison_sociale={data.nom_raison_sociale}
             denomination={data.denomination}
           />
-          {/* Affichage de l'indicateur actif/fermé dans l'en-tête */}
           <div className="mb-4">
             <span
               className="px-2 py-1 rounded text-xs"
@@ -251,7 +249,6 @@ function App() {
                   onSelect={setSelectedCode}
                   legalUnitName={legalUnitName}
                 />
-                {/* ===== AJOUT DE LA LISTE PAGINÉE ===== */}
                 {data.siren && (
                   <EtablissementsListPaginee
                     siren={data.siren}
@@ -276,6 +273,11 @@ function App() {
               <pre>{JSON.stringify(data.inpiRaw, null, 2)}</pre>
             </details>
           )}
+        </div>
+      )}
+      {!loading && !error && !data && (
+        <div className="text-center text-gray-500 mt-8">
+          Aucun résultat n'a été trouvé.
         </div>
       )}
     </div>
