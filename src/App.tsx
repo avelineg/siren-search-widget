@@ -95,6 +95,22 @@ function getEtablissementAdresse(etab: any): string {
   );
 }
 
+// Fonction pour obtenir le SIRET principal à partir des données
+const getSiretPrincipal = (data: any): string | undefined => {
+  // 1. Si la fiche correspond à un établissement, retourne son SIRET
+  if (data?.siret) return data.siret;
+  // 2. Sinon, essaie de prendre le SIRET du siège
+  if (data?.etablissements && Array.isArray(data.etablissements)) {
+    const siege = data.etablissements.find((e: any) => e.siege);
+    if (siege && siege.siret) return siege.siret;
+    // Sinon, premier établissement
+    if (data.etablissements.length > 0 && data.etablissements[0].siret)
+      return data.etablissements[0].siret;
+  }
+  // 3. Sinon, undefined
+  return undefined;
+};
+
 function App() {
   const [search, setSearch] = useState("");
   const [selectedCode, setSelectedCode] = useState("");
@@ -290,6 +306,10 @@ function App() {
     );
   }
 
+  // --- AVIS DE SITUATION SIRENE ---
+  // Obtenir le SIRET principal à afficher (pour le bouton d'avis)
+  const siretPrincipal = data ? getSiretPrincipal(data) : undefined;
+
   return (
     <div className="max-w-5xl mx-auto mt-5 p-4">
       <h1 className="text-2xl font-bold mb-6">Recherche entreprises</h1>
@@ -345,6 +365,29 @@ function App() {
               )}
             </span>
           </div>
+
+          {/* Bouton de téléchargement de l'avis de situation SIRENE */}
+          {siretPrincipal && (
+            <div className="mb-4">
+              <a
+                href={`https://api-avis-situation-sirene.insee.fr/identification/pdf/${siretPrincipal}`}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <button
+                  className="bg-gray-800 text-white px-4 py-2 rounded hover:bg-gray-900 flex items-center gap-2"
+                  style={{ fontSize: "0.95em" }}
+                  type="button"
+                  title="Télécharger l'avis de situation INSEE (ouvre un PDF officiel)"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" width={18} height={18}>
+                    <path fillRule="evenodd" d="M9.25 2.75a.75.75 0 0 1 1.5 0v7.69l2.22-2.22a.75.75 0 1 1 1.06 1.06l-3.5 3.5a.75.75 0 0 1-1.06 0l-3.5-3.5a.75.75 0 1 1 1.06-1.06l2.22 2.22V2.75ZM3.75 15a.75.75 0 0 1 .75-.75h11a.75.75 0 0 1 0 1.5h-11a.75.75 0 0 1-.75-.75Z" clipRule="evenodd" />
+                  </svg>
+                  Télécharger l'avis de situation INSEE (PDF)
+                </button>
+              </a>
+            </div>
+          )}
 
           <Tabs labels={tabLabels} current={tabIndex} onChange={setTabIndex} />
 
