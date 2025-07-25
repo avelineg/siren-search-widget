@@ -3,7 +3,6 @@ import axios from "axios";
 
 const API_URL = "https://recherche-entreprises.api.gouv.fr/search";
 
-// Normalisation API publique entreprise : majuscules, sans accents, trim
 const normalize = (str) =>
   (str || "")
     .toUpperCase()
@@ -23,31 +22,29 @@ const Dirigeants = ({ dirigeants }) => {
     setMandatsByIndex((m) => ({ ...m, [idx]: [] }));
 
     try {
-      // Préparation des paramètres
       const params = {};
 
-      // Personne morale ? (si SIREN présent et pas de prénom/date de naissance)
-      const isPersonneMorale =
-        !!d.siren &&
-        (!d.nom || typeof d.nom !== "string" || !d.nom.match(/^[A-Z\- ]+$/i)) &&
-        (!d.prenoms || d.prenoms.length === 0);
-
-      // Toujours envoyer un nom, normalisé
+      // Dirigeant personne physique : nom obligatoire
       if (d.nom || d.name) {
         params.dir_nom = normalize(d.nom || d.name);
+      } else {
+        setError((er) => ({
+          ...er,
+          [idx]: "Nom du dirigeant manquant pour la recherche.",
+        }));
+        setLoading((l) => ({ ...l, [idx]: false }));
+        return;
       }
 
-      // Prénom uniquement pour personne physique, non vide
-      if (!isPersonneMorale && d.prenoms) {
+      // Prénom (premier prénom uniquement) si existant
+      if (d.prenoms) {
         let prenom = Array.isArray(d.prenoms) ? d.prenoms[0] : d.prenoms;
         prenom = normalize(prenom);
         if (prenom) params.dir_prenom = prenom;
       }
 
-      // Date de naissance uniquement si prénom présent et non vide
+      // Date de naissance si format valide
       if (
-        !isPersonneMorale &&
-        params.dir_prenom &&
         d.dateNaissance &&
         /^[0-9]{4}(-[0-9]{2})?$/.test(d.dateNaissance)
       ) {
@@ -57,20 +54,9 @@ const Dirigeants = ({ dirigeants }) => {
       // Ne jamais envoyer de paramètres vides
       Object.keys(params).forEach((k) => !params[k] && delete params[k]);
 
-      // Il faut au moins le nom pour rechercher
-      if (!params.dir_nom) {
-        setError((er) => ({
-          ...er,
-          [idx]: "Nom du dirigeant manquant pour la recherche.",
-        }));
-        setLoading((l) => ({ ...l, [idx]: false }));
-        return;
-      }
+      // DEBUG : Affiche la requête dans la console pour vérification
+      console.log("Recherche dirigeant params:", params);
 
-      // Pour personne morale (ex: FORMEX), on n'envoie que le nom
-      // Pour personne physique, nom+prénom+date si possible
-
-      // Appel API
       const resp = await axios.get(API_URL, { params });
       const entreprises = [];
       if (Array.isArray(resp.data.results)) {
@@ -113,9 +99,22 @@ const Dirigeants = ({ dirigeants }) => {
       }
       setMandatsByIndex((m) => ({ ...m, [idx]: entreprises }));
     } catch (e) {
+      let message = "Erreur lors de la recherche.";
+      if (
+        e.response &&
+        e.response.data &&
+        typeof e.response.data === "object"
+      ) {
+        // Affiche l’erreur de l’API si disponible
+        message =
+          e.response.data.message ||
+          e.response.data.error ||
+          JSON.stringify(e.response.data) ||
+          message;
+      }
       setError((er) => ({
         ...er,
-        [idx]: "Erreur réseau ou API lors de la recherche.",
+        [idx]: message,
       }));
     } finally {
       setLoading((l) => ({ ...l, [idx]: false }));
