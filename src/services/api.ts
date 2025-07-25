@@ -53,6 +53,12 @@ export async function fetchEtablissementsBySiren(
   const etablissements = allEtab.slice((page - 1) * nombre, page * nombre);
   return { total, etablissements };
 }
+
+/**
+ * Récupère la liste des actes INPI pour un SIREN.
+ * @param siren
+ * @returns tableau d'actes
+ */
 export const getActesINPI = (siren: string) =>
   axios.get(`/inpi/entreprise/${siren}/documents-comptes`)
     .then(res => res.data.actes || []);
