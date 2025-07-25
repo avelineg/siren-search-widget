@@ -10,47 +10,6 @@ import Divers from "./components/Divers";
 import { formatDateFR } from "./services/mapping";
 import EtablissementsListPaginee from "./components/EtablissementsListPaginee";
 
-// Copie profonde + enrichissement du nom parent pour SIRET
-function enrichEtablissementsWithNomParent(results: any[]): any[] {
-  return results.map((r) => {
-    const nomLegal =
-      r.nom_complet ||
-      r.nom_raison_sociale ||
-      r.denomination ||
-      r.raison_sociale ||
-      r.displayName ||
-      undefined;
-    const matching = Array.isArray(r.matching_etablissements)
-      ? r.matching_etablissements.map((etab: any) => ({
-          ...etab,
-          __nom_parent: nomLegal,
-        }))
-      : [];
-    return {
-      ...r,
-      matching_etablissements: matching,
-    };
-  });
-}
-
-// Fonction d'affichage du nom, qui lit __nom_parent
-function getSocieteDisplayName(r: any): string {
-  return (
-    r?.nom_complet ||
-    r?.nom_raison_sociale ||
-    r?.denomination ||
-    r?.raison_sociale ||
-    r?.nom_commercial ||
-    r?.displayName ||
-    r?.siegeRaisonSociale ||
-    ((r?.nom_usage || r?.nom)
-      ? [r?.prenom, r?.nom_usage || r?.nom].filter(Boolean).join(" ")
-      : null) ||
-    r?.__nom_parent ||
-    "(\u00c9tablissement sans nom)"
-  );
-}
-
 function App() {
   const [search, setSearch] = useState("");
   const [selectedCode, setSelectedCode] = useState("");
@@ -80,19 +39,7 @@ function App() {
     "Divers",
   ];
 
-  const legalUnitName =
-    data?.nom_complet ||
-    data?.nom_raison_sociale ||
-    data?.denomination ||
-    data?.raison_sociale ||
-    data?.displayName ||
-    undefined;
-
-  const enrichedResults = Array.isArray(results)
-    ? enrichEtablissementsWithNomParent(results)
-    : [];
-
-  if (!selectedCode && enrichedResults.length > 0) {
+  if (!selectedCode && Array.isArray(results) && results.length > 0) {
     return (
       <div className="max-w-5xl mx-auto mt-5 p-4">
         <h1 className="text-2xl font-bold mb-6">Recherche d'entreprises</h1>
@@ -124,10 +71,10 @@ function App() {
 
         <div>
           <ul>
-            {enrichedResults.map((r, idx) => (
+            {results.map((r, idx) => (
               <li key={idx} className="mb-2 flex flex-col gap-1">
                 <span>
-                  <b>{getSocieteDisplayName(r)}</b> — SIREN: {r.siren}
+                  <b>{r.displayName}</b> — SIREN: {r.siren}
                   <span
                     className="ml-2 px-2 py-1 rounded text-xs"
                     style={{
@@ -152,7 +99,7 @@ function App() {
                         (etab: any, eidx: number) => (
                           <li key={eidx} className="flex items-center gap-2">
                             <span>
-                              <b>{getSocieteDisplayName(etab)}</b> — SIRET: {etab.siret}
+                              <b>{etab.displayName}</b> — SIRET: {etab.siret}
                               <span
                                 className="ml-2 px-2 py-1 rounded text-xs"
                                 style={{
@@ -237,12 +184,7 @@ function App() {
 
       {data && (
         <div>
-          <CompanyHeader
-            {...data}
-            nom_complet={data.nom_complet}
-            nom_raison_sociale={data.nom_raison_sociale}
-            denomination={data.denomination}
-          />
+          <CompanyHeader {...data} />
           <div className="mb-4">
             <span
               className="px-2 py-1 rounded text-xs"
@@ -277,7 +219,7 @@ function App() {
                   etablissements={data.etablissements || []}
                   selected={selectedCode}
                   onSelect={setSelectedCode}
-                  legalUnitName={legalUnitName}
+                  legalUnitName={data.displayName}
                 />
                 {data.siren && (
                   <EtablissementsListPaginee
