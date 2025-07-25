@@ -7,7 +7,12 @@ import { cleanAdresse } from "../services/cleanAdresse";
 
 type Etablissement = {
   siret: string;
-  displayName: string;
+  displayName?: string;
+  denomination?: string;
+  nom_raison_sociale?: string;
+  name?: string;
+  raison_sociale?: string;
+  nom_commercial?: string;
   adresse?: string;
   statut?: "actif" | "ferme";
   date_fermeture?: string | null;
@@ -24,12 +29,22 @@ type Props = {
   onSelect: (siret: string) => void;
 };
 
+function getEtablissementDisplayName(etab: Etablissement): string {
+  return (
+    etab.displayName ||
+    etab.denomination ||
+    etab.nom_raison_sociale ||
+    etab.name ||
+    etab.raison_sociale ||
+    etab.nom_commercial ||
+    "(\u00c9tablissement sans nom)"
+  );
+}
+
 function extractCity(adresse?: string): string | undefined {
   if (!adresse) return undefined;
-  // On prend le dernier mot (souvent la ville), ou mieux, extraire via regex
   const matches = adresse.match(/\b\d{5}\s+([A-Z\- ]+)/i);
   if (matches && matches[1]) return matches[1].trim();
-  // fallback: dernier mot
   const parts = adresse.trim().split(" ");
   return parts.length > 0 ? parts[parts.length - 1] : undefined;
 }
@@ -93,7 +108,7 @@ const EtablissementsSelector: React.FC<Props> = ({
         {etablissements.map((etab) => (
           <li key={etab.siret} className="py-2 flex items-center">
             <span className="flex-1">
-              <strong>{etab.displayName || "(Sans nom)"}</strong>
+              <strong>{getEtablissementDisplayName(etab)}</strong>
               <span className="ml-2 text-gray-600">SIRET : {etab.siret}</span>
               {etab.adresse && (
                 <span className="ml-2 text-gray-500">{etab.adresse}</span>
@@ -130,7 +145,7 @@ const EtablissementsSelector: React.FC<Props> = ({
           </li>
         ))}
       </ul>
-      {/* Ajout de la carte */}
+      {/* Carte avec popup enrichi */}
       <div style={{ height: "400px", width: "100%", marginTop: 24 }}>
         <MapContainer
           center={defaultPosition}
@@ -141,7 +156,7 @@ const EtablissementsSelector: React.FC<Props> = ({
           {geoEtabs.filter(e => e.lat && e.lng).map(etab => (
             <Marker key={etab.siret} position={[etab.lat!, etab.lng!]}>
               <Popup>
-                <strong>{etab.displayName}</strong>
+                <strong>{getEtablissementDisplayName(etab)}</strong>
                 <br />
                 <span>Adresse d'origine : {etab.adresse}</span>
                 <br />
