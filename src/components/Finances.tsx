@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { inpiEntreprise } from "../services/api";
-import { getActesINPI } from "../services/api";
+import { inpiEntreprise, getActesINPI } from "../services/api";
 import {
   ResponsiveContainer,
   LineChart,
@@ -186,10 +185,21 @@ export default function FinancialData({ siren }) {
           actes.length ? (
             <ul>
               {actes.map((acte: any) => (
-                <li key={acte.id} className="mb-1">
+                <li key={acte.id} className="mb-3">
                   <span>
-                    {acte.nomDocument || acte.typeBilan || "Acte"} — {acte.dateDepot?.slice(0, 10) || "?"}
+                    <b>{acte.nomDocument || acte.libelle || "Acte"}</b>
+                    {" — "}
+                    {acte.dateDepot?.slice(0, 10) || "?"}
                   </span>
+                  {Array.isArray(acte.typeRdd) && acte.typeRdd.length > 0 && (
+                    <ul className="ml-4">
+                      {acte.typeRdd.map((t: any, i: number) => (
+                        <li key={i} style={{ fontSize: "90%" }}>
+                          <b>{t.typeActe} :</b> {t.decision}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                   {" "}
                   <a
                     href={`/api/download/acte/${acte.id}`}
