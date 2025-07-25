@@ -1,20 +1,21 @@
 import React from 'react';
 
 interface Props {
-  denomination?: string; // optionnel pour fallback
-  nom_complet?: string;  // nom EI/personne physique (recherche-entreprises)
-  nom_raison_sociale?: string; // nom société (recherche-entreprises)
+  displayName?: string;
+  denomination?: string;
+  nom_complet?: string;
+  nom_raison_sociale?: string;
   siren: string;
   siret: string;
   ville?: string;
   adresse?: string;
   tva?: { numero: string; valide: boolean };
   code_ape?: string;
-  label_ape?: string;
+  libelle_ape?: string;
   forme_juridique?: string;
   date_creation?: string;
   date_fermeture?: string | null;
-  capital_social?: number;
+  capital_social?: number | string;
   categorie_entreprise?: string;
   statut?: "actif" | "ferme";
   email?: string;
@@ -28,9 +29,10 @@ interface Props {
   greffe?: string;
 }
 
-// Fallback: nom d'établissement ou unité légale
+// Affiche le nom d'établissement ou unité légale
 function getCompanyDisplayName(props: Props): string {
   return (
+    props.displayName ||
     props.nom_complet ||
     props.nom_raison_sociale ||
     props.denomination ||
@@ -85,7 +87,7 @@ export default function CompanyHeader(props: Props) {
         <ul className="flex-1 space-y-2 min-w-[220px] list-disc pl-6">
           {props.code_ape && (
             <li>
-              <b>Code APE :</b> {props.code_ape} {props.label_ape ? <span>({props.label_ape})</span> : null}
+              <b>Code APE :</b> {props.code_ape} {props.libelle_ape ? <span>({props.libelle_ape})</span> : null}
             </li>
           )}
           {props.forme_juridique && (
@@ -100,7 +102,7 @@ export default function CompanyHeader(props: Props) {
           )}
           {props.capital_social !== undefined && (
             <li>
-              <b>Capital social :</b> {props.capital_social?.toLocaleString() || '–'} €
+              <b>Capital social :</b> {props.capital_social?.toLocaleString?.() ?? props.capital_social ?? '–'} €
             </li>
           )}
           {props.tranche_effectif && (
