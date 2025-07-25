@@ -4,6 +4,37 @@ import { MapContainer, TileLayer, Marker, Popup } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import { geocodeAdresse } from "../services/geocode";
 
+// Fonction de nettoyage d'adresse pour améliorer le géocodage
+function cleanAdresse(adresse: string): string {
+  // Liste des mots/expressions à retirer pour clarifier l'adresse
+  const toRemove = [
+    /BAT[^ ]*/gi,
+    /BÂT[^ ]*/gi,
+    /RESIDENCE .+?(?= \d|$)/gi,
+    /RÉSIDENCE .+?(?= \d|$)/gi,
+    /LE PLEIN CENTRE/gi,
+    /TECH IROISE/gi
+  ];
+  let cleaned = adresse;
+
+  // Corrige quelques abréviations courantes
+  cleaned = cleaned.replace(/PRESIDT/gi, "PRESIDENT");
+  cleaned = cleaned.replace(/AV /gi, "AVENUE ");
+  cleaned = cleaned.replace(/BD /gi, "BOULEVARD ");
+  cleaned = cleaned.replace(/STE /gi, "SAINTE ");
+  cleaned = cleaned.replace(/ST /gi, "SAINT ");
+
+  // Supprime les mots inutiles
+  toRemove.forEach(regex => {
+    cleaned = cleaned.replace(regex, "");
+  });
+
+  // Enlève les espaces multiples
+  cleaned = cleaned.replace(/\s{2,}/g, " ").trim();
+
+  return cleaned;
+}
+
 type Etablissement = {
   siret: string;
   displayName: string;
@@ -34,7 +65,8 @@ const EtablissementsSelector: React.FC<Props> = ({
         etablissements.map(async (etab) => {
           if (etab.lat && etab.lng) return etab;
           if (!etab.adresse) return etab;
-          const coords = await geocodeAdresse(etab.adresse);
+          const cleanedAdresse = cleanAdresse(etab.adresse);
+          const coords = await geocodeAdresse(cleanedAdresse);
           if (coords) return { ...etab, lat: coords.lat, lng: coords.lng };
           return etab;
         })
