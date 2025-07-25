@@ -10,22 +10,18 @@ import Divers from "./components/Divers";
 import { formatDateFR } from "./services/mapping";
 import EtablissementsListPaginee from "./components/EtablissementsListPaginee";
 
-// Fonction utilitaire pour afficher le nom d'entreprise ou EI
+// Utilise prioritairement les champs fournis par recherche-entreprises.api.gouv.fr
 function getSocieteDisplayName(r: any): string {
   return (
-    r.displayName ||
-    r.denomination ||
-    r.nom_raison_sociale ||
-    r.name ||
-    r.raison_sociale ||
-    r.nom_commercial ||
+    r.nom_complet || // recherche-entreprises.api.gouv.fr (EI)
+    r.nom_raison_sociale || // recherche-entreprises.api.gouv.fr (sociétés)
+    r.denomination || // recherche-entreprises.api.gouv.fr (sociétés)
+    r.raison_sociale || // fallback (autres sources)
+    r.nom_commercial || // fallback (autres sources)
+    r.displayName || // fallback interne
     r.siegeRaisonSociale ||
-    // Fallback pour entreprise individuelle : nom/prénom
     ((r.nom_usage || r.nom)
-      ? [
-          r.prenom ? r.prenom : null,
-          r.nom_usage || r.nom
-        ].filter(Boolean).join(" ")
+      ? [r.prenom, r.nom_usage || r.nom].filter(Boolean).join(" ")
       : null) ||
     "(\u00c9tablissement sans nom)"
   );
