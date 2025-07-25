@@ -7,12 +7,12 @@ import { cleanAdresse } from "../services/cleanAdresse";
 
 type Etablissement = {
   siret: string;
-  displayName?: string;
+  nom_complet?: string; // recherche-entreprises.api.gouv.fr (EI)
+  nom_raison_sociale?: string; // recherche-entreprises.api.gouv.fr (sociétés)
   denomination?: string;
-  nom_raison_sociale?: string;
-  name?: string;
   raison_sociale?: string;
   nom_commercial?: string;
+  displayName?: string;
   siegeRaisonSociale?: string;
   nom_usage?: string;
   nom?: string;
@@ -33,21 +33,17 @@ type Props = {
   onSelect: (siret: string) => void;
 };
 
-// Fonction utilitaire complète pour affichage EI et sociétés
 function getEtablissementDisplayName(etab: Etablissement): string {
   return (
-    etab.displayName ||
-    etab.denomination ||
+    etab.nom_complet ||
     etab.nom_raison_sociale ||
-    etab.name ||
+    etab.denomination ||
     etab.raison_sociale ||
     etab.nom_commercial ||
+    etab.displayName ||
     etab.siegeRaisonSociale ||
     ((etab.nom_usage || etab.nom)
-      ? [
-          etab.prenom ? etab.prenom : null,
-          etab.nom_usage || etab.nom
-        ].filter(Boolean).join(" ")
+      ? [etab.prenom, etab.nom_usage || etab.nom].filter(Boolean).join(" ")
       : null) ||
     "(\u00c9tablissement sans nom)"
   );
