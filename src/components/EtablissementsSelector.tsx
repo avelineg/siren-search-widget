@@ -122,7 +122,9 @@ const EtablissementsSelector: React.FC<Props> = ({
               <Popup>
                 <strong>{etab.displayName}</strong>
                 <br />
-                {etab.adresse}
+                <span>Adresse d'origine : {etab.adresse}</span>
+                <br />
+                <span>Adresse nettoyée : {cleanAdresse(etab.adresse ?? "")}</span>
               </Popup>
             </Marker>
           ))}
