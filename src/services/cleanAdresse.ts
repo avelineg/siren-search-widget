@@ -1,7 +1,7 @@
 // src/services/cleanAdresse.ts
 
 /**
- * Nettoie et reformate une adresse pour améliorer le géocodage avec Nominatim.
+ * Nettoie et reformate une adresse pour améliorer le géocodage avec Nominatim ou d'autres services.
  * - Retire les compléments inutiles (résidence, bâtiment, etc.)
  * - Remplace des abréviations courantes par leur forme complète
  * - Supprime les espaces multiples
@@ -13,6 +13,8 @@ export function cleanAdresse(adresse: string): string {
     /BÂT[^ ]*/gi,
     /RESIDENCE .+?(?= \d|$)/gi,
     /RÉSIDENCE .+?(?= \d|$)/gi,
+    /PAEI .+?(?= \d|$)/gi, // Ajout pour "PAEI du Giessen"
+    /ZA DE .+?(?= \d|$)/gi, // Ajout zone d'activité
     /LE PLEIN CENTRE/gi,
     /TECH IROISE/gi
   ];
