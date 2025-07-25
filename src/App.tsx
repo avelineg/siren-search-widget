@@ -8,7 +8,7 @@ import Dirigeants from "./components/Dirigeants";
 import Finances from "./components/Finances";
 import Divers from "./components/Divers";
 import { formatDateFR } from "./services/mapping";
-import EtablissementsListPaginee from "./components/EtablissementsListPaginee"; // <-- AJOUT
+import EtablissementsListPaginee from "./components/EtablissementsListPaginee";
 
 // Fonction utilitaire pour afficher le nom d'entreprise ou EI
 function getSocieteDisplayName(r: any): string {
@@ -20,7 +20,7 @@ function getSocieteDisplayName(r: any): string {
     r.raison_sociale ||
     r.nom_commercial ||
     r.siegeRaisonSociale ||
-    // Fallback pour entreprise individuelle
+    // Fallback pour entreprise individuelle : nom/prénom
     ((r.nom_usage || r.nom)
       ? ((r.nom_usage || r.nom) + (r.prenom ? " " + r.prenom : ""))
       : null) ||
