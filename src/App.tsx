@@ -8,7 +8,23 @@ import Dirigeants from "./components/Dirigeants";
 import Finances from "./components/Finances";
 import Divers from "./components/Divers";
 import { formatDateFR } from "./services/mapping";
-// ❌ Suppression de l'import EtablissementsListPaginee
+
+// Fonction utilitaire pour fallback du nom dans la recherche
+function fallbackDisplayName(obj: any, parentName?: string): string {
+  return (
+    obj.displayName ||
+    obj.denomination ||
+    obj.nom_complet ||
+    obj.nom_raison_sociale ||
+    obj.raison_sociale ||
+    obj.nom ||
+    obj.nom_commercial ||
+    obj.siegeRaisonSociale ||
+    ((obj.nom_usage || obj.nom) ? [obj.prenom, obj.nom_usage || obj.nom].filter(Boolean).join(" ") : null) ||
+    parentName ||
+    "(\u00c9tablissement sans nom)"
+  );
+}
 
 function App() {
   const [search, setSearch] = useState("");
@@ -39,7 +55,24 @@ function App() {
     "Divers",
   ];
 
-  if (!selectedCode && Array.isArray(results) && results.length > 0) {
+  // On applique le fallback pour tous les résultats et établissements enfants
+  const safeResults = Array.isArray(results)
+    ? results.map(r => {
+        const legalName = fallbackDisplayName(r);
+        return {
+          ...r,
+          displayName: legalName,
+          matching_etablissements: Array.isArray(r.matching_etablissements)
+            ? r.matching_etablissements.map(etab => ({
+                ...etab,
+                displayName: fallbackDisplayName(etab, legalName),
+              }))
+            : [],
+        };
+      })
+    : [];
+
+  if (!selectedCode && safeResults.length > 0) {
     return (
       <div className="max-w-5xl mx-auto mt-5 p-4">
         <h1 className="text-2xl font-bold mb-6">Recherche d'entreprises</h1>
@@ -71,7 +104,7 @@ function App() {
 
         <div>
           <ul>
-            {results.map((r, idx) => (
+            {safeResults.map((r, idx) => (
               <li key={idx} className="mb-2 flex flex-col gap-1">
                 <span>
                   <b>{r.displayName}</b> — SIREN: {r.siren}
@@ -214,15 +247,12 @@ function App() {
           <div className="mt-4">
             {tabIndex === 0 && <Identity data={data} />}
             {tabIndex === 1 && (
-              <>
-                <EtablissementsSelector
-                  etablissements={data.etablissements || []}
-                  selected={selectedCode}
-                  onSelect={setSelectedCode}
-                  legalUnitName={data.displayName}
-                />
-                {/* ❌ Suppression de la pagination et de la carte paginée */}
-              </>
+              <EtablissementsSelector
+                etablissements={data.etablissements || []}
+                selected={selectedCode}
+                onSelect={setSelectedCode}
+                legalUnitName={data.displayName}
+              />
             )}
             {tabIndex === 2 && (
               <Dirigeants dirigeants={data.dirigeants || []} />
