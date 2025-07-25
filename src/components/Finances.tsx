@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { inpiEntreprise } from "../services/api";
+import { getActesINPI } from "../services/api";
 import {
   ResponsiveContainer,
   LineChart,
@@ -15,6 +16,10 @@ export default function FinancialData({ siren }) {
   const [finances, setFinances] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Nouvel état pour les actes INPI
+  const [actes, setActes] = useState([]);
+  const [loadingActes, setLoadingActes] = useState(true);
 
   useEffect(() => {
     setLoading(true);
@@ -40,6 +45,16 @@ export default function FinancialData({ siren }) {
         setError("Aucune donnée financière disponible via l’INPI.");
       })
       .finally(() => setLoading(false));
+  }, [siren]);
+
+  // Chargement des actes INPI
+  useEffect(() => {
+    setLoadingActes(true);
+    setActes([]);
+    getActesINPI(siren)
+      .then(data => setActes(data))
+      .catch(() => setActes([]))
+      .finally(() => setLoadingActes(false));
   }, [siren]);
 
   if (loading) return <div>Chargement des données financières…</div>;
@@ -161,6 +176,37 @@ export default function FinancialData({ siren }) {
           ))}
         </tbody>
       </table>
+
+      {/* Liste des actes INPI */}
+      <div className="mt-6">
+        <h4 className="font-semibold mb-2">Actes déposés (INPI)</h4>
+        {loadingActes ? (
+          <div>Chargement des actes…</div>
+        ) : (
+          actes.length ? (
+            <ul>
+              {actes.map((acte: any) => (
+                <li key={acte.id} className="mb-1">
+                  <span>
+                    {acte.nomDocument || acte.typeBilan || "Acte"} — {acte.dateDepot?.slice(0, 10) || "?"}
+                  </span>
+                  {" "}
+                  <a
+                    href={`/api/download/acte/${acte.id}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="ml-2 text-blue-600 underline"
+                  >
+                    Télécharger PDF
+                  </a>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <div>Aucun acte disponible.</div>
+          )
+        )}
+      </div>
     </div>
   );
 }
