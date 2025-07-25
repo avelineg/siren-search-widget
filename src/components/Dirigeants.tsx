@@ -3,12 +3,14 @@ import axios from "axios";
 
 const API_URL = "https://recherche-entreprises.api.gouv.fr/search";
 
+// Normalisation API publique entreprise : majuscules, sans accents, trim
 const normalize = (str) =>
   (str || "")
     .toUpperCase()
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^A-Z0-9 -]/g, "");
+    .replace(/[^A-Z0-9 -]/g, "")
+    .trim();
 
 const Dirigeants = ({ dirigeants }) => {
   const [mandatsByIndex, setMandatsByIndex] = useState({});
@@ -21,15 +23,22 @@ const Dirigeants = ({ dirigeants }) => {
     setMandatsByIndex((m) => ({ ...m, [idx]: [] }));
 
     try {
+      // Préparation des paramètres
       const params = {};
+      // Pour une personne morale (ex: FORME/FORMEX), ne pas envoyer prénom/date
+      const isPersonneMorale =
+        !!d.siren && (!d.nom || !d.prenoms || typeof d.nom !== "string");
+
       if (d.nom || d.name)
         params.dir_nom = normalize(d.nom || d.name);
-      if (d.prenoms) {
+
+      // Prénom uniquement pour personne physique :
+      if (!isPersonneMorale && d.prenoms) {
         let prenom = Array.isArray(d.prenoms) ? d.prenoms[0] : d.prenoms;
-        params.dir_prenom = normalize(prenom);
+        if (prenom) params.dir_prenom = normalize(prenom);
       }
-      if (d.dateNaissance) {
-        // Format attendu: AAAA ou AAAA-MM
+      // Date de naissance uniquement pour personne physique :
+      if (!isPersonneMorale && d.dateNaissance) {
         params.dir_date_naissance = d.dateNaissance;
       }
 
@@ -42,6 +51,11 @@ const Dirigeants = ({ dirigeants }) => {
         setLoading((l) => ({ ...l, [idx]: false }));
         return;
       }
+
+      // Ne jamais envoyer de paramètres vides
+      Object.keys(params).forEach(
+        (k) => !params[k] && delete params[k]
+      );
 
       const resp = await axios.get(API_URL, { params });
       const entreprises = [];
@@ -77,12 +91,28 @@ const Dirigeants = ({ dirigeants }) => {
           });
         });
       }
+      if (entreprises.length === 0) {
+        setError((er) => ({
+          ...er,
+          [idx]: "Aucun établissement trouvé.",
+        }));
+      }
       setMandatsByIndex((m) => ({ ...m, [idx]: entreprises }));
     } catch (e) {
-      setError((er) => ({
-        ...er,
-        [idx]: "Erreur lors de la recherche.",
-      }));
+      if (
+        e.response &&
+        e.response.status === 400
+      ) {
+        setError((er) => ({
+          ...er,
+          [idx]: "Paramètres de recherche invalides pour ce dirigeant.",
+        }));
+      } else {
+        setError((er) => ({
+          ...er,
+          [idx]: "Erreur lors de la recherche.",
+        }));
+      }
     } finally {
       setLoading((l) => ({ ...l, [idx]: false }));
     }
@@ -141,7 +171,7 @@ const Dirigeants = ({ dirigeants }) => {
               {error[i] && (
                 <div style={{ color: "red", marginTop: 4 }}>{error[i]}</div>
               )}
-              {mandatsByIndex[i] && mandatsByIndex[i].length > 0 && (
+              {mandatsByIndex[i] && mandatsByIndex[i].length > 0 && !error[i] && (
                 <ul
                   style={{
                     marginTop: 8,
