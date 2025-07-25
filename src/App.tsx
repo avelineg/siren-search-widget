@@ -68,6 +68,33 @@ function fallbackDisplayName(obj: any, parentName?: string): string {
   );
 }
 
+// Helper pour obtenir l'adresse d'un établissement, compatible API recherche-entreprises et fallback SIRENE
+function getEtablissementAdresse(etab: any): string {
+  // API recherche-entreprises: adresse en clair
+  if (etab.adresse) return etab.adresse;
+  // SIRENE/recherche entreprise: adresseEtablissement objet
+  if (etab.adresseEtablissement) {
+    const a = etab.adresseEtablissement;
+    return [
+      a.numeroVoieEtablissement,
+      a.typeVoieEtablissement,
+      a.libelleVoieEtablissement,
+      a.codePostalEtablissement,
+      a.libelleCommuneEtablissement,
+    ]
+      .filter(Boolean)
+      .join(" ");
+  }
+  // Champs bruts ou fallback ville
+  return (
+    etab.libelle_commune ||
+    etab.code_postal ||
+    etab.codePostalEtablissement ||
+    etab.ville ||
+    ""
+  );
+}
+
 function App() {
   const [search, setSearch] = useState("");
   const [selectedCode, setSelectedCode] = useState("");
@@ -205,7 +232,9 @@ function App() {
                               — SIRET: {etab.siret}
                             </span>
                             <span className="text-xs text-gray-600 ml-1">
-                              {etab.adresse ? `— ${etab.adresse}` : ""}
+                              {getEtablissementAdresse(etab)
+                                ? `— ${getEtablissementAdresse(etab)}`
+                                : ""}
                             </span>
                             <span
                               className="px-2 py-1 rounded text-xs"
