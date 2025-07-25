@@ -53,3 +53,7 @@ export async function fetchEtablissementsBySiren(
   const etablissements = allEtab.slice((page - 1) * nombre, page * nombre);
   return { total, etablissements };
 }
+
+export const getActesINPI = (siren: string) =>
+  axios.get(`/inpi/entreprise/${siren}/documents-comptes`)
+    .then(res => (res.data?.actes || res.data || [])); // adapte selon la structure réelle reçue
