@@ -10,12 +10,24 @@ import Divers from "./components/Divers";
 import { formatDateFR } from "./services/mapping";
 
 // Fallback robuste pour toutes les formes d'entreprise (EI/personne morale)
+// Utilise en priorité les champs de l'API recherche-entreprises (nom_complet, nom_raison_sociale)
 function fallbackDisplayName(obj: any, parentName?: string): string {
-  // Cas EI/personne physique : champ à plat
+  // Cas API recherche-entreprises : nom_complet (EI/personne physique)
+  if (obj.nom_complet) {
+    return obj.nom_complet;
+  }
+  // Cas API recherche-entreprises : nom_raison_sociale
+  if (obj.nom_raison_sociale) {
+    return obj.nom_raison_sociale;
+  }
+  // Cas société classique
+  if (obj.denomination) {
+    return obj.denomination;
+  }
+  // Cas INPI ou SIRENE : fallback « Prénom Nom »
   if (obj.prenom && obj.nom) {
     return [obj.prenom, obj.nom].filter(Boolean).join(" ").trim();
   }
-  // Cas EI/personne physique : descriptionPersonne imbriqué
   if (
     obj.descriptionPersonne &&
     (obj.descriptionPersonne.prenoms || obj.descriptionPersonne.nom)
@@ -30,7 +42,7 @@ function fallbackDisplayName(obj: any, parentName?: string): string {
       .join(" ")
       .trim();
   }
-  // Cas INPI personne_physique imbriqué
+  // Cas INPI imbriqué (personne_physique)
   if (
     obj.personne_physique &&
     obj.personne_physique.identite &&
@@ -44,9 +56,6 @@ function fallbackDisplayName(obj: any, parentName?: string): string {
   // Cas fallback société classique
   return (
     obj.displayName ||
-    obj.denomination ||
-    obj.nom_complet ||
-    obj.nom_raison_sociale ||
     obj.raison_sociale ||
     obj.nom ||
     obj.nom_commercial ||
@@ -88,6 +97,7 @@ function App() {
     "Divers",
   ];
 
+  // On applique le fallback pour tous les résultats et établissements enfants
   const safeResults = Array.isArray(results)
     ? results.map(r => {
         const legalName = fallbackDisplayName(r);
