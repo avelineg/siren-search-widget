@@ -10,6 +10,24 @@ import Divers from "./components/Divers";
 import { formatDateFR } from "./services/mapping";
 import EtablissementsListPaginee from "./components/EtablissementsListPaginee"; // <-- AJOUT
 
+// Fonction utilitaire pour afficher le nom d'entreprise ou EI
+function getSocieteDisplayName(r: any): string {
+  return (
+    r.displayName ||
+    r.denomination ||
+    r.nom_raison_sociale ||
+    r.name ||
+    r.raison_sociale ||
+    r.nom_commercial ||
+    r.siegeRaisonSociale ||
+    // Fallback pour entreprise individuelle
+    ((r.nom_usage || r.nom)
+      ? ((r.nom_usage || r.nom) + (r.prenom ? " " + r.prenom : ""))
+      : null) ||
+    "(\u00c9tablissement sans nom)"
+  );
+}
+
 function App() {
   const [search, setSearch] = useState("");
   const [selectedCode, setSelectedCode] = useState("");
@@ -75,7 +93,7 @@ function App() {
             {results.map((r, idx) => (
               <li key={idx} className="mb-2 flex items-center">
                 <span>
-                  {r.displayName || "(Sans nom)"} — SIREN: {r.siren}
+                  {getSocieteDisplayName(r)} — SIREN: {r.siren}
                 </span>
                 <span
                   className="ml-2 px-2 py-1 rounded text-xs"
@@ -105,13 +123,7 @@ function App() {
                       {r.matching_etablissements.map((etab: any, eidx: number) => (
                         <li key={eidx}>
                           <span>
-                            {etab.displayName ||
-                              etab.denomination ||
-                              etab.nom_raison_sociale ||
-                              etab.name ||
-                              etab.raison_sociale ||
-                              etab.nom_commercial ||
-                              "(\u00c9tablissement sans nom)"}{" "}
+                            {getSocieteDisplayName(etab)}{" "}
                             — SIRET: {etab.siret}
                             <span
                               className="ml-2 px-2 py-1 rounded text-xs"
