@@ -267,15 +267,24 @@ export async function fetchEtablissementBySiren(siren: string) {
     displayName ||
     "-";
 
+  // ---- PATCH FORMES JURIDIQUES + DIRIGEANT EI ----
+
   const forme_juridique_code =
     getInpi("formality.content.personneMorale.identite.entreprise.formeJuridique", inpiData) ||
     inpiData.legalForm ||
     sireneUL.categorieJuridiqueUniteLegale ||
     "-";
+  // Prend toujours le libellé officiel si possible
   const forme_juridique =
-    getFormeJuridiqueLabel(forme_juridique_code) ||
     sireneUL.libelleCategorieJuridiqueUniteLegale ||
+    getFormeJuridiqueLabel(forme_juridique_code) ||
     forme_juridique_code;
+
+  // EI detection
+  const isEI =
+    (typeof forme_juridique === "string" && forme_juridique.toLowerCase().includes("entrepreneur individuel")) ||
+    forme_juridique_code === "1000" ||
+    forme_juridique_code === "1001";
 
   const code_ape =
     getInpi("formality.content.personneMorale.identite.entreprise.codeApe", inpiData) ||
@@ -323,7 +332,22 @@ export async function fetchEtablissementBySiren(siren: string) {
   // Dirigeants enrichis avec la correspondance des rôles
   let dirigeants = [];
   const pouvoirs = getInpi("formality.content.personneMorale.composition.pouvoirs", inpiData);
-  if (Array.isArray(pouvoirs)) {
+  if (isEI) {
+    // Pour EI, utilise le nom/prénom ou nom_complet
+    let nom = sireneUL.nom || inpiData.nom || "";
+    let prenoms = sireneUL.prenom || inpiData.prenom || "";
+    if (sireneUL.nom_complet || inpiData.nom_complet) {
+      nom = sireneUL.nom_complet || inpiData.nom_complet;
+      prenoms = "";
+    }
+    dirigeants = [
+      {
+        nom,
+        prenoms,
+        role: "Entrepreneur individuel"
+      }
+    ];
+  } else if (Array.isArray(pouvoirs)) {
     dirigeants = pouvoirs.map((p: any) => {
       if (p.individu?.descriptionPersonne) {
         return {
@@ -410,41 +434,4 @@ export async function fetchEtablissementBySiret(siret: string) {
 }
 
 // Pour affichage individuel d’un établissement dans une liste paginée
-export function mapEtablissement(etab: any) {
-  const adresse =
-    [
-      etab.numero_voie || etab.adresseEtablissement?.numeroVoieEtablissement,
-      etab.type_voie || etab.adresseEtablissement?.typeVoieEtablissement,
-      etab.libelle_voie || etab.adresseEtablissement?.libelleVoieEtablissement,
-      etab.code_postal || etab.adresseEtablissement?.codePostalEtablissement,
-      etab.libelle_commune || etab.adresseEtablissement?.libelleCommuneEtablissement,
-    ].filter(Boolean).join(' ');
-
-  let statut = "Actif";
-  if (etab.date_fermeture) statut = "Fermé";
-
-  const ville =
-    etab.libelle_commune ||
-    etab.adresseEtablissement?.libelleCommuneEtablissement ||
-    etab.ville ||
-    "-";
-
-  return {
-    siret: etab.siret,
-    ville,
-    denomination: etab.displayName || etab.nom_complet || etab.nom_raison_sociale || etab.denomination || etab.nom_commercial || etab.enseigne1 || etab.uniteLegale?.denominationUniteLegale || "—",
-    adresse,
-    etat: statut,
-    isSiege: !!(etab.est_siege),
-  };
-}
-
-export async function fetchEtablissementByCode(code: string) {
-  if (/^\d{14}$/.test(code)) {
-    return fetchEtablissementBySiret(code);
-  } else if (/^\d{9}$/.test(code)) {
-    return fetchEtablissementBySiren(code);
-  } else {
-    throw new Error('Code SIREN/SIRET invalide');
-  }
-}
+export function mapEtablissement(etab
