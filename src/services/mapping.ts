@@ -369,15 +369,33 @@ export async function fetchEtablissementBySiren(siren: string) {
     });
   }
 
-  const finances = inpiData.financialStatements?.length
-    ? inpiData.financialStatements.map((f: any) => ({
-        exercice: f.fiscalYear,
-        ca: f.turnover,
-        resultat_net: f.netResult,
-        effectif: f.workforce,
-        capital_social: f.shareCapital
+  // === NOUVEAU: Extraction des données financières compatibles INPI comptes annuels ===
+
+  // Préfère comptes_annuels (API comptes annuels INPI), sinon financialStatements (API INPI ancienne), sinon rien.
+  let finances: any[] = [];
+  if (Array.isArray(inpiData.comptes_annuels) && inpiData.comptes_annuels.length > 0) {
+    finances = inpiData.comptes_annuels
+      .filter(f => f.date_cloture)
+      .map(f => ({
+        exercice: String(f.date_cloture).slice(0, 4),
+        ca: f.chiffre_affaires ?? f.chiffre_affaires_net ?? null,
+        resultat_net: f.resultat_net ?? null,
+        effectif: f.effectif ?? null,
+        capital_social: f.capital_social ?? null
       }))
-    : [];
+      .sort((a, b) => Number(a.exercice) - Number(b.exercice));
+  } else if (Array.isArray(inpiData.financialStatements) && inpiData.financialStatements.length > 0) {
+    finances = inpiData.financialStatements
+      .filter(f => f.fiscalYear)
+      .map(f => ({
+        exercice: String(f.fiscalYear),
+        ca: f.turnover ?? null,
+        resultat_net: f.netResult ?? null,
+        effectif: f.workforce ?? null,
+        capital_social: f.shareCapital ?? null
+      }))
+      .sort((a, b) => Number(a.exercice) - Number(b.exercice));
+  }
 
   const statut_diffusion =
     inpiData.publicationStatus ||
