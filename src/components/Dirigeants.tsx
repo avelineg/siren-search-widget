@@ -9,7 +9,7 @@ const normalize = (str) =>
     .toUpperCase()
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^A-Z0-9 -]/g, "")
+    .replace(/[^A-Z0-9 \-]/g, "")
     .trim();
 
 const Dirigeants = ({ dirigeants }) => {
@@ -25,24 +25,39 @@ const Dirigeants = ({ dirigeants }) => {
     try {
       // Préparation des paramètres
       const params = {};
-      // Pour une personne morale (ex: FORME/FORMEX), ne pas envoyer prénom/date
+
+      // Personne morale ? (si SIREN présent et pas de prénom/date de naissance)
       const isPersonneMorale =
-        !!d.siren && (!d.nom || !d.prenoms || typeof d.nom !== "string");
+        !!d.siren &&
+        (!d.nom || typeof d.nom !== "string" || !d.nom.match(/^[A-Z\- ]+$/i)) &&
+        (!d.prenoms || d.prenoms.length === 0);
 
-      if (d.nom || d.name)
+      // Toujours envoyer un nom, normalisé
+      if (d.nom || d.name) {
         params.dir_nom = normalize(d.nom || d.name);
+      }
 
-      // Prénom uniquement pour personne physique :
+      // Prénom uniquement pour personne physique, non vide
       if (!isPersonneMorale && d.prenoms) {
         let prenom = Array.isArray(d.prenoms) ? d.prenoms[0] : d.prenoms;
-        if (prenom) params.dir_prenom = normalize(prenom);
+        prenom = normalize(prenom);
+        if (prenom) params.dir_prenom = prenom;
       }
-      // Date de naissance uniquement pour personne physique :
-      if (!isPersonneMorale && d.dateNaissance) {
+
+      // Date de naissance uniquement si prénom présent et non vide
+      if (
+        !isPersonneMorale &&
+        params.dir_prenom &&
+        d.dateNaissance &&
+        /^[0-9]{4}(-[0-9]{2})?$/.test(d.dateNaissance)
+      ) {
         params.dir_date_naissance = d.dateNaissance;
       }
 
-      // Ne lance la requête que si le nom est présent
+      // Ne jamais envoyer de paramètres vides
+      Object.keys(params).forEach((k) => !params[k] && delete params[k]);
+
+      // Il faut au moins le nom pour rechercher
       if (!params.dir_nom) {
         setError((er) => ({
           ...er,
@@ -52,11 +67,10 @@ const Dirigeants = ({ dirigeants }) => {
         return;
       }
 
-      // Ne jamais envoyer de paramètres vides
-      Object.keys(params).forEach(
-        (k) => !params[k] && delete params[k]
-      );
+      // Pour personne morale (ex: FORMEX), on n'envoie que le nom
+      // Pour personne physique, nom+prénom+date si possible
 
+      // Appel API
       const resp = await axios.get(API_URL, { params });
       const entreprises = [];
       if (Array.isArray(resp.data.results)) {
@@ -99,20 +113,10 @@ const Dirigeants = ({ dirigeants }) => {
       }
       setMandatsByIndex((m) => ({ ...m, [idx]: entreprises }));
     } catch (e) {
-      if (
-        e.response &&
-        e.response.status === 400
-      ) {
-        setError((er) => ({
-          ...er,
-          [idx]: "Paramètres de recherche invalides pour ce dirigeant.",
-        }));
-      } else {
-        setError((er) => ({
-          ...er,
-          [idx]: "Erreur lors de la recherche.",
-        }));
-      }
+      setError((er) => ({
+        ...er,
+        [idx]: "Erreur réseau ou API lors de la recherche.",
+      }));
     } finally {
       setLoading((l) => ({ ...l, [idx]: false }));
     }
