@@ -10,7 +10,7 @@ import Divers from "./components/Divers";
 import { formatDateFR } from "./services/mapping";
 import EtablissementsListPaginee from "./components/EtablissementsListPaginee";
 
-// Fonction utilitaire avec fallback explicite sur le nom unité légale
+// Fonction utilitaire pour afficher le nom d'un établissement avec fallback sur le nom SIREN
 function getSocieteDisplayName(r: any, legalUnitName?: string): string {
   return (
     r?.nom_complet ||
@@ -57,7 +57,7 @@ function App() {
     "Divers",
   ];
 
-  // Fallback nom unité légale principal
+  // Nom de fallback pour tous les établissements de la fiche détaillée
   const legalUnitName =
     data?.nom_complet ||
     data?.nom_raison_sociale ||
@@ -66,6 +66,7 @@ function App() {
     data?.displayName ||
     undefined;
 
+  // --- Affichage de la recherche (liste SIREN/SIRET) ---
   if (!selectedCode && Array.isArray(results) && results.length > 0) {
     return (
       <div className="max-w-5xl mx-auto mt-5 p-4">
@@ -99,7 +100,7 @@ function App() {
         <div>
           <ul>
             {results.map((r, idx) => {
-              // On calcule le nom de l’unité légale pour fallback sur ses établissements
+              // Nom de fallback pour les établissements de ce SIREN
               const nomLegal =
                 r?.nom_complet ||
                 r?.nom_raison_sociale ||
@@ -109,39 +110,32 @@ function App() {
                 undefined;
 
               return (
-                <li key={idx} className="mb-2 flex items-center">
+                <li key={idx} className="mb-2 flex flex-col gap-1">
                   <span>
-                    {getSocieteDisplayName(r)} — SIREN: {r.siren}
+                    <b>{getSocieteDisplayName(r)}</b> — SIREN: {r.siren}
+                    <span
+                      className="ml-2 px-2 py-1 rounded text-xs"
+                      style={{
+                        background: r.statut === "ferme" ? "#fde8ea" : "#e6faea",
+                        color: r.statut === "ferme" ? "#b71c1c" : "#208b42",
+                        fontWeight: 600,
+                      }}
+                      title={r.statut === "ferme" ? "Établissement fermé" : "Établissement actif"}
+                    >
+                      {r.statut === "ferme" ? "Fermé" : "Actif"}
+                      {r.statut === "ferme" && r.date_fermeture && (
+                        <span className="ml-1 text-xs text-gray-500">
+                          (le {formatDateFR(r.date_fermeture)})
+                        </span>
+                      )}
+                    </span>
                   </span>
-                  <span
-                    className="ml-2 px-2 py-1 rounded text-xs"
-                    style={{
-                      background: r.statut === "ferme" ? "#fde8ea" : "#e6faea",
-                      color: r.statut === "ferme" ? "#b71c1c" : "#208b42",
-                      fontWeight: 600,
-                    }}
-                    title={r.statut === "ferme" ? "Établissement fermé" : "Établissement actif"}
-                  >
-                    {r.statut === "ferme" ? "Fermé" : "Actif"}
-                    {r.statut === "ferme" && r.date_fermeture && (
-                      <span className="ml-1 text-xs text-gray-500">
-                        (le {formatDateFR(r.date_fermeture)})
-                      </span>
-                    )}
-                  </span>
-                  <button
-                    className="ml-4 bg-blue-600 text-white px-2 py-1 rounded hover:bg-blue-700 text-sm"
-                    onClick={() => setSelectedCode(r.siren)}
-                  >
-                    Voir la fiche
-                  </button>
-                  {Array.isArray(r.matching_etablissements) &&
-                  r.matching_etablissements.length > 0 ? (
+                  {Array.isArray(r.matching_etablissements) && r.matching_etablissements.length > 0 && (
                     <ul className="ml-8 mt-1">
                       {r.matching_etablissements.map((etab: any, eidx: number) => (
-                        <li key={eidx}>
+                        <li key={eidx} className="flex items-center gap-2">
                           <span>
-                            {getSocieteDisplayName(etab, nomLegal)} — SIRET: {etab.siret}
+                            <b>{getSocieteDisplayName(etab, nomLegal)}</b> — SIRET: {etab.siret}
                             <span
                               className="ml-2 px-2 py-1 rounded text-xs"
                               style={{
@@ -172,7 +166,13 @@ function App() {
                         </li>
                       ))}
                     </ul>
-                  ) : null}
+                  )}
+                  <button
+                    className="mt-1 bg-blue-600 text-white px-2 py-1 rounded hover:bg-blue-700 text-sm self-start"
+                    onClick={() => setSelectedCode(r.siren)}
+                  >
+                    Voir la fiche
+                  </button>
                 </li>
               );
             })}
