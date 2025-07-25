@@ -71,7 +71,7 @@ const EtablissementsSelector: React.FC<Props> = ({
           console.warn("Géocodage échoué:", cleanedAdresse);
           withGeo.push(etab);
         }
-        await new Promise(r => setTimeout(r, 1200)); // Respecte le quota Nominatim/BAN
+        await new Promise(r => setTimeout(r, 1200)); // Respecte le quota
         if (cancelled) break;
       }
       if (!cancelled) setGeoEtabs(withGeo);
@@ -155,7 +155,10 @@ const EtablissementsSelector: React.FC<Props> = ({
                       Source: {etab.geocodeSource === "nominatim" ? "Nominatim" : "api-adresse.data.gouv.fr"}
                     </span>
                     {etab.cityMatch === false && (
-                      <div style={{ color: "red" }}>⚠️ Ville localisée différente de la ville attendue !</div>
+                      <div style={{ color: "red" }}>
+                        ⚠️ Ville localisée différente de la ville attendue !<br/>
+                        (fallback automatique sur l'autre géocodeur)
+                      </div>
                     )}
                   </>
                 )}
