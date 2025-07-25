@@ -10,7 +10,7 @@ import Divers from "./components/Divers";
 import { formatDateFR } from "./services/mapping";
 import EtablissementsListPaginee from "./components/EtablissementsListPaginee";
 
-// 1. Fonction qui enrichit les SIRET avec le nom parent
+// Copie profonde + enrichissement du nom parent pour SIRET
 function enrichEtablissementsWithNomParent(results: any[]): any[] {
   return results.map((r) => {
     const nomLegal =
@@ -20,18 +20,20 @@ function enrichEtablissementsWithNomParent(results: any[]): any[] {
       r.raison_sociale ||
       r.displayName ||
       undefined;
-
-    if (Array.isArray(r.matching_etablissements)) {
-      r.matching_etablissements = r.matching_etablissements.map((etab: any) => ({
-        ...etab,
-        __nom_parent: nomLegal,
-      }));
-    }
-    return r;
+    const matching = Array.isArray(r.matching_etablissements)
+      ? r.matching_etablissements.map((etab: any) => ({
+          ...etab,
+          __nom_parent: nomLegal,
+        }))
+      : [];
+    return {
+      ...r,
+      matching_etablissements: matching,
+    };
   });
 }
 
-// 2. Fonction d'affichage du nom, qui lit __nom_parent
+// Fonction d'affichage du nom, qui lit __nom_parent
 function getSocieteDisplayName(r: any): string {
   return (
     r?.nom_complet ||
@@ -78,7 +80,6 @@ function App() {
     "Divers",
   ];
 
-  // Pour la fiche détaillée
   const legalUnitName =
     data?.nom_complet ||
     data?.nom_raison_sociale ||
@@ -87,12 +88,10 @@ function App() {
     data?.displayName ||
     undefined;
 
-  // 3. Enrichissement des résultats
   const enrichedResults = Array.isArray(results)
     ? enrichEtablissementsWithNomParent(results)
     : [];
 
-  // --- Affichage résultats recherche liste SIREN/SIRET ---
   if (!selectedCode && enrichedResults.length > 0) {
     return (
       <div className="max-w-5xl mx-auto mt-5 p-4">
@@ -146,43 +145,53 @@ function App() {
                     )}
                   </span>
                 </span>
-                {Array.isArray(r.matching_etablissements) && r.matching_etablissements.length > 0 && (
-                  <ul className="ml-8 mt-1">
-                    {r.matching_etablissements.map((etab: any, eidx: number) => (
-                      <li key={eidx} className="flex items-center gap-2">
-                        <span>
-                          <b>{getSocieteDisplayName(etab)}</b> — SIRET: {etab.siret}
-                          <span
-                            className="ml-2 px-2 py-1 rounded text-xs"
-                            style={{
-                              background: etab.statut === "ferme" ? "#fde8ea" : "#e6faea",
-                              color: etab.statut === "ferme" ? "#b71c1c" : "#208b42",
-                              fontWeight: 600,
-                            }}
-                            title={
-                              etab.statut === "ferme"
-                                ? "Établissement fermé"
-                                : "Établissement actif"
-                            }
-                          >
-                            {etab.statut === "ferme" ? "Fermé" : "Actif"}
-                            {etab.statut === "ferme" && etab.date_fermeture && (
-                              <span className="ml-1 text-xs text-gray-500">
-                                (le {formatDateFR(etab.date_fermeture)})
+                {Array.isArray(r.matching_etablissements) &&
+                  r.matching_etablissements.length > 0 && (
+                    <ul className="ml-8 mt-1">
+                      {r.matching_etablissements.map(
+                        (etab: any, eidx: number) => (
+                          <li key={eidx} className="flex items-center gap-2">
+                            <span>
+                              <b>{getSocieteDisplayName(etab)}</b> — SIRET: {etab.siret}
+                              <span
+                                className="ml-2 px-2 py-1 rounded text-xs"
+                                style={{
+                                  background:
+                                    etab.statut === "ferme"
+                                      ? "#fde8ea"
+                                      : "#e6faea",
+                                  color:
+                                    etab.statut === "ferme"
+                                      ? "#b71c1c"
+                                      : "#208b42",
+                                  fontWeight: 600,
+                                }}
+                                title={
+                                  etab.statut === "ferme"
+                                    ? "Établissement fermé"
+                                    : "Établissement actif"
+                                }
+                              >
+                                {etab.statut === "ferme" ? "Fermé" : "Actif"}
+                                {etab.statut === "ferme" &&
+                                  etab.date_fermeture && (
+                                    <span className="ml-1 text-xs text-gray-500">
+                                      (le {formatDateFR(etab.date_fermeture)})
+                                    </span>
+                                  )}
                               </span>
-                            )}
-                          </span>
-                        </span>
-                        <button
-                          className="ml-2 bg-green-600 text-white px-2 py-1 rounded hover:bg-green-700 text-xs"
-                          onClick={() => setSelectedCode(etab.siret)}
-                        >
-                          Voir établissement
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                )}
+                            </span>
+                            <button
+                              className="ml-2 bg-green-600 text-white px-2 py-1 rounded hover:bg-green-700 text-xs"
+                              onClick={() => setSelectedCode(etab.siret)}
+                            >
+                              Voir établissement
+                            </button>
+                          </li>
+                        )
+                      )}
+                    </ul>
+                  )}
                 <button
                   className="mt-1 bg-blue-600 text-white px-2 py-1 rounded hover:bg-blue-700 text-sm self-start"
                   onClick={() => setSelectedCode(r.siren)}
@@ -197,7 +206,6 @@ function App() {
     );
   }
 
-  // --- Affichage fiche détaillée établissement ---
   return (
     <div className="max-w-5xl mx-auto mt-5 p-4">
       <h1 className="text-2xl font-bold mb-6">Recherche entreprises</h1>
@@ -222,7 +230,9 @@ function App() {
         </button>
       </form>
 
-      {error && <div className="text-red-600 mb-4">Erreur : {error.toString()}</div>}
+      {error && (
+        <div className="text-red-600 mb-4">Erreur : {error.toString()}</div>
+      )}
       {loading && <div className="mb-4">Chargement...</div>}
 
       {data && (
@@ -242,7 +252,11 @@ function App() {
                 fontWeight: 700,
                 marginLeft: "0.5rem",
               }}
-              title={data.statut === "ferme" ? "Établissement fermé" : "Établissement actif"}
+              title={
+                data.statut === "ferme"
+                  ? "Établissement fermé"
+                  : "Établissement actif"
+              }
             >
               {data.statut === "ferme" ? "Fermé" : "Actif"}
               {data.statut === "ferme" && data.date_fermeture && (
@@ -273,7 +287,9 @@ function App() {
                 )}
               </>
             )}
-            {tabIndex === 2 && <Dirigeants dirigeants={data.dirigeants || []} />}
+            {tabIndex === 2 && (
+              <Dirigeants dirigeants={data.dirigeants || []} />
+            )}
             {tabIndex === 3 && <Finances data={data} />}
             {tabIndex === 4 && <Divers data={data} />}
           </div>
