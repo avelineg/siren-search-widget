@@ -10,7 +10,7 @@ import Divers from "./components/Divers";
 import { formatDateFR } from "./services/mapping";
 import EtablissementsListPaginee from "./components/EtablissementsListPaginee";
 
-// Fonction utilitaire : retourne le nom d'un établissement ou, à défaut, le nom de l'unité légale fourni
+// Fonction utilitaire pour afficher le nom
 function getSocieteDisplayName(r: any, legalUnitName?: string): string {
   return (
     r?.nom_complet ||
@@ -43,11 +43,10 @@ function App() {
     setSelectedCode("");
   };
 
-  // Gère la navigation SIRET depuis la liste paginée
   const handleSelectEtablissement = (siret: string) => {
     setSearch(siret);
     setSelectedCode(siret);
-    setTabIndex(0); // Revenir à l’onglet Identité
+    setTabIndex(0);
   };
 
   const tabLabels = [
@@ -58,7 +57,7 @@ function App() {
     "Divers",
   ];
 
-  // Nom de l'unité légale pour fallback établissement
+  // Nom de l'unité légale principal pour fallback
   const legalUnitName =
     data?.nom_complet ||
     data?.nom_raison_sociale ||
@@ -67,6 +66,7 @@ function App() {
     data?.displayName ||
     undefined;
 
+  // --- Affichage résultats recherche liste SIREN/SIRET ---
   if (!selectedCode && Array.isArray(results) && results.length > 0) {
     return (
       <div className="max-w-5xl mx-auto mt-5 p-4">
@@ -100,13 +100,14 @@ function App() {
         <div>
           <ul>
             {results.map((r, idx) => {
-              // Calculer le nom de l’unité légale pour tous ses établissements
+              if (!r) return null;
+              // Nom de fallback pour TOUS les établissements de ce SIREN
               const nomLegal =
-                r?.nom_complet ||
-                r?.nom_raison_sociale ||
-                r?.denomination ||
-                r?.raison_sociale ||
-                r?.displayName ||
+                r.nom_complet ||
+                r.nom_raison_sociale ||
+                r.denomination ||
+                r.raison_sociale ||
+                r.displayName ||
                 undefined;
 
               return (
@@ -183,6 +184,7 @@ function App() {
     );
   }
 
+  // --- Affichage fiche détaillée établissement ---
   return (
     <div className="max-w-5xl mx-auto mt-5 p-4">
       <h1 className="text-2xl font-bold mb-6">Recherche entreprises</h1>
