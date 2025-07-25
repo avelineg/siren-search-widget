@@ -6,9 +6,33 @@ import formesJuridique from '../formeJuridique.json'
 import { effectifTrancheLabel } from './effectifs'
 import dirigeantRoles from './dirigeantRoles'
 
-// Petit utilitaire pour extraire une valeur profonde
+// Utilitaire pour extraire une valeur profonde
 function getInpi(path: string, obj: any) {
   return path.split('.').reduce((acc, key) => (acc && acc[key] != null ? acc[key] : undefined), obj);
+}
+
+// Ajouté : calcule le nom affichable pour un SIREN/SIRET INPI (personne physique/morale)
+function computeDisplayName(inpiData: any): string {
+  // Personne physique
+  if (inpiData?.formality?.content?.personnePhysique) {
+    const entrepreneur = inpiData.formality.content.personnePhysique?.identite?.entrepreneur?.descriptionPersonne;
+    if (entrepreneur) {
+      const prenom = Array.isArray(entrepreneur.prenoms) ? entrepreneur.prenoms.join(" ") : "";
+      const nom = entrepreneur.nom || "";
+      return [prenom, nom].filter(Boolean).join(" ").trim();
+    }
+  }
+  // Personne morale
+  if (inpiData?.formality?.content?.personneMorale) {
+    return (
+      inpiData.formality.content.personneMorale?.identite?.entreprise?.denomination ||
+      inpiData.formality.content.personneMorale?.identite?.entreprise?.nom ||
+      inpiData.formality.content.personneMorale?.identite?.entreprise?.raisonSociale ||
+      ""
+    );
+  }
+  // Fallback
+  return "";
 }
 
 function getLibelleApeFromINPI(inpiData: any): string | undefined {
@@ -81,6 +105,13 @@ export async function searchEtablissementsByName(name: string) {
   return Array.isArray(results)
     ? results.map(r => {
         const { statut, date_fermeture } = etablissementStatut(r);
+        const displayName =
+          r.denomination ||
+          r.nom_raison_sociale ||
+          r.raison_sociale ||
+          r.name ||
+          r.nom ||
+          "-";
         let matching_etablissements = Array.isArray(r.matching_etablissements)
           ? r.matching_etablissements.map((etab: any) => {
               const { statut, date_fermeture } = etablissementStatut(etab);
@@ -94,6 +125,7 @@ export async function searchEtablissementsByName(name: string) {
                   etab.raison_sociale ||
                   etab.name ||
                   etab.nom_commercial ||
+                  displayName || // fallback sur unité légale
                   "-",
                 ville:
                   etab.libelle_commune ||
@@ -105,13 +137,7 @@ export async function searchEtablissementsByName(name: string) {
           : [];
         return {
           ...r,
-          displayName:
-            r.denomination ||
-            r.nom_raison_sociale ||
-            r.raison_sociale ||
-            r.name ||
-            r.nom ||
-            "-",
+          displayName,
           statut,
           date_fermeture,
           matching_etablissements,
@@ -142,6 +168,9 @@ export async function fetchEtablissementBySiren(siren: string) {
 
   // Extraction des établissements depuis INPI
   const etabINPI: any[] = [];
+  let displayName = computeDisplayName(inpiData);
+
+  // Personne morale
   if (inpiData.formality && inpiData.formality.content && inpiData.formality.content.personneMorale) {
     const pm = inpiData.formality.content.personneMorale;
     if (pm.etablissementPrincipal && pm.etablissementPrincipal.descriptionEtablissement) {
@@ -154,6 +183,21 @@ export async function fetchEtablissementBySiren(siren: string) {
     }
     if (Array.isArray(pm.autresEtablissements)) {
       pm.autresEtablissements.forEach((e: any) => etabINPI.push(e));
+    }
+  }
+  // Personne physique
+  else if (inpiData.formality && inpiData.formality.content && inpiData.formality.content.personnePhysique) {
+    const pp = inpiData.formality.content.personnePhysique;
+    if (pp.etablissementPrincipal && pp.etablissementPrincipal.descriptionEtablissement) {
+      etabINPI.push({
+        ...pp.etablissementPrincipal,
+        descriptionEtablissement: pp.etablissementPrincipal.descriptionEtablissement,
+        adresse: pp.etablissementPrincipal.adresse,
+        activites: pp.etablissementPrincipal.activites,
+      });
+    }
+    if (Array.isArray(pp.autresEtablissements)) {
+      pp.autresEtablissements.forEach((e: any) => etabINPI.push(e));
     }
   }
 
@@ -169,7 +213,7 @@ export async function fetchEtablissementBySiren(siren: string) {
       "-";
     return {
       siret: desc.siret || "-",
-      displayName: inpiData.formality?.content?.identite?.entreprise?.denomination || "-",
+      displayName: displayName || "-",
       ville,
       adresse: formatAdresseINPI(adresse),
       activite_principale: activite.codeApe || "",
@@ -189,7 +233,7 @@ export async function fetchEtablissementBySiren(siren: string) {
     const villeSiege = sireneUL.libelleCommuneEtablissement || "-";
     etablissements = [{
       siret: siegesiret || "-",
-      displayName: sireneUL.denominationUniteLegale || "-",
+      displayName: sireneUL.denominationUniteLegale || displayName || "-",
       ville: villeSiege,
       adresse: adresseSiege,
       activite_principale: sireneUL.activitePrincipaleUniteLegale || "-",
@@ -209,12 +253,7 @@ export async function fetchEtablissementBySiren(siren: string) {
   let date_fermeture = siege?.date_fermeture || null;
   let ville = siege?.ville || "-";
 
-  const denomination =
-    getInpi("formality.content.personneMorale.identite.entreprise.denomination", inpiData) ||
-    inpiData.denomination ||
-    getInpi("formality.content.personneMorale.identite.entreprise.nom", inpiData) ||
-    (sireneUL.denominationUniteLegale) ||
-    "-";
+  const denomination = displayName || "-";
 
   const forme_juridique_code =
     getInpi("formality.content.personneMorale.identite.entreprise.formeJuridique", inpiData) ||
@@ -228,6 +267,7 @@ export async function fetchEtablissementBySiren(siren: string) {
 
   const code_ape =
     getInpi("formality.content.personneMorale.identite.entreprise.codeApe", inpiData) ||
+    getInpi("formality.content.personnePhysique.etablissementPrincipal.descriptionEtablissement.codeApe", inpiData) ||
     inpiData.ape ||
     sireneUL.activitePrincipaleUniteLegale ||
     "-";
@@ -248,6 +288,7 @@ export async function fetchEtablissementBySiren(siren: string) {
   const date_creation =
     getInpi("formality.content.personneMorale.identite.entreprise.dateDebutActiv", inpiData) ||
     getInpi("formality.content.personneMorale.identite.entreprise.dateImmat", inpiData) ||
+    getInpi("formality.content.personnePhysique.natureCreation.dateCreation", inpiData) ||
     inpiData.creationDate ||
     sireneUL.dateCreationUniteLegale ||
     "-";
@@ -310,6 +351,7 @@ export async function fetchEtablissementBySiren(siren: string) {
   const email = inpiData.email || "-";
 
   return {
+    displayName: denomination,
     denomination,
     forme_juridique,
     categorie_juridique: forme_juridique_code,
@@ -344,7 +386,6 @@ export async function fetchEtablissementBySiret(siret: string) {
   const base = await fetchEtablissementBySiren(siren);
   // Sélectionner établissement courant pour les infos principales
   const selected = base.etablissements.find(e => e.siret === siret) || base.etablissements[0];
-
   return {
     ...base,
     siret: selected?.siret || "-",
@@ -352,6 +393,7 @@ export async function fetchEtablissementBySiret(siret: string) {
     ville: selected?.ville || "-",
     statut: selected?.statut,
     date_fermeture: selected?.date_fermeture,
+    displayName: selected?.displayName || base.displayName || "-",
   }
 }
 
@@ -378,21 +420,13 @@ export function mapEtablissement(etab: any) {
   return {
     siret: etab.siret,
     ville,
-    denomination:
-      etab.denomination ||
-      etab.denomination_usuelle_entreprise ||
-      etab.nom_raison_sociale ||
-      etab.nom_commercial ||
-      etab.enseigne1 ||
-      etab.uniteLegale?.denominationUniteLegale ||
-      "—",
+    denomination: etab.displayName || etab.denomination || etab.nom_raison_sociale || etab.nom_commercial || etab.enseigne1 || etab.uniteLegale?.denominationUniteLegale || "—",
     adresse,
     etat: statut,
     isSiege: !!(etab.est_siege),
   };
 }
 
-// Compatibilité SIREN ou SIRET
 export async function fetchEtablissementByCode(code: string) {
   if (/^\d{14}$/.test(code)) {
     return fetchEtablissementBySiret(code);
