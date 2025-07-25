@@ -61,16 +61,28 @@ const EtablissementsSelector: React.FC<Props> = ({
   useEffect(() => {
     let cancelled = false;
     async function geocodeAll() {
-      const withGeo = await Promise.all(
-        etablissements.map(async (etab) => {
-          if (etab.lat && etab.lng) return etab;
-          if (!etab.adresse) return etab;
-          const cleanedAdresse = cleanAdresse(etab.adresse);
-          const coords = await geocodeAdresse(cleanedAdresse);
-          if (coords) return { ...etab, lat: coords.lat, lng: coords.lng };
-          return etab;
-        })
-      );
+      const withGeo: Etablissement[] = [];
+      for (const etab of etablissements) {
+        if (etab.lat && etab.lng) {
+          withGeo.push(etab);
+          continue;
+        }
+        if (!etab.adresse) {
+          withGeo.push(etab);
+          continue;
+        }
+        const cleanedAdresse = cleanAdresse(etab.adresse);
+        console.log("Adresse envoyée à Nominatim:", cleanedAdresse);
+        const coords = await geocodeAdresse(cleanedAdresse);
+        if (coords) {
+          withGeo.push({ ...etab, lat: coords.lat, lng: coords.lng });
+        } else {
+          console.warn("Géocodage échoué:", cleanedAdresse);
+          withGeo.push(etab);
+        }
+        await new Promise(r => setTimeout(r, 1200)); // Respecter le quota Nominatim
+        if (cancelled) break;
+      }
       if (!cancelled) setGeoEtabs(withGeo);
     }
     geocodeAll();
