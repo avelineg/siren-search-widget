@@ -13,7 +13,10 @@ type Etablissement = {
   name?: string;
   raison_sociale?: string;
   nom_commercial?: string;
-  siegeRaisonSociale?: string; // <-- Ajouté
+  siegeRaisonSociale?: string;
+  nom_usage?: string;
+  nom?: string;
+  prenom?: string;
   adresse?: string;
   statut?: "actif" | "ferme";
   date_fermeture?: string | null;
@@ -30,6 +33,7 @@ type Props = {
   onSelect: (siret: string) => void;
 };
 
+// Fonction utilitaire complète pour affichage EI et sociétés
 function getEtablissementDisplayName(etab: Etablissement): string {
   return (
     etab.displayName ||
@@ -38,7 +42,10 @@ function getEtablissementDisplayName(etab: Etablissement): string {
     etab.name ||
     etab.raison_sociale ||
     etab.nom_commercial ||
-    etab.siegeRaisonSociale || // fallback siège
+    etab.siegeRaisonSociale ||
+    ((etab.nom_usage || etab.nom)
+      ? ((etab.nom_usage || etab.nom) + (etab.prenom ? " " + etab.prenom : ""))
+      : null) ||
     "(\u00c9tablissement sans nom)"
   );
 }
