@@ -1,7 +1,7 @@
 // src/services/cleanAdresse.ts
 
 /**
- * Nettoie et reformate une adresse pour améliorer le géocodage avec Nominatim ou d'autres services.
+ * Nettoie et reformate une adresse pour améliorer le géocodage.
  * - Retire les compléments inutiles (résidence, bâtiment, etc.)
  * - Remplace des abréviations courantes par leur forme complète
  * - Supprime les espaces multiples
