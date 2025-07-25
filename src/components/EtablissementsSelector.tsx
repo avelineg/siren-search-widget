@@ -1,195 +1,263 @@
-import React, { useEffect, useState } from "react";
-import { formatDateFR } from "../services/mapping";
-import { MapContainer, TileLayer, Marker, Popup } from "react-leaflet";
-import "leaflet/dist/leaflet.css";
-import { geocodeAdresse } from "../services/geocode";
-import { cleanAdresse } from "../services/cleanAdresse";
+import { useState } from "react";
+import { useEtablissementData } from "./hooks/useEtablissementData";
+import CompanyHeader from "./components/CompanyHeader";
+import Tabs from "./components/Tabs";
+import Identity from "./components/Identity";
+import EtablissementsSelector from "./components/EtablissementsSelector";
+import Dirigeants from "./components/Dirigeants";
+import Finances from "./components/Finances";
+import Divers from "./components/Divers";
+import { formatDateFR } from "./services/mapping";
+import EtablissementsListPaginee from "./components/EtablissementsListPaginee";
 
-type Etablissement = {
-  siret: string;
-  displayName?: string;
-  denomination?: string;
-  nom_raison_sociale?: string;
-  name?: string;
-  raison_sociale?: string;
-  nom_commercial?: string;
-  siegeRaisonSociale?: string;
-  nom_usage?: string;
-  nom?: string;
-  prenom?: string;
-  adresse?: string;
-  statut?: "actif" | "ferme";
-  date_fermeture?: string | null;
-  lat?: number;
-  lng?: number;
-  foundAddress?: string;
-  cityMatch?: boolean;
-  geocodeSource?: string;
-};
-
-type Props = {
-  etablissements: Etablissement[];
-  selected: string;
-  onSelect: (siret: string) => void;
-};
-
-// Fonction utilitaire complète pour affichage EI et sociétés
-function getEtablissementDisplayName(etab: Etablissement): string {
+// Fonction utilitaire pour afficher le nom d'entreprise ou EI
+function getSocieteDisplayName(r: any): string {
   return (
-    etab.displayName ||
-    etab.denomination ||
-    etab.nom_raison_sociale ||
-    etab.name ||
-    etab.raison_sociale ||
-    etab.nom_commercial ||
-    etab.siegeRaisonSociale ||
-    ((etab.nom_usage || etab.nom)
-      ? ((etab.nom_usage || etab.nom) + (etab.prenom ? " " + etab.prenom : ""))
+    r.displayName ||
+    r.denomination ||
+    r.nom_raison_sociale ||
+    r.name ||
+    r.raison_sociale ||
+    r.nom_commercial ||
+    r.siegeRaisonSociale ||
+    // Fallback pour entreprise individuelle : nom/prénom
+    ((r.nom_usage || r.nom)
+      ? [
+          r.prenom ? r.prenom : null,
+          r.nom_usage || r.nom
+        ].filter(Boolean).join(" ")
       : null) ||
     "(\u00c9tablissement sans nom)"
   );
 }
 
-function extractCity(adresse?: string): string | undefined {
-  if (!adresse) return undefined;
-  const matches = adresse.match(/\b\d{5}\s+([A-Z\- ]+)/i);
-  if (matches && matches[1]) return matches[1].trim();
-  const parts = adresse.trim().split(" ");
-  return parts.length > 0 ? parts[parts.length - 1] : undefined;
-}
+function App() {
+  const [search, setSearch] = useState("");
+  const [selectedCode, setSelectedCode] = useState("");
+  const [tabIndex, setTabIndex] = useState(0);
 
-const EtablissementsSelector: React.FC<Props> = ({
-  etablissements,
-  selected,
-  onSelect,
-}) => {
-  const [geoEtabs, setGeoEtabs] = useState<Etablissement[]>([]);
+  const { data, loading, error, results } = useEtablissementData(
+    search,
+    selectedCode
+  );
 
-  useEffect(() => {
-    let cancelled = false;
-    async function geocodeAll() {
-      const withGeo: Etablissement[] = [];
-      for (const etab of etablissements) {
-        if (etab.lat && etab.lng) {
-          withGeo.push(etab);
-          continue;
-        }
-        if (!etab.adresse) {
-          withGeo.push(etab);
-          continue;
-        }
-        const cleanedAdresse = cleanAdresse(etab.adresse);
-        const expectedCity = extractCity(etab.adresse);
-        const coords = await geocodeAdresse(cleanedAdresse, expectedCity);
-        if (coords) {
-          withGeo.push({
-            ...etab,
-            lat: coords.lat,
-            lng: coords.lng,
-            foundAddress: coords.foundAddress,
-            cityMatch: coords.cityMatch,
-            geocodeSource: coords.source
-          });
-        } else {
-          withGeo.push(etab);
-        }
-        await new Promise(r => setTimeout(r, 1200));
-        if (cancelled) break;
-      }
-      if (!cancelled) setGeoEtabs(withGeo);
-    }
-    geocodeAll();
-    return () => { cancelled = true; };
-  }, [etablissements]);
+  const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    setSelectedCode("");
+  };
 
-  const first = geoEtabs.find(e => e.lat && e.lng);
-  const defaultPosition: [number, number] = first ? [first.lat!, first.lng!] : [48.8566, 2.3522];
+  // Gère la navigation SIRET depuis la liste paginée
+  const handleSelectEtablissement = (siret: string) => {
+    setSearch(siret);
+    setSelectedCode(siret);
+    setTabIndex(0); // Revenir à l’onglet Identité
+  };
 
-  if (!etablissements || etablissements.length === 0) {
-    return <div>Aucun établissement référencé.</div>;
+  const tabLabels = [
+    "Identité",
+    "Établissements",
+    "Dirigeants",
+    "Finances",
+    "Divers",
+  ];
+
+  if (!selectedCode && results && results.length > 0) {
+    return (
+      <div className="max-w-5xl mx-auto mt-5 p-4">
+        <h1 className="text-2xl font-bold mb-6">Recherche d'entreprises</h1>
+        <form
+          className="flex items-center gap-3 mb-7"
+          onSubmit={handleSearch}
+          autoComplete="off"
+        >
+          <input
+            type="text"
+            placeholder="Recherche par SIREN/SIRET ou raison sociale"
+            className="border p-2 rounded flex-1"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+          <button
+            type="submit"
+            className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+            disabled={!search || search.trim().length < 3}
+          >
+            Rechercher
+          </button>
+        </form>
+
+        {error && (
+          <div className="text-red-600 mb-4">Erreur : {error.toString()}</div>
+        )}
+        {loading && <div className="mb-4">Chargement...</div>}
+
+        <div>
+          <ul>
+            {results.map((r, idx) => (
+              <li key={idx} className="mb-2 flex items-center">
+                <span>
+                  {getSocieteDisplayName(r)} — SIREN: {r.siren}
+                </span>
+                <span
+                  className="ml-2 px-2 py-1 rounded text-xs"
+                  style={{
+                    background: r.statut === "ferme" ? "#fde8ea" : "#e6faea",
+                    color: r.statut === "ferme" ? "#b71c1c" : "#208b42",
+                    fontWeight: 600,
+                  }}
+                  title={r.statut === "ferme" ? "Établissement fermé" : "Établissement actif"}
+                >
+                  {r.statut === "ferme" ? "Fermé" : "Actif"}
+                  {r.statut === "ferme" && r.date_fermeture && (
+                    <span className="ml-1 text-xs text-gray-500">
+                      (le {formatDateFR(r.date_fermeture)})
+                    </span>
+                  )}
+                </span>
+                <button
+                  className="ml-4 bg-blue-600 text-white px-2 py-1 rounded hover:bg-blue-700 text-sm"
+                  onClick={() => setSelectedCode(r.siren)}
+                >
+                  Voir la fiche
+                </button>
+                {Array.isArray(r.matching_etablissements) &&
+                  r.matching_etablissements.length > 0 && (
+                    <ul className="ml-8 mt-1">
+                      {r.matching_etablissements.map((etab: any, eidx: number) => (
+                        <li key={eidx}>
+                          <span>
+                            {getSocieteDisplayName(etab)}{" "}
+                            — SIRET: {etab.siret}
+                            <span
+                              className="ml-2 px-2 py-1 rounded text-xs"
+                              style={{
+                                background: etab.statut === "ferme" ? "#fde8ea" : "#e6faea",
+                                color: etab.statut === "ferme" ? "#b71c1c" : "#208b42",
+                                fontWeight: 600,
+                              }}
+                              title={
+                                etab.statut === "ferme"
+                                  ? "Établissement fermé"
+                                  : "Établissement actif"
+                              }
+                            >
+                              {etab.statut === "ferme" ? "Fermé" : "Actif"}
+                              {etab.statut === "ferme" && etab.date_fermeture && (
+                                <span className="ml-1 text-xs text-gray-500">
+                                  (le {formatDateFR(etab.date_fermeture)})
+                                </span>
+                              )}
+                            </span>
+                          </span>
+                          <button
+                            className="ml-2 bg-green-600 text-white px-2 py-1 rounded hover:bg-green-700 text-xs"
+                            onClick={() => setSelectedCode(etab.siret)}
+                          >
+                            Voir établissement
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+    );
   }
 
   return (
-    <>
-      <ul className="divide-y">
-        {etablissements.map((etab) => (
-          <li key={etab.siret} className="py-2 flex items-center">
-            <span className="flex-1">
-              <strong>{getEtablissementDisplayName(etab)}</strong>
-              <span className="ml-2 text-gray-600">SIRET : {etab.siret}</span>
-              {etab.adresse && (
-                <span className="ml-2 text-gray-500">{etab.adresse}</span>
-              )}
-              <span
-                className="ml-2 px-2 py-1 rounded text-xs"
-                style={{
-                  background: etab.statut === "ferme" ? "#fde8ea" : "#e6faea",
-                  color: etab.statut === "ferme" ? "#b71c1c" : "#208b42",
-                  fontWeight: 600,
-                }}
-                title={etab.statut === "ferme" ? "Établissement fermé" : "Établissement actif"}
-              >
-                {etab.statut === "ferme" ? "Fermé" : "Actif"}
-                {etab.statut === "ferme" && etab.date_fermeture && (
-                  <span className="ml-1 text-xs text-gray-500">
-                    (le {formatDateFR(etab.date_fermeture)})
-                  </span>
-                )}
-              </span>
-            </span>
-            {selected === etab.siret ? (
-              <span className="ml-2 px-2 py-1 rounded bg-blue-200 text-blue-800 text-xs">
-                Sélectionné
-              </span>
-            ) : (
-              <button
-                className="ml-2 px-2 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 text-xs"
-                onClick={() => onSelect(etab.siret)}
-              >
-                Voir la fiche
-              </button>
-            )}
-          </li>
-        ))}
-      </ul>
-      <div style={{ height: "400px", width: "100%", marginTop: 24 }}>
-        <MapContainer
-          center={defaultPosition}
-          zoom={6}
-          style={{ height: "100%", width: "100%" }}
+    <div className="max-w-5xl mx-auto mt-5 p-4">
+      <h1 className="text-2xl font-bold mb-6">Recherche entreprises</h1>
+      <form
+        className="flex items-center gap-3 mb-7"
+        onSubmit={handleSearch}
+        autoComplete="off"
+      >
+        <input
+          type="text"
+          placeholder="Recherche par SIREN/SIRET ou raison sociale"
+          className="border p-2 rounded flex-1"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+        <button
+          type="submit"
+          className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+          disabled={!search || search.trim().length < 3}
         >
-          <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-          {geoEtabs.filter(e => e.lat && e.lng).map(etab => (
-            <Marker key={etab.siret} position={[etab.lat!, etab.lng!]}>
-              <Popup>
-                <strong>{getEtablissementDisplayName(etab)}</strong>
-                <br />
-                <span>Adresse d'origine : {etab.adresse}</span>
-                <br />
-                <span>Adresse nettoyée : {cleanAdresse(etab.adresse ?? "")}</span>
-                {etab.foundAddress && (
-                  <>
-                    <br />
-                    <span>
-                      Adresse localisée : <b>{etab.foundAddress}</b>
-                      <br />
-                      Source: {etab.geocodeSource === "nominatim" ? "Nominatim" : "api-adresse.data.gouv.fr"}
-                    </span>
-                    {etab.cityMatch === false && (
-                      <div style={{ color: "red" }}>
-                        ⚠️ Ville localisée différente de la ville attendue !<br/>
-                        (fallback automatique sur l'autre géocodeur)
-                      </div>
-                    )}
-                  </>
-                )}
-              </Popup>
-            </Marker>
-          ))}
-        </MapContainer>
-      </div>
-    </>
-  );
-};
+          Rechercher
+        </button>
+      </form>
 
-export default EtablissementsSelector;
+      {error && <div className="text-red-600 mb-4">Erreur : {error.toString()}</div>}
+      {loading && <div className="mb-4">Chargement...</div>}
+
+      {data && (
+        <div>
+          <CompanyHeader {...data} />
+          {/* Affichage de l'indicateur actif/fermé dans l'en-tête */}
+          <div className="mb-4">
+            <span
+              className="px-2 py-1 rounded text-xs"
+              style={{
+                background: data.statut === "ferme" ? "#fde8ea" : "#e6faea",
+                color: data.statut === "ferme" ? "#b71c1c" : "#208b42",
+                fontWeight: 700,
+                marginLeft: "0.5rem",
+              }}
+              title={data.statut === "ferme" ? "Établissement fermé" : "Établissement actif"}
+            >
+              {data.statut === "ferme" ? "Fermé" : "Actif"}
+              {data.statut === "ferme" && data.date_fermeture && (
+                <span className="ml-1 text-xs text-gray-500">
+                  (le {formatDateFR(data.date_fermeture)})
+                </span>
+              )}
+            </span>
+          </div>
+
+          <Tabs labels={tabLabels} current={tabIndex} onChange={setTabIndex} />
+
+          <div className="mt-4">
+            {tabIndex === 0 && <Identity data={data} />}
+            {tabIndex === 1 && (
+              <>
+                <EtablissementsSelector
+                  etablissements={data.etablissements || []}
+                  selected={selectedCode}
+                  onSelect={setSelectedCode}
+                />
+                {/* ===== AJOUT DE LA LISTE PAGINÉE ===== */}
+                {data.siren && (
+                  <EtablissementsListPaginee
+                    siren={data.siren}
+                    onSelectEtablissement={handleSelectEtablissement}
+                  />
+                )}
+              </>
+            )}
+            {tabIndex === 2 && <Dirigeants dirigeants={data.dirigeants || []} />}
+            {tabIndex === 3 && <Finances data={data} />}
+            {tabIndex === 4 && <Divers data={data} />}
+          </div>
+
+          {data.inpiRaw && (
+            <details
+              className="mt-10 bg-gray-100 p-4 rounded text-xs overflow-auto"
+              style={{ maxHeight: 400 }}
+            >
+              <summary className="font-semibold cursor-pointer">
+                Détail brut de la requête INPI (JSON)
+              </summary>
+              <pre>{JSON.stringify(data.inpiRaw, null, 2)}</pre>
+            </details>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default App;
