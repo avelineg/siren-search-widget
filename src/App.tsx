@@ -9,8 +9,39 @@ import Finances from "./components/Finances";
 import Divers from "./components/Divers";
 import { formatDateFR } from "./services/mapping";
 
-// Fonction utilitaire pour fallback du nom dans la recherche
+// Fallback robuste pour toutes les formes d'entreprise (EI/personne morale)
 function fallbackDisplayName(obj: any, parentName?: string): string {
+  // Cas EI/personne physique : champ à plat
+  if (obj.prenom && obj.nom) {
+    return [obj.prenom, obj.nom].filter(Boolean).join(" ").trim();
+  }
+  // Cas EI/personne physique : descriptionPersonne imbriqué
+  if (
+    obj.descriptionPersonne &&
+    (obj.descriptionPersonne.prenoms || obj.descriptionPersonne.nom)
+  ) {
+    return [
+      Array.isArray(obj.descriptionPersonne.prenoms)
+        ? obj.descriptionPersonne.prenoms.join(" ")
+        : obj.descriptionPersonne.prenoms,
+      obj.descriptionPersonne.nom,
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .trim();
+  }
+  // Cas INPI personne_physique imbriqué
+  if (
+    obj.personne_physique &&
+    obj.personne_physique.identite &&
+    obj.personne_physique.identite.entrepreneur &&
+    obj.personne_physique.identite.entrepreneur.descriptionPersonne
+  ) {
+    const desc = obj.personne_physique.identite.entrepreneur.descriptionPersonne;
+    const prenoms = Array.isArray(desc.prenoms) ? desc.prenoms.join(" ") : desc.prenoms;
+    return [prenoms, desc.nom].filter(Boolean).join(" ").trim();
+  }
+  // Cas fallback société classique
   return (
     obj.displayName ||
     obj.denomination ||
@@ -20,7 +51,9 @@ function fallbackDisplayName(obj: any, parentName?: string): string {
     obj.nom ||
     obj.nom_commercial ||
     obj.siegeRaisonSociale ||
-    ((obj.nom_usage || obj.nom) ? [obj.prenom, obj.nom_usage || obj.nom].filter(Boolean).join(" ") : null) ||
+    ((obj.nom_usage || obj.nom)
+      ? [obj.prenom, obj.nom_usage || obj.nom].filter(Boolean).join(" ")
+      : null) ||
     parentName ||
     "(\u00c9tablissement sans nom)"
   );
@@ -55,7 +88,6 @@ function App() {
     "Divers",
   ];
 
-  // On applique le fallback pour tous les résultats et établissements enfants
   const safeResults = Array.isArray(results)
     ? results.map(r => {
         const legalName = fallbackDisplayName(r);
