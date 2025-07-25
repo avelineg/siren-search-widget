@@ -13,6 +13,9 @@ type Etablissement = {
   date_fermeture?: string | null;
   lat?: number;
   lng?: number;
+  foundAddress?: string;
+  cityMatch?: boolean;
+  geocodeSource?: string;
 };
 
 type Props = {
@@ -20,6 +23,16 @@ type Props = {
   selected: string;
   onSelect: (siret: string) => void;
 };
+
+function extractCity(adresse?: string): string | undefined {
+  if (!adresse) return undefined;
+  // On prend le dernier mot (souvent la ville), ou mieux, extraire via regex
+  const matches = adresse.match(/\b\d{5}\s+([A-Z\- ]+)/i);
+  if (matches && matches[1]) return matches[1].trim();
+  // fallback: dernier mot
+  const parts = adresse.trim().split(" ");
+  return parts.length > 0 ? parts[parts.length - 1] : undefined;
+}
 
 const EtablissementsSelector: React.FC<Props> = ({
   etablissements,
@@ -42,15 +55,23 @@ const EtablissementsSelector: React.FC<Props> = ({
           continue;
         }
         const cleanedAdresse = cleanAdresse(etab.adresse);
-        console.log("Adresse envoyée à Nominatim:", cleanedAdresse);
-        const coords = await geocodeAdresse(cleanedAdresse);
+        const expectedCity = extractCity(etab.adresse);
+        console.log("Adresse envoyée au géocodeur:", cleanedAdresse, "Ville attendue:", expectedCity);
+        const coords = await geocodeAdresse(cleanedAdresse, expectedCity);
         if (coords) {
-          withGeo.push({ ...etab, lat: coords.lat, lng: coords.lng });
+          withGeo.push({
+            ...etab,
+            lat: coords.lat,
+            lng: coords.lng,
+            foundAddress: coords.foundAddress,
+            cityMatch: coords.cityMatch,
+            geocodeSource: coords.source
+          });
         } else {
           console.warn("Géocodage échoué:", cleanedAdresse);
           withGeo.push(etab);
         }
-        await new Promise(r => setTimeout(r, 1200)); // Respecte le quota Nominatim
+        await new Promise(r => setTimeout(r, 1200)); // Respecte le quota Nominatim/BAN
         if (cancelled) break;
       }
       if (!cancelled) setGeoEtabs(withGeo);
@@ -125,6 +146,19 @@ const EtablissementsSelector: React.FC<Props> = ({
                 <span>Adresse d'origine : {etab.adresse}</span>
                 <br />
                 <span>Adresse nettoyée : {cleanAdresse(etab.adresse ?? "")}</span>
+                {etab.foundAddress && (
+                  <>
+                    <br />
+                    <span>
+                      Adresse localisée : <b>{etab.foundAddress}</b>
+                      <br />
+                      Source: {etab.geocodeSource === "nominatim" ? "Nominatim" : "api-adresse.data.gouv.fr"}
+                    </span>
+                    {etab.cityMatch === false && (
+                      <div style={{ color: "red" }}>⚠️ Ville localisée différente de la ville attendue !</div>
+                    )}
+                  </>
+                )}
               </Popup>
             </Marker>
           ))}
