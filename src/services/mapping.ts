@@ -434,4 +434,41 @@ export async function fetchEtablissementBySiret(siret: string) {
 }
 
 // Pour affichage individuel d’un établissement dans une liste paginée
-export function mapEtablissement(etab
+export function mapEtablissement(etab: any) {
+  const adresse =
+    [
+      etab.numero_voie || etab.adresseEtablissement?.numeroVoieEtablissement,
+      etab.type_voie || etab.adresseEtablissement?.typeVoieEtablissement,
+      etab.libelle_voie || etab.adresseEtablissement?.libelleVoieEtablissement,
+      etab.code_postal || etab.adresseEtablissement?.codePostalEtablissement,
+      etab.libelle_commune || etab.adresseEtablissement?.libelleCommuneEtablissement,
+    ].filter(Boolean).join(' ');
+
+  let statut = "Actif";
+  if (etab.date_fermeture) statut = "Fermé";
+
+  const ville =
+    etab.libelle_commune ||
+    etab.adresseEtablissement?.libelleCommuneEtablissement ||
+    etab.ville ||
+    "-";
+
+  return {
+    siret: etab.siret,
+    ville,
+    denomination: etab.displayName || etab.nom_complet || etab.nom_raison_sociale || etab.denomination || etab.nom_commercial || etab.enseigne1 || etab.uniteLegale?.denominationUniteLegale || "—",
+    adresse,
+    etat: statut,
+    isSiege: !!(etab.est_siege),
+  };
+}
+
+export async function fetchEtablissementByCode(code: string) {
+  if (/^\d{14}$/.test(code)) {
+    return fetchEtablissementBySiret(code);
+  } else if (/^\d{9}$/.test(code)) {
+    return fetchEtablissementBySiren(code);
+  } else {
+    throw new Error('Code SIREN/SIRET invalide');
+  }
+}
