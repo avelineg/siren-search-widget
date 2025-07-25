@@ -11,7 +11,8 @@ export async function geocodeAdresse(adresse: string): Promise<{ lat: number; ln
       };
     }
     return null;
-  } catch {
+  } catch (e) {
+    console.warn("Erreur fetch geocode:", e);
     return null;
   }
 }
