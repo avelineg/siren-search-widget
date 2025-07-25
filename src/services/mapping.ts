@@ -53,7 +53,12 @@ function getApeLabelFromNAF(codeApe: string): string | undefined {
 
 function getFormeJuridiqueLabel(code: string): string | undefined {
   if (!code) return undefined;
-  return formesJuridique[code] || formesJuridique[code.padStart(4, '0')];
+  // Essaye les versions normalisées (code, code sans zéros, code padStart)
+  return (
+    formesJuridique[code] ||
+    formesJuridique[code.replace(/^0+/, '')] ||
+    formesJuridique[code.padStart(4, '0')]
+  );
 }
 
 function formatAdresseINPI(adresseObj: any): string {
@@ -102,14 +107,9 @@ export async function searchEtablissementsByName(name: string) {
     .then(r => r.data.results || [])
     .catch(() => []);
 
-  // Patch: mapping explicite des noms pour EI/personnes physiques (nom_complet),
-  // sinon fallback sur les champs classiques
   return Array.isArray(results)
     ? results.map(r => {
         const { statut, date_fermeture } = etablissementStatut(r);
-        // nom_complet => EI/personne physique (API recherche-entreprises)
-        // nom_raison_sociale => société classique (API recherche-entreprises)
-        // fallback classique
         const displayName =
           r.nom_complet ||
           r.nom_raison_sociale ||
@@ -132,7 +132,7 @@ export async function searchEtablissementsByName(name: string) {
                   etab.raison_sociale ||
                   etab.name ||
                   etab.nom_commercial ||
-                  displayName || // fallback sur unité légale
+                  displayName ||
                   "-",
                 ville:
                   etab.libelle_commune ||
@@ -267,14 +267,14 @@ export async function fetchEtablissementBySiren(siren: string) {
     displayName ||
     "-";
 
-  // ---- PATCH FORMES JURIDIQUES + DIRIGEANT EI ----
-
+  // --- PATCH POUR FORME JURIDIQUE (priorité à toutes les sources, EI incluse) ---
   const forme_juridique_code =
+    getInpi("formality.content.personnePhysique.natureCreation.formeJuridique", inpiData) ||
     getInpi("formality.content.personneMorale.identite.entreprise.formeJuridique", inpiData) ||
     inpiData.legalForm ||
     sireneUL.categorieJuridiqueUniteLegale ||
     "-";
-  // Prend toujours le libellé officiel si possible
+
   const forme_juridique =
     sireneUL.libelleCategorieJuridiqueUniteLegale ||
     getFormeJuridiqueLabel(forme_juridique_code) ||
