@@ -7,16 +7,8 @@ import { cleanAdresse } from "../services/cleanAdresse";
 
 type Etablissement = {
   siret: string;
-  nom_complet?: string; // recherche-entreprises.api.gouv.fr (EI)
-  nom_raison_sociale?: string; // recherche-entreprises.api.gouv.fr (sociétés)
-  denomination?: string;
-  raison_sociale?: string;
-  nom_commercial?: string;
   displayName?: string;
-  siegeRaisonSociale?: string;
-  nom_usage?: string;
-  nom?: string;
-  prenom?: string;
+  ville?: string;
   adresse?: string;
   statut?: "actif" | "ferme";
   date_fermeture?: string | null;
@@ -36,16 +28,7 @@ type Props = {
 
 function getEtablissementDisplayName(etab: Etablissement, legalUnitName?: string): string {
   return (
-    etab.nom_complet ||
-    etab.nom_raison_sociale ||
-    etab.denomination ||
-    etab.raison_sociale ||
-    etab.nom_commercial ||
     etab.displayName ||
-    etab.siegeRaisonSociale ||
-    ((etab.nom_usage || etab.nom)
-      ? [etab.prenom, etab.nom_usage || etab.nom].filter(Boolean).join(" ")
-      : null) ||
     legalUnitName ||
     "(\u00c9tablissement sans nom)"
   );
