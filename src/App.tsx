@@ -10,7 +10,7 @@ import Divers from "./components/Divers";
 import { formatDateFR } from "./services/mapping";
 import EtablissementsListPaginee from "./components/EtablissementsListPaginee";
 
-// Fonction utilitaire pour afficher le nom d'un établissement avec fallback sur le nom SIREN
+// Fonction utilitaire pour afficher le nom d'un établissement avec fallback sur le nom de l'unité légale (SIREN)
 function getSocieteDisplayName(r: any, legalUnitName?: string): string {
   return (
     r?.nom_complet ||
@@ -57,7 +57,7 @@ function App() {
     "Divers",
   ];
 
-  // Nom de fallback pour tous les établissements de la fiche détaillée
+  // Fallback nom unité légale principal
   const legalUnitName =
     data?.nom_complet ||
     data?.nom_raison_sociale ||
@@ -66,7 +66,7 @@ function App() {
     data?.displayName ||
     undefined;
 
-  // --- Affichage de la recherche (liste SIREN/SIRET) ---
+  // --- Affichage résultats recherche liste SIREN/SIRET ---
   if (!selectedCode && Array.isArray(results) && results.length > 0) {
     return (
       <div className="max-w-5xl mx-auto mt-5 p-4">
