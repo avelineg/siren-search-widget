@@ -1,9 +1,9 @@
 import React from 'react';
 
 interface Props {
-  denomination?: string; // <- optionnel pour fallback
-  nom_complet?: string;  // <- nom EI/personne physique (recherche-entreprises)
-  nom_raison_sociale?: string; // <- nom société (recherche-entreprises)
+  denomination?: string;
+  nom_complet?: string; // EI/personne physique
+  nom_raison_sociale?: string; // société
   siren: string;
   siret: string;
   ville?: string;
