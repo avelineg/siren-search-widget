@@ -10,24 +10,11 @@ import Divers from "./components/Divers";
 import { formatDateFR } from "./services/mapping";
 
 // Fallback robuste pour toutes les formes d'entreprise (EI/personne morale)
-// Utilise en priorité les champs de l'API recherche-entreprises (nom_complet, nom_raison_sociale)
 function fallbackDisplayName(obj: any, parentName?: string): string {
-  // Cas API recherche-entreprises : nom_complet (EI/personne physique)
-  if (obj.nom_complet) {
-    return obj.nom_complet;
-  }
-  // Cas API recherche-entreprises : nom_raison_sociale
-  if (obj.nom_raison_sociale) {
-    return obj.nom_raison_sociale;
-  }
-  // Cas société classique
-  if (obj.denomination) {
-    return obj.denomination;
-  }
-  // Cas INPI ou SIRENE : fallback « Prénom Nom »
-  if (obj.prenom && obj.nom) {
-    return [obj.prenom, obj.nom].filter(Boolean).join(" ").trim();
-  }
+  if (obj.nom_complet) return obj.nom_complet;
+  if (obj.nom_raison_sociale) return obj.nom_raison_sociale;
+  if (obj.denomination) return obj.denomination;
+  if (obj.prenom && obj.nom) return [obj.prenom, obj.nom].filter(Boolean).join(" ").trim();
   if (
     obj.descriptionPersonne &&
     (obj.descriptionPersonne.prenoms || obj.descriptionPersonne.nom)
@@ -42,7 +29,6 @@ function fallbackDisplayName(obj: any, parentName?: string): string {
       .join(" ")
       .trim();
   }
-  // Cas INPI imbriqué (personne_physique)
   if (
     obj.personne_physique &&
     obj.personne_physique.identite &&
@@ -53,7 +39,6 @@ function fallbackDisplayName(obj: any, parentName?: string): string {
     const prenoms = Array.isArray(desc.prenoms) ? desc.prenoms.join(" ") : desc.prenoms;
     return [prenoms, desc.nom].filter(Boolean).join(" ").trim();
   }
-  // Cas fallback société classique
   return (
     obj.displayName ||
     obj.raison_sociale ||
@@ -68,11 +53,9 @@ function fallbackDisplayName(obj: any, parentName?: string): string {
   );
 }
 
-// Helper pour obtenir l'adresse d'un établissement, compatible API recherche-entreprises et fallback SIRENE
+// Helper pour obtenir l'adresse d'un établissement
 function getEtablissementAdresse(etab: any): string {
-  // API recherche-entreprises: adresse en clair
   if (etab.adresse) return etab.adresse;
-  // SIRENE/recherche entreprise: adresseEtablissement objet
   if (etab.adresseEtablissement) {
     const a = etab.adresseEtablissement;
     return [
@@ -85,7 +68,6 @@ function getEtablissementAdresse(etab: any): string {
       .filter(Boolean)
       .join(" ");
   }
-  // Champs bruts ou fallback ville
   return (
     etab.libelle_commune ||
     etab.code_postal ||
@@ -95,19 +77,15 @@ function getEtablissementAdresse(etab: any): string {
   );
 }
 
-// Fonction pour obtenir le SIRET principal à partir des données
+// Fonction utilitaire pour choisir le SIRET principal pour l'avis SIRENE
 const getSiretPrincipal = (data: any): string | undefined => {
-  // 1. Si la fiche correspond à un établissement, retourne son SIRET
   if (data?.siret) return data.siret;
-  // 2. Sinon, essaie de prendre le SIRET du siège
   if (data?.etablissements && Array.isArray(data.etablissements)) {
     const siege = data.etablissements.find((e: any) => e.siege);
     if (siege && siege.siret) return siege.siret;
-    // Sinon, premier établissement
     if (data.etablissements.length > 0 && data.etablissements[0].siret)
       return data.etablissements[0].siret;
   }
-  // 3. Sinon, undefined
   return undefined;
 };
 
@@ -115,7 +93,6 @@ function App() {
   const [search, setSearch] = useState("");
   const [selectedCode, setSelectedCode] = useState("");
   const [tabIndex, setTabIndex] = useState(0);
-  // Pour contrôler l'affichage de la liste des établissements pour chaque SIREN
   const [openEtabs, setOpenEtabs] = useState<{ [siren: string]: boolean }>({});
 
   const { data, loading, error, results } = useEtablissementData(
@@ -142,7 +119,7 @@ function App() {
     "Divers",
   ];
 
-  // On applique le fallback pour tous les résultats et établissements enfants
+  // Application du fallback sur les résultats et leurs établissements enfants
   const safeResults = Array.isArray(results)
     ? results.map(r => {
         const legalName = fallbackDisplayName(r);
@@ -158,6 +135,9 @@ function App() {
         };
       })
     : [];
+
+  // Récupération du SIRET principal pour le bouton SIRENE
+  const siretPrincipal = data ? getSiretPrincipal(data) : undefined;
 
   if (!selectedCode && safeResults.length > 0) {
     return (
@@ -213,7 +193,6 @@ function App() {
                     )}
                   </span>
                 </span>
-                {/* Bouton toggle établissements */}
                 {Array.isArray(r.matching_etablissements) && r.matching_etablissements.length > 0 && (
                   <button
                     type="button"
@@ -230,7 +209,6 @@ function App() {
                       : `Afficher les établissements (${r.matching_etablissements.length})`}
                   </button>
                 )}
-                {/* Liste des établissements */}
                 {openEtabs[r.siren] &&
                   Array.isArray(r.matching_etablissements) && (
                     <ul className="ml-4 mt-2 space-y-2">
@@ -291,7 +269,6 @@ function App() {
                       )}
                     </ul>
                   )}
-                {/* Voir la fiche SIREN bouton */}
                 <button
                   className="mt-2 bg-blue-600 text-white px-2 py-1 rounded hover:bg-blue-700 text-sm self-start"
                   onClick={() => setSelectedCode(r.siren)}
@@ -305,10 +282,6 @@ function App() {
       </div>
     );
   }
-
-  // --- AVIS DE SITUATION SIRENE ---
-  // Obtenir le SIRET principal à afficher (pour le bouton d'avis)
-  const siretPrincipal = data ? getSiretPrincipal(data) : undefined;
 
   return (
     <div className="max-w-5xl mx-auto mt-5 p-4">
@@ -342,6 +315,29 @@ function App() {
       {data && (
         <div>
           <CompanyHeader {...data} />
+          {/* Bouton de téléchargement de l'avis de situation SIRENE juste sous l'en-tête */}
+          {siretPrincipal && (
+            <div className="mb-4 mt-2">
+              <a
+                href={`https://api-avis-situation-sirene.insee.fr/identification/pdf/${siretPrincipal}`}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <button
+                  className="bg-gray-800 text-white px-4 py-2 rounded hover:bg-gray-900 flex items-center gap-2"
+                  style={{ fontSize: "0.95em" }}
+                  type="button"
+                  title="Télécharger l'avis de situation INSEE (ouvre un PDF officiel)"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" width={18} height={18}>
+                    <path fillRule="evenodd" d="M9.25 2.75a.75.75 0 0 1 1.5 0v7.69l2.22-2.22a.75.75 0 1 1 1.06 1.06l-3.5 3.5a.75.75 0 0 1-1.06 0l-3.5-3.5a.75.75 0 1 1 1.06-1.06l2.22 2.22V2.75ZM3.75 15a.75.75 0 0 1 .75-.75h11a.75.75 0 0 1 0 1.5h-11a.75.75 0 0 1-.75-.75Z" clipRule="evenodd" />
+                  </svg>
+                  Télécharger l'avis de situation INSEE (PDF)
+                </button>
+              </a>
+            </div>
+          )}
+
           <div className="mb-4">
             <span
               className="px-2 py-1 rounded text-xs"
@@ -365,29 +361,6 @@ function App() {
               )}
             </span>
           </div>
-
-          {/* Bouton de téléchargement de l'avis de situation SIRENE */}
-          {siretPrincipal && (
-            <div className="mb-4">
-              <a
-                href={`https://api-avis-situation-sirene.insee.fr/identification/pdf/${siretPrincipal}`}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                <button
-                  className="bg-gray-800 text-white px-4 py-2 rounded hover:bg-gray-900 flex items-center gap-2"
-                  style={{ fontSize: "0.95em" }}
-                  type="button"
-                  title="Télécharger l'avis de situation INSEE (ouvre un PDF officiel)"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" width={18} height={18}>
-                    <path fillRule="evenodd" d="M9.25 2.75a.75.75 0 0 1 1.5 0v7.69l2.22-2.22a.75.75 0 1 1 1.06 1.06l-3.5 3.5a.75.75 0 0 1-1.06 0l-3.5-3.5a.75.75 0 1 1 1.06-1.06l2.22 2.22V2.75ZM3.75 15a.75.75 0 0 1 .75-.75h11a.75.75 0 0 1 0 1.5h-11a.75.75 0 0 1-.75-.75Z" clipRule="evenodd" />
-                  </svg>
-                  Télécharger l'avis de situation INSEE (PDF)
-                </button>
-              </a>
-            </div>
-          )}
 
           <Tabs labels={tabLabels} current={tabIndex} onChange={setTabIndex} />
 
