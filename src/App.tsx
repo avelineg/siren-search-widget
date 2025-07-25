@@ -22,7 +22,10 @@ function getSocieteDisplayName(r: any): string {
     r.siegeRaisonSociale ||
     // Fallback pour entreprise individuelle : nom/prénom
     ((r.nom_usage || r.nom)
-      ? ((r.nom_usage || r.nom) + (r.prenom ? " " + r.prenom : ""))
+      ? [
+          r.prenom ? r.prenom : null,
+          r.nom_usage || r.nom
+        ].filter(Boolean).join(" ")
       : null) ||
     "(\u00c9tablissement sans nom)"
   );
