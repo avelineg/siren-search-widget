@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { formatDateFR } from "../services/mapping";
 import { MapContainer, TileLayer, Marker, Popup } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
@@ -24,6 +24,7 @@ type Props = {
   selected: string;
   onSelect: (siret: string) => void;
   legalUnitName?: string;
+  searchKey: string; // Ajout pour la clé de cache
 };
 
 function getEtablissementDisplayName(etab: Etablissement, legalUnitName?: string): string {
@@ -47,11 +48,18 @@ const EtablissementsSelector: React.FC<Props> = ({
   selected,
   onSelect,
   legalUnitName,
+  searchKey,
 }) => {
   const [geoEtabs, setGeoEtabs] = useState<Etablissement[]>([]);
+  const cacheRef = useRef<{ [key: string]: Etablissement[] }>({});
 
   useEffect(() => {
     let cancelled = false;
+    // Si déjà géocodé pour cette recherche, on ne fait rien
+    if (cacheRef.current[searchKey]) {
+      setGeoEtabs(cacheRef.current[searchKey]);
+      return;
+    }
     async function geocodeAll() {
       const withGeo: Etablissement[] = [];
       for (const etab of etablissements) {
@@ -81,11 +89,14 @@ const EtablissementsSelector: React.FC<Props> = ({
         await new Promise(r => setTimeout(r, 1200));
         if (cancelled) break;
       }
-      if (!cancelled) setGeoEtabs(withGeo);
+      if (!cancelled) {
+        setGeoEtabs(withGeo);
+        cacheRef.current[searchKey] = withGeo; // mise en cache
+      }
     }
     geocodeAll();
     return () => { cancelled = true; };
-  }, [etablissements]);
+  }, [etablissements, searchKey]);
 
   const first = geoEtabs.find(e => e.lat && e.lng);
   const defaultPosition: [number, number] = first ? [first.lat!, first.lng!] : [48.8566, 2.3522];
