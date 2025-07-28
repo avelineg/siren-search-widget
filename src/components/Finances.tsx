@@ -11,7 +11,8 @@ import {
   CartesianGrid,
 } from "recharts";
 
-export default function FinancialData({ siren }) {
+export default function FinancialData({ data }) {
+  const siren = data?.siren;
   const [finances, setFinances] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -21,6 +22,7 @@ export default function FinancialData({ siren }) {
   const [loadingActes, setLoadingActes] = useState(true);
 
   useEffect(() => {
+    if (!siren) return;
     setLoading(true);
     setError(null);
     inpiEntreprise
@@ -48,6 +50,7 @@ export default function FinancialData({ siren }) {
 
   // Chargement des actes INPI (toujours affichés, même si finances absentes)
   useEffect(() => {
+    if (!siren) return;
     setLoadingActes(true);
     setActes([]);
     getActesINPI(siren)
@@ -56,6 +59,7 @@ export default function FinancialData({ siren }) {
       .finally(() => setLoadingActes(false));
   }, [siren]);
 
+  if (!siren) return null;
   if (loading) return <div>Chargement des données financières…</div>;
 
   return (
