@@ -10,12 +10,19 @@ export default function LabelsCertifications({ data }: { data: any }) {
   const labels = data.labels || []
   const divers = data.divers || []
 
-  // RECUPERATION AUTO DE L'IDCC
-  // 1. Cherche d'abord dans data.idcc, sinon dans le premier établissement ou raw SIRENE, etc.
+  // DEBUG visibility: log data to help identify where IDCC is found
+  useEffect(() => {
+    // eslint-disable-next-line no-console
+    console.log("Divers.tsx - data prop:", data)
+  }, [data])
+
+  // Tentative: cherche idcc dans plusieurs endroits connus de la structure data
   const idcc =
     data.idcc ||
     data.etablissements?.[0]?.idcc ||
     data.sireneRaw?.conventionsCollectives?.[0]?.idcc ||
+    data.sireneRaw?.conventionsCollectivesUniteLegale?.[0]?.codeIdcc ||
+    data.sireneRaw?.conventionsCollectivesUniteLegale?.[0]?.idcc ||
     null
 
   const [convention, setConvention] = useState<ConventionCollective | null>(null)
