@@ -10,16 +10,32 @@ export default function LabelsCertifications({ data }: { data: any }) {
   const labels = data.labels || []
   const divers = data.divers || []
 
-  // DEBUG visibility: log data to help identify where IDCC is found
+  // DEBUG : log complet de data pour comprendre la structure réelle
   useEffect(() => {
     // eslint-disable-next-line no-console
     console.log("Divers.tsx - data prop:", data)
   }, [data])
 
-  // Tentative: cherche idcc dans plusieurs endroits connus de la structure data
+  // DEBUG : log les chemins potentiels pour l'idcc
+  useEffect(() => {
+    // eslint-disable-next-line no-console
+    console.log("Divers.tsx - essais idcc:",
+      {
+        idcc: data.idcc,
+        etab0_idcc: data.etablissements?.[0]?.idcc,
+        etab0_conventionCollective_idcc: data.etablissements?.[0]?.conventionCollective?.idcc,
+        sireneRaw_cc0_idcc: data.sireneRaw?.conventionsCollectives?.[0]?.idcc,
+        sireneRaw_ccul0_codeIdcc: data.sireneRaw?.conventionsCollectivesUniteLegale?.[0]?.codeIdcc,
+        sireneRaw_ccul0_idcc: data.sireneRaw?.conventionsCollectivesUniteLegale?.[0]?.idcc,
+      }
+    )
+  }, [data])
+
+  // Recherche l'idcc dans différents chemins connus
   const idcc =
     data.idcc ||
     data.etablissements?.[0]?.idcc ||
+    data.etablissements?.[0]?.conventionCollective?.idcc ||
     data.sireneRaw?.conventionsCollectives?.[0]?.idcc ||
     data.sireneRaw?.conventionsCollectivesUniteLegale?.[0]?.codeIdcc ||
     data.sireneRaw?.conventionsCollectivesUniteLegale?.[0]?.idcc ||
@@ -32,7 +48,12 @@ export default function LabelsCertifications({ data }: { data: any }) {
   const [pdfError, setPdfError] = useState<string | null>(null)
 
   useEffect(() => {
-    if (!idcc) return
+    // DEBUG : log si aucun idcc trouvé
+    if (!idcc) {
+      // eslint-disable-next-line no-console
+      console.log("Divers.tsx - Aucun idcc trouvé, rien ne sera affiché pour la convention collective.")
+      return
+    }
     setLoading(true)
     setError(null)
     fetch(`https://hubshare-cmexpert.fr/legifrance/convention/by-idcc/${idcc}`)
@@ -41,6 +62,9 @@ export default function LabelsCertifications({ data }: { data: any }) {
         return res.json()
       })
       .then(results => {
+        // DEBUG : log les résultats de l'API legifrance
+        // eslint-disable-next-line no-console
+        console.log("Divers.tsx - Résultat API legifrance/by-idcc:", results)
         if (Array.isArray(results) && results.length > 0) {
           setConvention({
             idcc,
