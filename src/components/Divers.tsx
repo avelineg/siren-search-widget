@@ -1,92 +1,64 @@
 import React, { useState, useEffect } from 'react'
 
-interface ConventionRow {
-  MOIS: string
-  SIRET: number | string
-  IDCC: number | string
-  DATE_MAJ: string
-}
-
-const SIRET_JSON_FILES = [
-  '/data/json_1_siret_9999.json',
-  '/data/json_2_siret_9999.json',
-  '/data/json_3_siret_9999.json',
-  '/data/json_4_siret_9999.json'
-];
-
 export default function LabelsCertifications({ data }: { data: any }) {
   const labels = data.labels || [];
   const divers = data.divers || [];
-
   const siret = data.siret || data.etablissements?.[0]?.siret || null;
 
-  const [ccInfo, setCcInfo] = useState<{ idcc: string | number; mois: string; dateMaj: string } | null>(null)
+  const [ccInfo, setCcInfo] = useState<any>(null)
   const [ccLoaded, setCcLoaded] = useState(false)
+  const [legiInfo, setLegiInfo] = useState<any>(null)
+  const [legiLoaded, setLegiLoaded] = useState(false)
 
   useEffect(() => {
     let cancelled = false;
+    setCcInfo(null); setCcLoaded(false);
+    setLegiInfo(null); setLegiLoaded(false);
+
     if (!siret) {
-      // eslint-disable-next-line no-console
-      console.log("Divers.tsx - Aucun SIRET fourni pour la recherche de convention collective.");
-      setCcLoaded(true);
-      setCcInfo(null);
+      setCcLoaded(true); setLegiLoaded(true);
       return;
     }
+
     const siretKey = String(siret).padStart(14, '0');
-    // eslint-disable-next-line no-console
-    console.log(`Divers.tsx - Recherche de convention collective pour le SIRET (clé) : ${siretKey}`);
+    fetch(`https://siret-cc-backend.onrender.com/api/convention?siret=${siretKey}`)
+      .then(async res => {
+        if (!res.ok) throw new Error('Convention non trouvée');
+        const cc = await res.json();
+        if (!cancelled) {
+          setCcInfo(cc);
+          setCcLoaded(true);
 
-    setCcLoaded(false);
-    setCcInfo(null);
-
-    (async () => {
-      for (const url of SIRET_JSON_FILES) {
-        // eslint-disable-next-line no-console
-        console.log(`Divers.tsx - Tentative de chargement du fichier : ${url}`);
-        try {
-          const res = await fetch(url);
-          if (!res.ok) {
-            // eslint-disable-next-line no-console
-            console.log(`Divers.tsx - Fichier non trouvé ou erreur réseau : ${url}`);
-            continue;
-          }
-          const arr: ConventionRow[] = await res.json();
-          // Debug: afficher 5 SIRET présents dans ce fichier
-          const siretList = arr.slice(0, 5).map(obj => String(obj.SIRET).padStart(14, '0'));
-          // eslint-disable-next-line no-console
-          console.log(`Divers.tsx - Exemples de SIRET dans ${url}:`, siretList);
-
-          const found = arr.find(obj => String(obj.SIRET).padStart(14, '0') === siretKey);
-          if (found) {
-            // eslint-disable-next-line no-console
-            console.log(`Divers.tsx - SIRET ${siretKey} trouvé dans ${url} :`, found);
-            if (!cancelled) {
-              setCcInfo({
-                idcc: found.IDCC,
-                mois: found.MOIS,
-                dateMaj: found.DATE_MAJ,
+          if (cc.IDCC) {
+            fetch(`https://hubshare-cmexpert.fr/api/legifrance/convention?idcc=${cc.IDCC}`)
+              .then(async res2 => {
+                if (!res2.ok) throw new Error('Legifrance non trouvé');
+                const legi = await res2.json();
+                if (!cancelled) {
+                  setLegiInfo(legi);
+                  setLegiLoaded(true);
+                }
+              })
+              .catch(() => {
+                setLegiInfo(null);
+                setLegiLoaded(true);
               });
-              setCcLoaded(true);
-            }
-            return;
           } else {
-            // eslint-disable-next-line no-console
-            console.log(`Divers.tsx - SIRET ${siretKey} non trouvé dans ${url}`);
+            setLegiLoaded(true);
           }
-        } catch (e) {
-          // eslint-disable-next-line no-console
-          console.log(`Divers.tsx - Erreur lors du chargement de ${url} :`, e);
         }
-      }
-      // eslint-disable-next-line no-console
-      console.log(`Divers.tsx - Convention collective non trouvée pour le SIRET : ${siretKey}`);
-      if (!cancelled) {
-        setCcInfo(null);
+      })
+      .catch(() => {
         setCcLoaded(true);
-      }
-    })();
+        setLegiLoaded(true);
+      });
+
     return () => { cancelled = true; };
   }, [siret]);
+
+  // Affichage JSON formaté
+  const renderJson = (obj: any) =>
+    <pre className="bg-gray-100 text-xs rounded p-2 overflow-auto">{JSON.stringify(obj, null, 2)}</pre>;
 
   return (
     <div className="space-y-4">
@@ -106,18 +78,44 @@ export default function LabelsCertifications({ data }: { data: any }) {
       </div>
       <div className="bg-white p-4 rounded shadow">
         <h3 className="font-semibold mb-2">Convention collective</h3>
-        {!ccLoaded && <p>Chargement...</p>}
+        {(!ccLoaded || !legiLoaded) && <p>Chargement...</p>}
         {ccLoaded && ccInfo && (
           <>
-            <p><b>IDCC&nbsp;:</b> {ccInfo.idcc}</p>
-            <p><b>Mois référence&nbsp;:</b> {ccInfo.mois}</p>
-            <p><b>Date MAJ&nbsp;:</b> {ccInfo.dateMaj}</p>
+            <p><b>IDCC&nbsp;:</b> {ccInfo.IDCC}</p>
+            <p><b>Mois référence&nbsp;:</b> {ccInfo.MOIS}</p>
+            <p><b>Date MAJ&nbsp;:</b> {ccInfo.DATE_MAJ}</p>
+            <details className="my-2">
+              <summary className="cursor-pointer">Voir le JSON SIRET-CC</summary>
+              {renderJson(ccInfo)}
+            </details>
           </>
         )}
         {ccLoaded && !ccInfo && (
           <p className="text-gray-600">
             Aucune information sur la convention collective n’est disponible pour cet établissement.
           </p>
+        )}
+        {legiLoaded && legiInfo && (
+          <>
+            <p><b>Libellé</b>&nbsp;: {legiInfo.titre || legiInfo.libelle || "Non disponible"}</p>
+            <details className="my-2">
+              <summary className="cursor-pointer">Voir le JSON Legifrance</summary>
+              {renderJson(legiInfo)}
+            </details>
+            {legiInfo.pdfUrl ? (
+              <a
+                href={legiInfo.pdfUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-block mt-2 px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700"
+                download
+              >
+                Télécharger la convention collective au format PDF
+              </a>
+            ) : (
+              <p className="text-gray-500 italic">PDF non disponible</p>
+            )}
+          </>
         )}
       </div>
     </div>
