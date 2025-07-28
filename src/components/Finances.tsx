@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { inpiEntreprise, getActesINPI } from "../services/api";
+import { inpiEntreprise } from "../services/api";
 import {
   ResponsiveContainer,
   LineChart,
@@ -11,56 +11,63 @@ import {
   CartesianGrid,
 } from "recharts";
 
+// Cette version attend la prop data (comme dans App.tsx)
 export default function FinancialData({ data }) {
   const siren = data?.siren;
   const [finances, setFinances] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Nouvel état pour les actes INPI
   const [actes, setActes] = useState([]);
   const [loadingActes, setLoadingActes] = useState(true);
 
+  // Récupère actes ET bilans via le même endpoint backend
   useEffect(() => {
     if (!siren) return;
     setLoading(true);
     setError(null);
+    setFinances([]);
+    setActes([]);
     inpiEntreprise
-      .get(`/${siren}/comptes-annuels`)
+      .get(`/${siren}/documents-comptes`)
       .then((res) => {
-        const ca = res.data.comptes_annuels || [];
+        // --- Bilans ---
+        const bilans = res.data.bilans || [];
         setFinances(
-          ca
-            .filter((f) => f.date_cloture)
+          bilans
+            .filter((f) => f.dateCloture)
             .map((f) => ({
-              exercice: String(f.date_cloture).slice(0, 4),
-              chiffre_affaires: f.chiffre_affaires ?? f.chiffre_affaires_net ?? null,
-              resultat_net: f.resultat_net ?? null,
+              exercice: String(f.dateCloture).slice(0, 4),
+              chiffre_affaires: f.chiffreAffaires ?? f.chiffre_affaires_net ?? null,
+              resultat_net: f.resultatNet ?? null,
               effectif: f.effectif ?? null,
-              capital_social: f.capital_social ?? null,
+              capital_social: f.capitalSocial ?? null,
             }))
             .sort((a, b) => Number(a.exercice) - Number(b.exercice))
         );
+        // --- Actes ---
+        setActes(res.data.actes || []);
       })
       .catch((err) => {
         setError("Aucune donnée financière disponible via l’INPI.");
+        setFinances([]);
+        setActes([]);
       })
-      .finally(() => setLoading(false));
-  }, [siren]);
-
-  // Chargement des actes INPI (toujours affichés, même si finances absentes)
-  useEffect(() => {
-    if (!siren) return;
-    setLoadingActes(true);
-    setActes([]);
-    getActesINPI(siren)
-      .then(data => setActes(data))
-      .catch(() => setActes([]))
-      .finally(() => setLoadingActes(false));
+      .finally(() => {
+        setLoading(false);
+        setLoadingActes(false);
+      });
   }, [siren]);
 
   if (!siren) return null;
   if (loading) return <div>Chargement des données financières…</div>;
+
+  // Préparation pour le graphique
+  const chartData = finances.map((f) => ({
+    exercice: f.exercice,
+    "Chiffre d'affaires": typeof f.chiffre_affaires === "number" ? f.chiffre_affaires : null,
+    "Résultat net": typeof f.resultat_net === "number" ? f.resultat_net : null,
+  }));
 
   return (
     <div className="bg-white p-4 rounded shadow">
@@ -81,11 +88,7 @@ export default function FinancialData({ data }) {
         <>
           <div style={{ width: "100%", height: 320, marginBottom: 24 }}>
             <ResponsiveContainer>
-              <LineChart data={finances.map((f) => ({
-                exercice: f.exercice,
-                "Chiffre d'affaires": typeof f.chiffre_affaires === "number" ? f.chiffre_affaires : null,
-                "Résultat net": typeof f.resultat_net === "number" ? f.resultat_net : null,
-              }))}>
+              <LineChart data={chartData}>
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="exercice" />
                 <YAxis
