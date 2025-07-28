@@ -24,22 +24,36 @@ export default function LabelsCertifications({ data }: { data: any }) {
   useEffect(() => {
     let cancelled = false;
     if (!siret) {
+      // Log SIRET introuvable
+      // eslint-disable-next-line no-console
+      console.log("Divers.tsx - Aucun SIRET fourni pour la recherche de convention collective.");
       setCcLoaded(true);
       setCcInfo(null);
       return;
     }
+    // Log SIRET recherché
+    // eslint-disable-next-line no-console
+    console.log(`Divers.tsx - Recherche de convention collective pour le SIRET : ${siret}`);
+
     setCcLoaded(false);
     setCcInfo(null);
 
-    // Fonction asynchrone pour séquentiellement fetch jusqu'à trouver le SIRET
     (async () => {
       for (const url of SIRET_JSON_FILES) {
+        // eslint-disable-next-line no-console
+        console.log(`Divers.tsx - Tentative de chargement du fichier : ${url}`);
         try {
           const res = await fetch(url);
-          if (!res.ok) continue; // On passe au fichier suivant si 404 ou autre erreur
+          if (!res.ok) {
+            // eslint-disable-next-line no-console
+            console.log(`Divers.tsx - Fichier non trouvé ou erreur réseau : ${url}`);
+            continue;
+          }
           const json = await res.json();
           const found = json[siret];
           if (found) {
+            // eslint-disable-next-line no-console
+            console.log(`Divers.tsx - SIRET ${siret} trouvé dans ${url} :`, found);
             if (!cancelled) {
               setCcInfo({
                 idcc: found.idcc,
@@ -48,11 +62,17 @@ export default function LabelsCertifications({ data }: { data: any }) {
               setCcLoaded(true);
             }
             return;
+          } else {
+            // eslint-disable-next-line no-console
+            console.log(`Divers.tsx - SIRET ${siret} non trouvé dans ${url}`);
           }
         } catch (e) {
-          // Ignore l'erreur et tente le fichier suivant
+          // eslint-disable-next-line no-console
+          console.log(`Divers.tsx - Erreur lors du chargement de ${url} :`, e);
         }
       }
+      // eslint-disable-next-line no-console
+      console.log(`Divers.tsx - Convention collective non trouvée pour le SIRET : ${siret}`);
       if (!cancelled) {
         setCcInfo(null);
         setCcLoaded(true);
