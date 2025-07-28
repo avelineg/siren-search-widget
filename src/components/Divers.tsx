@@ -137,7 +137,7 @@ export default function LabelsCertifications({ data }: { data: any }) {
           <>
             <p><b>Libellé</b>&nbsp;: {legiInfo.titre || legiInfo.libelle || "Non disponible"}</p>
             <p><b>Identifiant Légifrance</b> : {legiInfo.id || "Non disponible"}</p>
-            {(pdfUrl) ? (
+            {pdfUrl ? (
               <>
                 <a
                   href={pdfUrl}
@@ -154,7 +154,19 @@ export default function LabelsCertifications({ data }: { data: any }) {
                 )}
               </>
             ) : (
-              <p className="text-gray-500 italic">PDF non disponible</p>
+              <>
+                <p className="text-gray-500 italic">PDF non disponible</p>
+                {legiInfo?.id && (
+                  <a
+                    href={`https://www.legifrance.gouv.fr/conv_coll/id/${legiInfo.id}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-block mt-2 px-4 py-2 bg-gray-200 text-gray-800 rounded hover:bg-gray-300"
+                  >
+                    Consulter ou télécharger manuellement sur Légifrance
+                  </a>
+                )}
+              </>
             )}
             <details className="my-2">
               <summary className="cursor-pointer">Voir le JSON Légifrance (détail)</summary>
