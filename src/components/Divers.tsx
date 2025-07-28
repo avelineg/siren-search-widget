@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react'
 
-interface ConventionCollective {
-  idcc: string
-  libelle: string
+interface ConventionRow {
+  MOIS: string
+  SIRET: number | string
+  IDCC: number | string
+  DATE_MAJ: string
 }
 
 const SIRET_JSON_FILES = [
@@ -18,22 +20,21 @@ export default function LabelsCertifications({ data }: { data: any }) {
 
   const siret = data.siret || data.etablissements?.[0]?.siret || null;
 
-  const [ccInfo, setCcInfo] = useState<ConventionCollective | null>(null)
+  const [ccInfo, setCcInfo] = useState<{ idcc: string | number; mois: string; dateMaj: string } | null>(null)
   const [ccLoaded, setCcLoaded] = useState(false)
 
   useEffect(() => {
     let cancelled = false;
     if (!siret) {
-      // Log SIRET introuvable
       // eslint-disable-next-line no-console
       console.log("Divers.tsx - Aucun SIRET fourni pour la recherche de convention collective.");
       setCcLoaded(true);
       setCcInfo(null);
       return;
     }
-    // Log SIRET recherché
+    const siretKey = String(siret).padStart(14, '0');
     // eslint-disable-next-line no-console
-    console.log(`Divers.tsx - Recherche de convention collective pour le SIRET : ${siret}`);
+    console.log(`Divers.tsx - Recherche de convention collective pour le SIRET (clé) : ${siretKey}`);
 
     setCcLoaded(false);
     setCcInfo(null);
@@ -49,22 +50,28 @@ export default function LabelsCertifications({ data }: { data: any }) {
             console.log(`Divers.tsx - Fichier non trouvé ou erreur réseau : ${url}`);
             continue;
           }
-          const json = await res.json();
-          const found = json[siret];
+          const arr: ConventionRow[] = await res.json();
+          // Debug: afficher 5 SIRET présents dans ce fichier
+          const siretList = arr.slice(0, 5).map(obj => String(obj.SIRET).padStart(14, '0'));
+          // eslint-disable-next-line no-console
+          console.log(`Divers.tsx - Exemples de SIRET dans ${url}:`, siretList);
+
+          const found = arr.find(obj => String(obj.SIRET).padStart(14, '0') === siretKey);
           if (found) {
             // eslint-disable-next-line no-console
-            console.log(`Divers.tsx - SIRET ${siret} trouvé dans ${url} :`, found);
+            console.log(`Divers.tsx - SIRET ${siretKey} trouvé dans ${url} :`, found);
             if (!cancelled) {
               setCcInfo({
-                idcc: found.idcc,
-                libelle: found.libelle,
+                idcc: found.IDCC,
+                mois: found.MOIS,
+                dateMaj: found.DATE_MAJ,
               });
               setCcLoaded(true);
             }
             return;
           } else {
             // eslint-disable-next-line no-console
-            console.log(`Divers.tsx - SIRET ${siret} non trouvé dans ${url}`);
+            console.log(`Divers.tsx - SIRET ${siretKey} non trouvé dans ${url}`);
           }
         } catch (e) {
           // eslint-disable-next-line no-console
@@ -72,7 +79,7 @@ export default function LabelsCertifications({ data }: { data: any }) {
         }
       }
       // eslint-disable-next-line no-console
-      console.log(`Divers.tsx - Convention collective non trouvée pour le SIRET : ${siret}`);
+      console.log(`Divers.tsx - Convention collective non trouvée pour le SIRET : ${siretKey}`);
       if (!cancelled) {
         setCcInfo(null);
         setCcLoaded(true);
@@ -103,7 +110,8 @@ export default function LabelsCertifications({ data }: { data: any }) {
         {ccLoaded && ccInfo && (
           <>
             <p><b>IDCC&nbsp;:</b> {ccInfo.idcc}</p>
-            <p><b>Titre&nbsp;:</b> {ccInfo.libelle}</p>
+            <p><b>Mois référence&nbsp;:</b> {ccInfo.mois}</p>
+            <p><b>Date MAJ&nbsp;:</b> {ccInfo.dateMaj}</p>
           </>
         )}
         {ccLoaded && !ccInfo && (
