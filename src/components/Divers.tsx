@@ -1,5 +1,10 @@
 import React, { useState, useEffect } from 'react'
 
+// Utilitaire pour tronquer le texte (extrait d'article)
+function truncate(str: string, n: number) {
+  return str && str.length > n ? str.substr(0, n - 1) + "…" : str
+}
+
 export default function LabelsCertifications({ data }: { data: any }) {
   const labels = data.labels || []
   const divers = data.divers || []
@@ -119,40 +124,43 @@ export default function LabelsCertifications({ data }: { data: any }) {
     }))
   }
 
-  // Affichage de tous les articles (avec pli/dépli)
-  function renderArticles(articles: any[]) {
-    return (articles || []).map((a, i) => {
-      const articleId = a.id || a.num || `${i}`
-      const isOpen = !!openArticleIds[articleId]
-      return (
-        <div key={articleId} className="mb-3 rounded border border-gray-200 bg-gray-50">
-          <div
-            className="flex items-center cursor-pointer px-3 py-2 group"
-            style={{ background: "#f6f6fa" }}
-            onClick={() => handleToggleArticle(articleId)}
-          >
-            <span className="mr-2 text-indigo-700 text-xl font-bold group-hover:text-indigo-900" style={{ flexShrink: 0 }}>
-              {a.num ? `Article ${a.num}` : 'Article'}
-            </span>
-            <span className="font-semibold text-base group-hover:text-indigo-900" style={{ flexGrow: 1 }}>
-              {a.title || ''}
-            </span>
-            <span className="ml-2 text-gray-400">{isOpen ? "▲" : "▼"}</span>
-          </div>
-          {isOpen && (
-            <div className="px-4 py-3 text-justify bg-white border-t border-gray-200" style={{ lineHeight: 1.65 }}>
-              <div dangerouslySetInnerHTML={{ __html: a.content || a.texteHtml || "" }} />
-            </div>
-          )}
+  // Affichage d'un article façon Legifrance
+  function renderArticle(a: any, i: number) {
+    const articleId = a.id || a.num || `${i}`
+    const isOpen = !!openArticleIds[articleId]
+    return (
+      <div key={articleId} className="rounded border border-gray-300 bg-white mb-4 shadow-sm">
+        <div
+          className="cursor-pointer flex items-center px-4 py-3 hover:bg-indigo-50 transition"
+          onClick={() => handleToggleArticle(articleId)}
+        >
+          <span className="text-indigo-900 font-bold mr-4" style={{ minWidth: 85 }}>
+            {a.num ? `Article ${a.num}` : 'Article'}
+          </span>
+          <span className="font-semibold text-base text-gray-900 flex-1">{a.title || ''}</span>
+          <span className="ml-2 text-gray-400">{isOpen ? "▲" : "▼"}</span>
         </div>
-      )
-    })
+        {isOpen ? (
+          <div className="px-6 py-4 border-t border-gray-200 bg-gray-50 text-justify" style={{ lineHeight: 1.75 }}>
+            <div dangerouslySetInnerHTML={{ __html: a.content || a.texteHtml || "" }} />
+          </div>
+        ) : (
+          <div className="px-6 py-3 border-t border-gray-100 bg-gray-50 text-gray-700 text-sm italic">
+            {truncate(a.content || a.texteHtml || '', 230)}
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  function renderArticles(articles: any[]) {
+    return (articles || []).map((a, i) => renderArticle(a, i))
   }
 
   function renderSections(sections: any[]) {
     return (sections || []).map((s, i) =>
-      <section key={s.id || i} className="mb-6">
-        <h3 className="font-bold text-lg mt-6 mb-2 text-indigo-800">{s.title || ""}</h3>
+      <section key={s.id || i} className="mb-8">
+        <h3 className="font-bold text-xl mt-8 mb-3 text-indigo-800 border-b border-indigo-300 pb-1">{s.title || ""}</h3>
         {renderArticles(s.articles)}
         {renderSections(s.sections)}
       </section>
@@ -161,10 +169,10 @@ export default function LabelsCertifications({ data }: { data: any }) {
 
   function renderAllConventions(convs: any[]) {
     return (convs || []).map((conv, idx) => (
-      <div key={conv.id || idx} className="my-6 border-t pt-3">
-        <h2 className="text-2xl font-extrabold mb-3 text-indigo-900">{conv.titre || ""}</h2>
+      <div key={conv.id || idx} className="my-10 border-t pt-6">
+        <h2 className="text-3xl font-black mb-2 text-indigo-900 uppercase tracking-tight">{conv.titre || ""}</h2>
         {conv.descriptionFusionHtml && (
-          <div className="mb-3" dangerouslySetInnerHTML={{ __html: conv.descriptionFusionHtml }} />
+          <div className="mb-3 text-indigo-900" dangerouslySetInnerHTML={{ __html: conv.descriptionFusionHtml }} />
         )}
         {renderArticles(conv.articles)}
         {renderSections(conv.sections)}
@@ -179,29 +187,32 @@ export default function LabelsCertifications({ data }: { data: any }) {
       : ""
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <div className="bg-white p-4 rounded shadow">
-        <h3 className="font-semibold mb-2">Labels & certifications</h3>
+        <h3 className="font-semibold mb-2 text-indigo-900">Labels & certifications</h3>
         {labels.map((l: any, i: number) => (
           <p key={i}>{l}</p>
         ))}
         {labels.length === 0 && <p>Aucun label.</p>}
       </div>
       <div className="bg-white p-4 rounded shadow">
-        <h3 className="font-semibold mb-2">Divers</h3>
+        <h3 className="font-semibold mb-2 text-indigo-900">Divers</h3>
         {divers.map((d: any, i: number) => (
           <p key={i}>{d}</p>
         ))}
         {divers.length === 0 && <p>Rien à afficher.</p>}
       </div>
-      <div className="bg-white p-4 rounded shadow">
-        <h3 className="font-semibold mb-2">Convention collective</h3>
+      <div className="bg-white p-6 rounded shadow border border-indigo-100">
+        <h3 className="font-bold text-2xl mb-4 text-indigo-900 border-b-2 border-indigo-200 pb-2 flex items-center">
+          Convention collective&nbsp;
+          {conventionName && <span className="text-indigo-700 ml-1">« {conventionName} »</span>}
+        </h3>
         {(!ccLoaded && !apeLoaded) && <p>Chargement...</p>}
         {ccLoaded && ccInfo && ccInfo.IDCC && (
-          <div className="mb-2">
-            <p><b>IDCC&nbsp;:</b> {ccInfo.IDCC}</p>
-            <p><b>Mois référence&nbsp;:</b> {ccInfo.MOIS}</p>
-            <p><b>Date MAJ&nbsp;:</b> {ccInfo.DATE_MAJ}</p>
+          <div className="mb-4 text-base">
+            <span className="inline-block mr-4 font-semibold text-gray-900">IDCC&nbsp;: <span className="font-bold">{ccInfo.IDCC}</span></span>
+            <span className="inline-block mr-4 text-gray-700">Mois référence&nbsp;: <span className="font-bold">{ccInfo.MOIS}</span></span>
+            <span className="inline-block text-gray-700">Date MAJ&nbsp;: <span className="font-bold">{ccInfo.DATE_MAJ}</span></span>
           </div>
         )}
         {usedApe && apeLoaded && apeIdccs.length > 0 && (
@@ -225,22 +236,17 @@ export default function LabelsCertifications({ data }: { data: any }) {
           </p>
         )}
 
-        <div className="my-6 border-t pt-3">
-          <h4 className="font-semibold text-indigo-900 mb-2">
-            Détail complet de la convention collective&nbsp;
-            <span className="text-indigo-700">{conventionName && `« ${conventionName} »`}</span>
-            &nbsp;(Légifrance)
-          </h4>
+        <div className="my-10">
           {idccHtmlLoading && <p>Chargement du contenu détaillé...</p>}
           {idccHtmlError && <p className="text-red-700">{idccHtmlError}</p>}
           {idccHtml && idccHtml.conventions && idccHtml.conventions.length > 0 && (
             <>
               {renderAllConventions(idccHtml.conventions)}
               <button
-                className="mt-4 px-4 py-2 bg-green-700 text-white rounded hover:bg-green-800"
+                className="mt-8 px-6 py-3 bg-green-700 text-white rounded hover:bg-green-800 text-lg font-semibold shadow"
                 onClick={() => idccUsed && window.open(`https://hubshare-cmexpert.fr/legifrance/convention/html/${idccUsed}/pdf`, '_blank')}
               >
-                Télécharger ce détail au format PDF (mise en page lisible)
+                Télécharger ce détail au format PDF
               </button>
             </>
           )}
