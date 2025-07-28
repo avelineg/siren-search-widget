@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 
-// Utilitaire pour tronquer le texte (extrait d'article)
+// Utilitaire pour tronquer du texte (pour aperçu article)
 function truncate(str: string, n: number) {
   return str && str.length > n ? str.substr(0, n - 1) + "…" : str
 }
@@ -22,9 +22,6 @@ export default function LabelsCertifications({ data }: { data: any }) {
   const [idccHtmlError, setIdccHtmlError] = useState<string | null>(null)
   const [idccUsed, setIdccUsed] = useState<string | null>(null)
 
-  // Pour le pli/dépli des articles
-  const [openArticleIds, setOpenArticleIds] = useState<Record<string, boolean>>({})
-
   useEffect(() => {
     let cancelled = false
     setCcInfo(null)
@@ -36,7 +33,6 @@ export default function LabelsCertifications({ data }: { data: any }) {
     setIdccHtmlError(null)
     setIdccHtmlLoading(false)
     setIdccUsed(null)
-    setOpenArticleIds({})
 
     // On essaye d'abord SIRET
     const fetchSiret = async () => {
@@ -116,66 +112,91 @@ export default function LabelsCertifications({ data }: { data: any }) {
     // eslint-disable-next-line
   }, [siret, ape])
 
-  // Pour plier/déplier un article par id (clé unique)
-  const handleToggleArticle = (id: string) => {
-    setOpenArticleIds((prev) => ({
-      ...prev,
-      [id]: !prev[id],
-    }))
+  // Affichage sommaire façon Legifrance
+  function renderSommaire(articles: any[]) {
+    if (!articles?.length) return null
+    return (
+      <nav style={{borderBottom: "1px solid #ddd", marginBottom: 24, paddingBottom: 8, fontSize: 16}}>
+        <b>Sommaire : </b>
+        {articles.map((a, i) => (
+          <a
+            key={a.id || a.num || i}
+            href={`#article-${a.id || a.num || i}`}
+            style={{marginRight: 16, color: "#0053b3", textDecoration: "underline"}}
+          >
+            {a.num ? `Article ${a.num}` : 'Article'}
+          </a>
+        ))}
+      </nav>
+    )
   }
 
-  // Affichage d'un article façon Legifrance
-  function renderArticle(a: any, i: number) {
+  // Affichage article ouvert façon Legifrance
+  function renderArticleLegifrance(a: any, i: number) {
     const articleId = a.id || a.num || `${i}`
-    const isOpen = !!openArticleIds[articleId]
     return (
-      <div key={articleId} className="rounded border border-gray-300 bg-white mb-4 shadow-sm">
-        <div
-          className="cursor-pointer flex items-center px-4 py-3 hover:bg-indigo-50 transition"
-          onClick={() => handleToggleArticle(articleId)}
-        >
-          <span className="text-indigo-900 font-bold mr-4" style={{ minWidth: 85 }}>
-            {a.num ? `Article ${a.num}` : 'Article'}
-          </span>
-          <span className="font-semibold text-base text-gray-900 flex-1">{a.title || ''}</span>
-          <span className="ml-2 text-gray-400">{isOpen ? "▲" : "▼"}</span>
-        </div>
-        {isOpen ? (
-          <div className="px-6 py-4 border-t border-gray-200 bg-gray-50 text-justify" style={{ lineHeight: 1.75 }}>
-            <div dangerouslySetInnerHTML={{ __html: a.content || a.texteHtml || "" }} />
-          </div>
-        ) : (
-          <div className="px-6 py-3 border-t border-gray-100 bg-gray-50 text-gray-700 text-sm italic">
-            {truncate(a.content || a.texteHtml || '', 230)}
-          </div>
-        )}
+      <div key={articleId}
+        id={`article-${articleId}`}
+        style={{
+          background: "#fafafc",
+          border: "1px solid #e1e1ea",
+          borderRadius: 8,
+          marginBottom: 32,
+          padding: "18px 24px"
+        }}>
+        <h3 style={{fontWeight: "bold", color: "#0b2353", fontSize: 20, marginBottom: 8}}>
+          {a.num ? `Article ${a.num}` : 'Article'} : {a.title || ''}
+        </h3>
+        <div style={{color: "#222", fontSize: 17, lineHeight: 1.7}}
+             dangerouslySetInnerHTML={{ __html: a.content || a.texteHtml || "" }} />
       </div>
     )
   }
 
-  function renderArticles(articles: any[]) {
-    return (articles || []).map((a, i) => renderArticle(a, i))
-  }
-
-  function renderSections(sections: any[]) {
+  function renderSectionsLegifrance(sections: any[]) {
     return (sections || []).map((s, i) =>
       <section key={s.id || i} className="mb-8">
-        <h3 className="font-bold text-xl mt-8 mb-3 text-indigo-800 border-b border-indigo-300 pb-1">{s.title || ""}</h3>
-        {renderArticles(s.articles)}
-        {renderSections(s.sections)}
+        <h3 style={{
+          fontWeight: "bold",
+          fontSize: 18,
+          marginTop: 32,
+          marginBottom: 16,
+          color: "#0053b3",
+          borderBottom: "1px solid #e1e1ea",
+          paddingBottom: 4
+        }}>{s.title || ""}</h3>
+        {(s.articles || []).map((a: any, idx: number) => renderArticleLegifrance(a, idx))}
+        {renderSectionsLegifrance(s.sections)}
       </section>
     )
   }
 
-  function renderAllConventions(convs: any[]) {
+  function renderAllConventionsLegifrance(convs: any[]) {
     return (convs || []).map((conv, idx) => (
       <div key={conv.id || idx} className="my-10 border-t pt-6">
-        <h2 className="text-3xl font-black mb-2 text-indigo-900 uppercase tracking-tight">{conv.titre || ""}</h2>
+        {/* Grand titre à la Legifrance */}
+        <div style={{
+          fontSize: 25,
+          fontWeight: "bolder",
+          color: "#002752",
+          textAlign: "center",
+          margin: "30px 0 10px 0",
+          borderBottom: "4px solid #b50910",
+          paddingBottom: 6
+        }}>
+          {conv.titre || ""}
+        </div>
+        {/* Intro/résumé */}
         {conv.descriptionFusionHtml && (
-          <div className="mb-3 text-indigo-900" dangerouslySetInnerHTML={{ __html: conv.descriptionFusionHtml }} />
+          <div style={{fontSize: 18, color: "#222", marginBottom: 24}}
+               dangerouslySetInnerHTML={{ __html: conv.descriptionFusionHtml }} />
         )}
-        {renderArticles(conv.articles)}
-        {renderSections(conv.sections)}
+        {/* Sommaire */}
+        {renderSommaire(conv.articles)}
+        {/* Articles ouverts */}
+        {(conv.articles || []).map((a: any, i: number) => renderArticleLegifrance(a, i))}
+        {/* Sections éventuelles */}
+        {renderSectionsLegifrance(conv.sections)}
       </div>
     ))
   }
@@ -241,7 +262,7 @@ export default function LabelsCertifications({ data }: { data: any }) {
           {idccHtmlError && <p className="text-red-700">{idccHtmlError}</p>}
           {idccHtml && idccHtml.conventions && idccHtml.conventions.length > 0 && (
             <>
-              {renderAllConventions(idccHtml.conventions)}
+              {renderAllConventionsLegifrance(idccHtml.conventions)}
               <button
                 className="mt-8 px-6 py-3 bg-green-700 text-white rounded hover:bg-green-800 text-lg font-semibold shadow"
                 onClick={() => idccUsed && window.open(`https://hubshare-cmexpert.fr/legifrance/convention/html/${idccUsed}/pdf`, '_blank')}
