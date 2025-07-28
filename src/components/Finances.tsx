@@ -11,7 +11,7 @@ import {
   CartesianGrid,
 } from "recharts";
 
-const ACTE_DOWNLOAD_BASE = "https://hubshare-cmexpert.fr"; // URL backend pour les téléchargements
+const ACTE_DOWNLOAD_BASE = "https://hubshare-cmexpert.fr"; // Backend URL for acte downloads
 
 export default function FinancialData({ data }) {
   const siren = data?.siren;
@@ -22,10 +22,11 @@ export default function FinancialData({ data }) {
   const [actes, setActes] = useState([]);
   const [loadingActes, setLoadingActes] = useState(true);
 
-  // Récupère actes ET bilans via le même endpoint backend
+  // Load bilans and actes via /documents-comptes endpoint
   useEffect(() => {
     if (!siren) return;
     setLoading(true);
+    setLoadingActes(true);
     setError(null);
     setFinances([]);
     setActes([]);
@@ -63,7 +64,7 @@ export default function FinancialData({ data }) {
   if (!siren) return null;
   if (loading) return <div>Chargement des données financières…</div>;
 
-  // Préparation pour le graphique
+  // Data for the chart
   const chartData = finances.map((f) => ({
     exercice: f.exercice,
     "Chiffre d'affaires": typeof f.chiffre_affaires === "number" ? f.chiffre_affaires : null,
@@ -132,32 +133,32 @@ export default function FinancialData({ data }) {
               </LineChart>
             </ResponsiveContainer>
           </div>
-          <table className="min-w-full text-sm">
+          <table className="min-w-full text-sm mb-8">
             <thead>
-              <tr>
-                <th>Exercice</th>
-                <th>Chiffre d'affaires</th>
-                <th>Résultat net</th>
-                <th>Effectif</th>
-                <th>Capital social</th>
+              <tr className="border-b">
+                <th className="px-2 py-1 text-left">Exercice</th>
+                <th className="px-2 py-1 text-left">Chiffre d'affaires</th>
+                <th className="px-2 py-1 text-left">Résultat net</th>
+                <th className="px-2 py-1 text-left">Effectif</th>
+                <th className="px-2 py-1 text-left">Capital social</th>
               </tr>
             </thead>
             <tbody>
               {finances.map((f: any) => (
-                <tr key={f.exercice}>
-                  <td>{f.exercice}</td>
-                  <td>
+                <tr key={f.exercice} className="border-b hover:bg-gray-50">
+                  <td className="px-2 py-1">{f.exercice}</td>
+                  <td className="px-2 py-1">
                     {typeof f.chiffre_affaires === "number"
                       ? f.chiffre_affaires.toLocaleString("fr-FR") + " €"
                       : "–"}
                   </td>
-                  <td>
+                  <td className="px-2 py-1">
                     {typeof f.resultat_net === "number"
                       ? f.resultat_net.toLocaleString("fr-FR") + " €"
                       : "–"}
                   </td>
-                  <td>{f.effectif ?? "–"}</td>
-                  <td>
+                  <td className="px-2 py-1">{f.effectif ?? "–"}</td>
+                  <td className="px-2 py-1">
                     {typeof f.capital_social === "number"
                       ? f.capital_social.toLocaleString("fr-FR") + " €"
                       : "–"}
@@ -169,45 +170,53 @@ export default function FinancialData({ data }) {
         </>
       )}
 
-      {/* Liste des actes INPI — toujours visible */}
-      <div className="mt-6">
-        <h4 className="font-semibold mb-2">Actes déposés (INPI)</h4>
+      {/* Nouvelle mise en forme des actes INPI */}
+      <div className="mt-8">
+        <h4 className="font-semibold mb-3 text-lg border-b pb-1 mb-4">Actes déposés (INPI)</h4>
         {loadingActes ? (
           <div>Chargement des actes…</div>
-        ) : (
-          actes.length ? (
-            <ul>
-              {actes.map((acte: any) => (
-                <li key={acte.id} className="mb-3">
-                  <span>
-                    <b>{acte.nomDocument || acte.libelle || "Acte"}</b>
-                    {" — "}
-                    {acte.dateDepot?.slice(0, 10) || "?"}
+        ) : actes.length ? (
+          <div className="space-y-6">
+            {actes.map((acte: any) => (
+              <div key={acte.id} className="bg-gray-50 p-4 rounded shadow-sm border">
+                <div className="flex flex-wrap items-center justify-between mb-2">
+                  <span className="font-bold text-blue-900 break-all">{acte.id}</span>
+                  <span className="text-gray-500 text-sm ml-2">{acte.dateDepot?.slice(0, 10) || "?"}</span>
+                </div>
+                <div className="mb-2">
+                  <span className="block text-blue-700 font-medium">
+                    {acte.nomDocument || acte.libelle || "Acte"}
                   </span>
+                  {acte.description && (
+                    <span className="block text-gray-700">{acte.description}</span>
+                  )}
+                  {/* Les sous-détails, typiquement typeRdd */}
                   {Array.isArray(acte.typeRdd) && acte.typeRdd.length > 0 && (
-                    <ul className="ml-4">
+                    <ul className="mt-2 pl-4 list-disc space-y-1">
                       {acte.typeRdd.map((t: any, i: number) => (
-                        <li key={i} style={{ fontSize: "90%" }}>
-                          <b>{t.typeActe} :</b> {t.decision}
+                        <li key={i}>
+                          <span className="font-semibold text-gray-800">{t.typeActe} :</span>{" "}
+                          <span className="text-gray-700">{t.decision}</span>
                         </li>
                       ))}
                     </ul>
                   )}
-                  {" "}
+                </div>
+                <div>
                   <a
                     href={`${ACTE_DOWNLOAD_BASE}/api/download/acte/${acte.id}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="ml-2 text-blue-600 underline"
+                    className="inline-block mt-1 px-3 py-1 rounded bg-blue-600 text-white hover:bg-blue-700 text-sm font-medium transition"
                   >
                     Télécharger PDF
                   </a>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <div>Aucun acte disponible.</div>
-          )
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="text-gray-500 italic">Aucun acte disponible.</div>
         )}
       </div>
     </div>
