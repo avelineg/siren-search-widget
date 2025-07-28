@@ -9,18 +9,24 @@ export default function LabelsCertifications({ data }: { data: any }) {
   const [ccLoaded, setCcLoaded] = useState(false)
   const [legiInfo, setLegiInfo] = useState<any>(null)
   const [legiLoaded, setLegiLoaded] = useState(false)
+  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    setCcInfo(null); setCcLoaded(false);
-    setLegiInfo(null); setLegiLoaded(false);
+    setCcInfo(null);
+    setCcLoaded(false);
+    setLegiInfo(null);
+    setLegiLoaded(false);
+    setPdfUrl(null);
 
     if (!siret) {
-      setCcLoaded(true); setLegiLoaded(true);
+      setCcLoaded(true);
+      setLegiLoaded(true);
       return;
     }
 
     const siretKey = String(siret).padStart(14, '0');
+    // 1. Récupération de l'IDCC à partir du SIRET
     fetch(`https://siret-cc-backend.onrender.com/api/convention?siret=${siretKey}`)
       .then(async res => {
         if (!res.ok) throw new Error('Convention non trouvée');
@@ -29,28 +35,41 @@ export default function LabelsCertifications({ data }: { data: any }) {
           setCcInfo(cc);
           setCcLoaded(true);
 
+          // 2. Récupération des infos Legifrance via le backend hubshare-cmexpert
           if (cc.IDCC) {
-            fetch(`https://hubshare-cmexpert.fr/api/legifrance/convention?idcc=${cc.IDCC}`)
+            fetch(`https://hubshare-cmexpert.fr/legifrance/convention/by-idcc/${cc.IDCC}`)
               .then(async res2 => {
                 if (!res2.ok) throw new Error('Legifrance non trouvé');
-                const legi = await res2.json();
-                if (!cancelled) {
-                  setLegiInfo(legi);
-                  setLegiLoaded(true);
+                const results = await res2.json();
+                // results est censé être un tableau, on prend le premier résultat
+                const convention = Array.isArray(results) && results.length > 0 ? results[0] : null;
+                setLegiInfo(convention || null);
+                setLegiLoaded(true);
+
+                // 3. Gérer l'URL du PDF si présente (ex: convention.pdfFilePath ou convention.pdfFileName ou champ custom)
+                if (convention && (convention.pdfFilePath || convention.pdfFileName)) {
+                  // Si besoin adapter le chemin selon ta logique serveur (ex: endpoint dédié pour le téléchargement)
+                  // On propose d'utiliser le endpoint backend proxy pour sécuriser le téléchargement
+                  setPdfUrl(`https://hubshare-cmexpert.fr/legifrance/convention/${convention.id}/pdf`);
+                } else {
+                  setPdfUrl(null);
                 }
               })
               .catch(() => {
                 setLegiInfo(null);
                 setLegiLoaded(true);
+                setPdfUrl(null);
               });
           } else {
             setLegiLoaded(true);
+            setPdfUrl(null);
           }
         }
       })
       .catch(() => {
         setCcLoaded(true);
         setLegiLoaded(true);
+        setPdfUrl(null);
       });
 
     return () => { cancelled = true; };
@@ -97,14 +116,14 @@ export default function LabelsCertifications({ data }: { data: any }) {
         )}
         {legiLoaded && legiInfo && (
           <>
-            <p><b>Libellé</b>&nbsp;: {legiInfo.titre || legiInfo.libelle || "Non disponible"}</p>
+            <p><b>Libellé</b>&nbsp;: {legiInfo.titre || legiInfo.libelle || legiInfo.titre || "Non disponible"}</p>
             <details className="my-2">
               <summary className="cursor-pointer">Voir le JSON Legifrance</summary>
               {renderJson(legiInfo)}
             </details>
-            {legiInfo.pdfUrl ? (
+            {pdfUrl ? (
               <a
-                href={legiInfo.pdfUrl}
+                href={pdfUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-block mt-2 px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700"
