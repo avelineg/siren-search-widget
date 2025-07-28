@@ -2,111 +2,55 @@ import React, { useState, useEffect } from 'react'
 
 interface ConventionCollective {
   idcc: string
-  titre: string
-  idKali: string
+  libelle: string
 }
 
 export default function LabelsCertifications({ data }: { data: any }) {
   const labels = data.labels || []
   const divers = data.divers || []
 
-  // DEBUG : log complet de data pour comprendre la structure réelle
-  useEffect(() => {
-    // eslint-disable-next-line no-console
-    console.log("Divers.tsx - data prop:", data)
-  }, [data])
+  // On récupère le SIRET principal affiché
+  const siret = data.siret || data.etablissements?.[0]?.siret || null;
+  // On détermine le préfixe pour choisir le bon fichier JSON
+  const siretPrefix = siret ? String(siret)[0] : null;
+  // On prépare l'URL du fichier à charger
+  const jsonUrl = siretPrefix
+    ? `/data/json_${siretPrefix}_siret_9999.json`
+    : null;
 
-  // DEBUG : log les chemins potentiels pour l'idcc
-  useEffect(() => {
-    // eslint-disable-next-line no-console
-    console.log("Divers.tsx - essais idcc:",
-      {
-        idcc: data.idcc,
-        etab0_idcc: data.etablissements?.[0]?.idcc,
-        etab0_conventionCollective_idcc: data.etablissements?.[0]?.conventionCollective?.idcc,
-        sireneRaw_cc0_idcc: data.sireneRaw?.conventionsCollectives?.[0]?.idcc,
-        sireneRaw_ccul0_codeIdcc: data.sireneRaw?.conventionsCollectivesUniteLegale?.[0]?.codeIdcc,
-        sireneRaw_ccul0_idcc: data.sireneRaw?.conventionsCollectivesUniteLegale?.[0]?.idcc,
-      }
-    )
-  }, [data])
-
-  // Recherche l'idcc dans différents chemins connus
-  const idcc =
-    data.idcc ||
-    data.etablissements?.[0]?.idcc ||
-    data.etablissements?.[0]?.conventionCollective?.idcc ||
-    data.sireneRaw?.conventionsCollectives?.[0]?.idcc ||
-    data.sireneRaw?.conventionsCollectivesUniteLegale?.[0]?.codeIdcc ||
-    data.sireneRaw?.conventionsCollectivesUniteLegale?.[0]?.idcc ||
-    null
-
-  const [convention, setConvention] = useState<ConventionCollective | null>(null)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [loadingPdf, setLoadingPdf] = useState(false)
-  const [pdfError, setPdfError] = useState<string | null>(null)
+  const [ccInfo, setCcInfo] = useState<ConventionCollective | null>(null)
+  const [ccLoaded, setCcLoaded] = useState(false)
 
   useEffect(() => {
-    // DEBUG : log si aucun idcc trouvé
-    if (!idcc) {
-      // eslint-disable-next-line no-console
-      console.log("Divers.tsx - Aucun idcc trouvé, rien ne sera affiché pour la convention collective.")
-      return
+    if (!jsonUrl || !siret) {
+      setCcLoaded(true);
+      setCcInfo(null);
+      return;
     }
-    setLoading(true)
-    setError(null)
-    fetch(`https://hubshare-cmexpert.fr/legifrance/convention/by-idcc/${idcc}`)
+    setCcLoaded(false);
+    fetch(jsonUrl)
       .then(res => {
-        if (!res.ok) throw new Error("Convention collective introuvable")
-        return res.json()
+        if (!res.ok) throw new Error("Erreur chargement fichier conventions");
+        return res.json();
       })
-      .then(results => {
-        // DEBUG : log les résultats de l'API legifrance
-        // eslint-disable-next-line no-console
-        console.log("Divers.tsx - Résultat API legifrance/by-idcc:", results)
-        if (Array.isArray(results) && results.length > 0) {
-          setConvention({
-            idcc,
-            titre: results[0].title || results[0].titre || results[0].intitule || '',
-            idKali: results[0].id || results[0].idKali || results[0].kaliContId || ''
-          })
+      .then((json) => {
+        const found = json[siret];
+        if (found) {
+          setCcInfo({
+            idcc: found.idcc,
+            libelle: found.libelle,
+          });
         } else {
-          setConvention(null)
-          setError("Aucune convention collective trouvée pour cet IDCC")
+          setCcInfo(null);
         }
       })
-      .catch(e => {
-        setConvention(null)
-        setError(e.message)
+      .catch(() => {
+        setCcInfo(null);
       })
-      .finally(() => setLoading(false))
-  }, [idcc])
-
-  const handleDownloadPdf = async () => {
-    if (!convention?.idKali) return
-    setLoadingPdf(true)
-    setPdfError(null)
-    try {
-      const res = await fetch(
-        `https://hubshare-cmexpert.fr/legifrance/convention/${convention.idKali}/pdf`
-      )
-      if (!res.ok) throw new Error("PDF non disponible")
-      const blob = await res.blob()
-      const url = window.URL.createObjectURL(blob)
-      const link = document.createElement('a')
-      link.href = url
-      link.download = `convention-collective.pdf`
-      document.body.appendChild(link)
-      link.click()
-      link.remove()
-      window.URL.revokeObjectURL(url)
-    } catch (e: any) {
-      setPdfError(e.message || "Erreur lors du téléchargement")
-    } finally {
-      setLoadingPdf(false)
-    }
-  }
+      .finally(() => {
+        setCcLoaded(true);
+      });
+  }, [jsonUrl, siret]);
 
   return (
     <div className="space-y-4">
@@ -124,28 +68,21 @@ export default function LabelsCertifications({ data }: { data: any }) {
         ))}
         {divers.length === 0 && <p>Rien à afficher.</p>}
       </div>
-      {idcc && (
-        <div className="bg-white p-4 rounded shadow">
-          <h3 className="font-semibold mb-2">Convention collective</h3>
-          {loading && <p>Chargement...</p>}
-          {error && <p className="text-red-600">{error}</p>}
-          {convention && (
-            <>
-              <p><b>IDCC&nbsp;:</b> {convention.idcc}</p>
-              <p><b>Titre&nbsp;:</b> {convention.titre || "N/A"}</p>
-              <p><b>ID KALI&nbsp;:</b> {convention.idKali || "N/A"}</p>
-              <button
-                className="mt-2 px-4 py-2 bg-blue-600 text-white rounded disabled:opacity-50"
-                disabled={loadingPdf || !convention.idKali}
-                onClick={handleDownloadPdf}
-              >
-                {loadingPdf ? "Téléchargement..." : "Télécharger le PDF officiel"}
-              </button>
-              {pdfError && <p className="text-red-600 mt-2">{pdfError}</p>}
-            </>
-          )}
-        </div>
-      )}
+      <div className="bg-white p-4 rounded shadow">
+        <h3 className="font-semibold mb-2">Convention collective</h3>
+        {!ccLoaded && <p>Chargement...</p>}
+        {ccLoaded && ccInfo && (
+          <>
+            <p><b>IDCC&nbsp;:</b> {ccInfo.idcc}</p>
+            <p><b>Titre&nbsp;:</b> {ccInfo.libelle}</p>
+          </>
+        )}
+        {ccLoaded && !ccInfo && (
+          <p className="text-gray-600">
+            Aucune information sur la convention collective n’est disponible pour cet établissement.
+          </p>
+        )}
+      </div>
     </div>
   )
 }
