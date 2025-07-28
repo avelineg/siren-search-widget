@@ -11,7 +11,8 @@ import {
   CartesianGrid,
 } from "recharts";
 
-// Cette version attend la prop data (comme dans App.tsx)
+const ACTE_DOWNLOAD_BASE = "https://hubshare-cmexpert.fr"; // URL backend pour les téléchargements
+
 export default function FinancialData({ data }) {
   const siren = data?.siren;
   const [finances, setFinances] = useState([]);
@@ -194,7 +195,7 @@ export default function FinancialData({ data }) {
                   )}
                   {" "}
                   <a
-                    href={`/api/download/acte/${acte.id}`}
+                    href={`${ACTE_DOWNLOAD_BASE}/api/download/acte/${acte.id}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="ml-2 text-blue-600 underline"
