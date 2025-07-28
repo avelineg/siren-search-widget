@@ -46,6 +46,7 @@ export default function LabelsCertifications({ data }: { data: any }) {
       } catch (e) {
         setApeIdccs([])
         setApeLoaded(true)
+        setLegiLoaded(true)
       }
     }
 
@@ -80,35 +81,46 @@ export default function LabelsCertifications({ data }: { data: any }) {
       })
     }
 
-    if (siret) {
-      const siretKey = String(siret).padStart(14, '0')
-      fetch(`https://siret-cc-backend.onrender.com/api/convention?siret=${siretKey}`)
-        .then(async res => {
-          if (!res.ok) throw new Error('Convention non trouvée')
-          const cc = await res.json()
-          if (cancelled) return
-          setCcInfo(cc)
-          setCcLoaded(true)
-          if (cc.IDCC) {
-            fetchLegifranceForIdccs([cc.IDCC])
-          } else if (ape) {
+    // Nouvelle logique : d'abord essayer le SIRET, puis fallback APE si 404
+    const fetchSiretOrApe = async () => {
+      if (siret) {
+        const siretKey = String(siret).padStart(14, '0')
+        try {
+          const res = await fetch(`https://siret-cc-backend.onrender.com/api/convention?siret=${siretKey}`)
+          if (res.ok) {
+            const cc = await res.json()
+            if (cancelled) return
+            setCcInfo(cc)
+            setCcLoaded(true)
+            if (cc.IDCC) {
+              fetchLegifranceForIdccs([cc.IDCC])
+            } else if (ape) {
+              fetchApe(ape)
+            } else {
+              setLegiLoaded(true)
+            }
+          } else if (res.status === 404 && ape) {
+            setCcLoaded(true)
             fetchApe(ape)
           } else {
+            setCcLoaded(true)
             setLegiLoaded(true)
           }
-        })
-        .catch(() => {
+        } catch (err) {
           setCcLoaded(true)
           if (ape) fetchApe(ape)
           else setLegiLoaded(true)
-        })
-    } else if (ape) {
-      fetchApe(ape)
-    } else {
-      setCcLoaded(true)
-      setApeLoaded(true)
-      setLegiLoaded(true)
+        }
+      } else if (ape) {
+        fetchApe(ape)
+      } else {
+        setCcLoaded(true)
+        setApeLoaded(true)
+        setLegiLoaded(true)
+      }
     }
+
+    fetchSiretOrApe()
 
     return () => { cancelled = true }
   }, [siret, ape])
