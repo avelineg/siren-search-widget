@@ -18,6 +18,11 @@ export default function LabelsCertifications({ data }: { data: any }) {
   const [legiRaws, setLegiRaws] = useState<any[]>([])
   const [pdfError, setPdfError] = useState<string | null>(null)
 
+  // Ajout pour contenu "joli" Legifrance
+  const [idccHtml, setIdccHtml] = useState<any>(null)
+  const [idccHtmlLoading, setIdccHtmlLoading] = useState(false)
+  const [idccHtmlError, setIdccHtmlError] = useState<string | null>(null)
+
   useEffect(() => {
     let cancelled = false
     setCcInfo(null)
@@ -30,6 +35,9 @@ export default function LabelsCertifications({ data }: { data: any }) {
     setPdfUrls([])
     setLegiRaws([])
     setPdfError(null)
+    setIdccHtml(null)
+    setIdccHtmlError(null)
+    setIdccHtmlLoading(false)
 
     const fetchApe = async (apeCode: string) => {
       setUsedApe(true)
@@ -41,7 +49,6 @@ export default function LabelsCertifications({ data }: { data: any }) {
         if (cancelled) return
         setApeIdccs(idccList)
         setApeLoaded(true)
-        // Pour chaque IDCC trouvé, fetch legifrance
         fetchLegifranceForIdccs(idccList.map(i => i['Code IDCC']))
       } catch (e) {
         setApeIdccs([])
@@ -94,6 +101,7 @@ export default function LabelsCertifications({ data }: { data: any }) {
             setCcLoaded(true)
             if (cc.IDCC) {
               fetchLegifranceForIdccs([cc.IDCC])
+              fetchIdccHtml(cc.IDCC)
             } else if (ape) {
               fetchApe(ape)
             } else {
@@ -120,6 +128,26 @@ export default function LabelsCertifications({ data }: { data: any }) {
       }
     }
 
+    // Ajout : récupère le contenu HTML détaillé via le backend legifrance enrichi
+    const fetchIdccHtml = async (idcc: string) => {
+      if (!idcc || !/^\d+$/.test(idcc)) return
+      setIdccHtmlLoading(true)
+      setIdccHtml(null)
+      setIdccHtmlError(null)
+      try {
+        const res = await fetch(`https://hubshare-cmexpert.fr/legifrance/convention/html/${idcc}`)
+        if (!res.ok) throw new Error('Erreur lors de la récupération du détail Légifrance')
+        const data = await res.json()
+        if (cancelled) return
+        setIdccHtml(data)
+        setIdccHtmlLoading(false)
+      } catch (e: any) {
+        setIdccHtmlError(e.message || "Erreur lors de la récupération du détail Légifrance")
+        setIdccHtmlLoading(false)
+        setIdccHtml(null)
+      }
+    }
+
     fetchSiretOrApe()
 
     return () => { cancelled = true }
@@ -143,8 +171,33 @@ export default function LabelsCertifications({ data }: { data: any }) {
     }
   };
 
+  // Génération PDF du contenu structuré "joli"
+  const handleDownloadPrettyPdf = async (idcc: string) => {
+    if (!idcc) return
+    window.open(`https://hubshare-cmexpert.fr/legifrance/convention/html/${idcc}/pdf`, '_blank')
+  }
+
   const renderJson = (obj: any) =>
     <pre className="bg-gray-100 text-xs rounded p-2 overflow-auto">{JSON.stringify(obj, null, 2)}</pre>
+
+  // Affichage structuré joli (récursif)
+  function renderArticles(articles: any[]) {
+    return (articles || []).map((a, i) =>
+      <article key={a.id || i} className="mb-4">
+        <h4 className="font-semibold mt-4 text-indigo-700">{a.num ? `Article ${a.num}` : ''} {a.title || ''}</h4>
+        <div dangerouslySetInnerHTML={{ __html: a.content || a.texteHtml || "" }} />
+      </article>
+    )
+  }
+  function renderSections(sections: any[]) {
+    return (sections || []).map((s, i) =>
+      <section key={s.id || i} className="mb-6">
+        <h3 className="font-bold text-lg mt-6">{s.title || ""}</h3>
+        {renderArticles(s.articles)}
+        {renderSections(s.sections)}
+      </section>
+    )
+  }
 
   return (
     <div className="space-y-4">
@@ -252,6 +305,30 @@ export default function LabelsCertifications({ data }: { data: any }) {
             </details>
           </div>
         ))}
+
+        {/* Affichage "joli" du contenu IDCC (Legifrance structuré) */}
+        {ccLoaded && ccInfo && ccInfo.IDCC && (
+          <div className="my-4 border-t pt-3">
+            <h4 className="font-semibold text-indigo-900 mb-2">Détail complet de la convention collective (Légifrance)</h4>
+            {idccHtmlLoading && <p>Chargement du contenu détaillé...</p>}
+            {idccHtmlError && <p className="text-red-700">{idccHtmlError}</p>}
+            {idccHtml && (
+              <>
+                <h2 className="text-lg font-bold mb-2">{idccHtml.titre || ""}</h2>
+                {idccHtml.descriptionFusionHtml && (
+                  <div className="mb-2" dangerouslySetInnerHTML={{ __html: idccHtml.descriptionFusionHtml }} />
+                )}
+                {renderSections(idccHtml.sections)}
+                <button
+                  className="mt-4 px-4 py-2 bg-green-700 text-white rounded hover:bg-green-800"
+                  onClick={() => handleDownloadPrettyPdf(ccInfo.IDCC)}
+                >
+                  Télécharger ce détail au format PDF (mise en page lisible)
+                </button>
+              </>
+            )}
+          </div>
+        )}
       </div>
     </div>
   )
