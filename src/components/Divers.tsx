@@ -6,23 +6,20 @@ export default function LabelsCertifications({ data }: { data: any }) {
   const siret = data.siret || data.etablissements?.[0]?.siret || null
   const ape = data.ape || data.naf || data.etablissements?.[0]?.ape || data.etablissements?.[0]?.naf || null
 
+  // Convention collective via SIRET ou APE
   const [ccInfo, setCcInfo] = useState<any>(null)
   const [ccLoaded, setCcLoaded] = useState(false)
   const [apeIdccs, setApeIdccs] = useState<any[]>([])
   const [apeLoaded, setApeLoaded] = useState(false)
   const [usedApe, setUsedApe] = useState(false)
 
-  const [legiInfos, setLegiInfos] = useState<any[]>([])
-  const [legiLoaded, setLegiLoaded] = useState(false)
-  const [pdfUrls, setPdfUrls] = useState<any[]>([])
-  const [legiRaws, setLegiRaws] = useState<any[]>([])
-  const [pdfError, setPdfError] = useState<string | null>(null)
-
-  // Ajout pour contenu "joli" Legifrance
+  // Pour l'affichage enrichi Légifrance
   const [idccHtml, setIdccHtml] = useState<any>(null)
   const [idccHtmlLoading, setIdccHtmlLoading] = useState(false)
   const [idccHtmlError, setIdccHtmlError] = useState<string | null>(null)
+  const [idccUsed, setIdccUsed] = useState<string | null>(null)
 
+  // Fallback SIRET → APE
   useEffect(() => {
     let cancelled = false
     setCcInfo(null)
@@ -30,106 +27,70 @@ export default function LabelsCertifications({ data }: { data: any }) {
     setApeIdccs([])
     setApeLoaded(false)
     setUsedApe(false)
-    setLegiInfos([])
-    setLegiLoaded(false)
-    setPdfUrls([])
-    setLegiRaws([])
-    setPdfError(null)
     setIdccHtml(null)
     setIdccHtmlError(null)
     setIdccHtmlLoading(false)
+    setIdccUsed(null)
 
-    const fetchApe = async (apeCode: string) => {
+    // On essaye d'abord SIRET
+    const fetchSiret = async () => {
+      if (!siret) {
+        fetchApeFallback()
+        return
+      }
+      const siretKey = String(siret).padStart(14, '0')
+      try {
+        const res = await fetch(`https://siret-cc-backend.onrender.com/api/convention?siret=${siretKey}`)
+        if (res.ok) {
+          const cc = await res.json()
+          if (cancelled) return
+          setCcInfo(cc)
+          setCcLoaded(true)
+          if (cc.IDCC) {
+            setIdccUsed(cc.IDCC)
+            fetchLegifranceHtml(cc.IDCC)
+          }
+        } else if (res.status === 404) {
+          // Fallback APE si pas de correspondance SIRET
+          fetchApeFallback()
+        }
+      } catch (e) {
+        fetchApeFallback()
+      }
+    }
+
+    // Fallback APE si SIRET KO
+    const fetchApeFallback = async () => {
+      if (!ape) {
+        setCcLoaded(true)
+        setApeLoaded(true)
+        return
+      }
       setUsedApe(true)
       setApeLoaded(false)
       try {
-        const res = await fetch(`https://siret-cc-backend.onrender.com/api/convention/by-ape?ape=${apeCode}`)
-        if (!res.ok) throw new Error('APE → IDCC non trouvé')
+        const res = await fetch(`https://siret-cc-backend.onrender.com/api/convention/by-ape?ape=${ape}`)
+        if (!res.ok) {
+          setApeLoaded(true)
+          return
+        }
         const idccList = await res.json()
         if (cancelled) return
         setApeIdccs(idccList)
         setApeLoaded(true)
-        fetchLegifranceForIdccs(idccList.map(i => i['Code IDCC']))
-      } catch (e) {
-        setApeIdccs([])
-        setApeLoaded(true)
-        setLegiLoaded(true)
-      }
-    }
-
-    const fetchLegifranceForIdccs = (idccs: string[]) => {
-      setLegiLoaded(false)
-      setLegiInfos([])
-      setPdfUrls([])
-      setLegiRaws([])
-      Promise.all(idccs.map(async idcc => {
-        if (!/^\d+$/.test(idcc)) return null // ignore "Autre" ou code texte
-        try {
-          const res = await fetch(`https://hubshare-cmexpert.fr/legifrance/convention/by-idcc/${idcc}`)
-          if (!res.ok) return null
-          const results = await res.json()
-          const convention = Array.isArray(results) && results.length > 0 ? results[0] : null
-          if (!convention) return null
-          return {
-            legiInfo: convention,
-            legiRaw: results,
-            pdfUrl: (convention.id && (convention.pdfFilePath || convention.pdfFileName))
-              ? `https://hubshare-cmexpert.fr/legifrance/convention/${convention.id}/pdf`
-              : null,
-            idcc
-          }
-        } catch (e) { return null }
-      })).then(legiResults => {
-        if (cancelled) return
-        setLegiInfos(legiResults.filter(Boolean).map(r => r.legiInfo))
-        setPdfUrls(legiResults.filter(Boolean).map(r => r.pdfUrl))
-        setLegiRaws(legiResults.filter(Boolean).map(r => r.legiRaw))
-        setLegiLoaded(true)
-      })
-    }
-
-    // Nouvelle logique : d'abord essayer le SIRET, puis fallback APE si 404
-    const fetchSiretOrApe = async () => {
-      if (siret) {
-        const siretKey = String(siret).padStart(14, '0')
-        try {
-          const res = await fetch(`https://siret-cc-backend.onrender.com/api/convention?siret=${siretKey}`)
-          if (res.ok) {
-            const cc = await res.json()
-            if (cancelled) return
-            setCcInfo(cc)
-            setCcLoaded(true)
-            if (cc.IDCC) {
-              fetchLegifranceForIdccs([cc.IDCC])
-              fetchIdccHtml(cc.IDCC)
-            } else if (ape) {
-              fetchApe(ape)
-            } else {
-              setLegiLoaded(true)
-            }
-          } else if (res.status === 404 && ape) {
-            setCcLoaded(true)
-            fetchApe(ape)
-          } else {
-            setCcLoaded(true)
-            setLegiLoaded(true)
-          }
-        } catch (err) {
-          setCcLoaded(true)
-          if (ape) fetchApe(ape)
-          else setLegiLoaded(true)
+        // Prend le 1er IDCC trouvé (le plus probable) pour la suite Légifrance
+        const firstIdcc = idccList.find((row: any) => /^\d+$/.test(row['Code IDCC']))?.['Code IDCC']
+        if (firstIdcc) {
+          setIdccUsed(firstIdcc)
+          fetchLegifranceHtml(firstIdcc)
         }
-      } else if (ape) {
-        fetchApe(ape)
-      } else {
-        setCcLoaded(true)
+      } catch (e) {
         setApeLoaded(true)
-        setLegiLoaded(true)
       }
     }
 
-    // Ajout : récupère le contenu HTML détaillé via le backend legifrance enrichi
-    const fetchIdccHtml = async (idcc: string) => {
+    // Récupération Légifrance enrichie (tous les articles de toutes les conventions de l'IDCC)
+    const fetchLegifranceHtml = async (idcc: string) => {
       if (!idcc || !/^\d+$/.test(idcc)) return
       setIdccHtmlLoading(true)
       setIdccHtml(null)
@@ -148,47 +109,21 @@ export default function LabelsCertifications({ data }: { data: any }) {
       }
     }
 
-    fetchSiretOrApe()
-
+    fetchSiret()
     return () => { cancelled = true }
+    // eslint-disable-next-line
   }, [siret, ape])
 
-  // Téléchargement PDF, gère plusieurs conventions si besoin
-  const handleDownloadPdf = async (e: React.MouseEvent<HTMLAnchorElement>, pdfUrl: string) => {
-    if (!pdfUrl) return;
-    e.preventDefault();
-    setPdfError(null);
-    try {
-      const res = await fetch(pdfUrl)
-      if (res.ok && res.headers.get('content-type') === 'application/pdf') {
-        window.open(pdfUrl, '_blank');
-      } else {
-        const json = await res.json().catch(() => ({}));
-        setPdfError(json?.error || "PDF non disponible pour cette convention collective.");
-      }
-    } catch (err) {
-      setPdfError("Erreur lors du téléchargement du PDF.");
-    }
-  };
-
-  // Génération PDF du contenu structuré "joli"
-  const handleDownloadPrettyPdf = async (idcc: string) => {
-    if (!idcc) return
-    window.open(`https://hubshare-cmexpert.fr/legifrance/convention/html/${idcc}/pdf`, '_blank')
-  }
-
-  const renderJson = (obj: any) =>
-    <pre className="bg-gray-100 text-xs rounded p-2 overflow-auto">{JSON.stringify(obj, null, 2)}</pre>
-
-  // Affichage structuré joli (récursif)
+  // Affiche tous les articles de toutes les conventions trouvées
   function renderArticles(articles: any[]) {
     return (articles || []).map((a, i) =>
-      <article key={a.id || i} className="mb-4">
+      <article key={a.id || a.num || i} className="mb-4">
         <h4 className="font-semibold mt-4 text-indigo-700">{a.num ? `Article ${a.num}` : ''} {a.title || ''}</h4>
         <div dangerouslySetInnerHTML={{ __html: a.content || a.texteHtml || "" }} />
       </article>
     )
   }
+
   function renderSections(sections: any[]) {
     return (sections || []).map((s, i) =>
       <section key={s.id || i} className="mb-6">
@@ -197,6 +132,21 @@ export default function LabelsCertifications({ data }: { data: any }) {
         {renderSections(s.sections)}
       </section>
     )
+  }
+
+  function renderAllConventions(convs: any[]) {
+    return (convs || []).map((conv, idx) => (
+      <div key={conv.id || idx} className="my-6 border-t pt-3">
+        <h3 className="text-lg font-bold mb-2">{conv.titre || ""}</h3>
+        {conv.descriptionFusionHtml && (
+          <div className="mb-2" dangerouslySetInnerHTML={{ __html: conv.descriptionFusionHtml }} />
+        )}
+        {/* Articles à plat (même hors sections) */}
+        {renderArticles(conv.articles)}
+        {/* Sections (récursif, avec sous-articles si présents) */}
+        {renderSections(conv.sections)}
+      </div>
+    ))
   }
 
   return (
@@ -217,8 +167,7 @@ export default function LabelsCertifications({ data }: { data: any }) {
       </div>
       <div className="bg-white p-4 rounded shadow">
         <h3 className="font-semibold mb-2">Convention collective</h3>
-        {(!ccLoaded && !apeLoaded) || !legiLoaded ? <p>Chargement...</p> : null}
-
+        {(!ccLoaded && !apeLoaded) && <p>Chargement...</p>}
         {/* SIRET trouvé */}
         {ccLoaded && ccInfo && ccInfo.IDCC && (
           <>
@@ -227,11 +176,10 @@ export default function LabelsCertifications({ data }: { data: any }) {
             <p><b>Date MAJ&nbsp;:</b> {ccInfo.DATE_MAJ}</p>
             <details className="my-2">
               <summary className="cursor-pointer">Voir le JSON SIRET-CC</summary>
-              {renderJson(ccInfo)}
+              <pre className="bg-gray-100 text-xs rounded p-2 overflow-auto">{JSON.stringify(ccInfo, null, 2)}</pre>
             </details>
           </>
         )}
-
         {/* Fallback par APE */}
         {usedApe && apeLoaded && apeIdccs.length > 0 && (
           <div className="my-2">
@@ -240,7 +188,7 @@ export default function LabelsCertifications({ data }: { data: any }) {
               <span className="font-bold">{ape}</span> :
             </p>
             {apeIdccs
-              .filter(r => /^\d+$/.test(r['Code IDCC'])) // ne garde que les vrais codes IDCC
+              .filter(r => /^\d+$/.test(r['Code IDCC']))
               .map((row, i) => (
                 <div key={row['Code IDCC'] + '-' + i} className="mb-1">
                   <b>IDCC proposé :</b> {row['Code IDCC']} {row["Intitul‚ du code IDCC"] && <span>({row["Intitul‚ du code IDCC"]})</span>}
@@ -248,7 +196,7 @@ export default function LabelsCertifications({ data }: { data: any }) {
               ))}
             <details className="my-2">
               <summary className="cursor-pointer">Voir tous les résultats bruts APE→IDCC</summary>
-              {renderJson(apeIdccs)}
+              <pre className="bg-gray-100 text-xs rounded p-2 overflow-auto">{JSON.stringify(apeIdccs, null, 2)}</pre>
             </details>
           </div>
         )}
@@ -259,76 +207,24 @@ export default function LabelsCertifications({ data }: { data: any }) {
           </p>
         )}
 
-        {/* Affichage conventions Legifrance (une ou plusieurs si multi-IDCC APE) */}
-        {legiLoaded && legiInfos.length > 0 && legiInfos.map((legiInfo, idx) => (
-          <div key={legiInfo.id || idx} className="my-4 border-t pt-3">
-            <p><b>Libellé</b>&nbsp;: {legiInfo.titre || legiInfo.libelle || "Non disponible"}</p>
-            <p><b>Identifiant Légifrance</b> : {legiInfo.id || "Non disponible"}</p>
-            {pdfUrls[idx] ? (
-              <>
-                <a
-                  href={pdfUrls[idx]}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-block mt-2 px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700"
-                  download
-                  onClick={e => handleDownloadPdf(e, pdfUrls[idx])}
-                >
-                  Télécharger la convention collective au format PDF
-                </a>
-                {pdfError && (
-                  <p className="text-red-600 italic">{pdfError}</p>
-                )}
-              </>
-            ) : (
-              <>
-                <p className="text-gray-500 italic">PDF non disponible</p>
-                {legiInfo?.id && (
-                  <a
-                    href={`https://www.legifrance.gouv.fr/conv_coll/id/${legiInfo.id}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-block mt-2 px-4 py-2 bg-gray-200 text-gray-800 rounded hover:bg-gray-300"
-                  >
-                    Consulter ou télécharger manuellement sur Légifrance
-                  </a>
-                )}
-              </>
-            )}
-            <details className="my-2">
-              <summary className="cursor-pointer">Voir le JSON Légifrance (détail)</summary>
-              {renderJson(legiInfo)}
-            </details>
-            <details className="my-2">
-              <summary className="cursor-pointer">Voir la réponse brute Légifrance (tableau)</summary>
-              {renderJson(legiRaws[idx])}
-            </details>
-          </div>
-        ))}
-
-        {/* Affichage "joli" du contenu IDCC (Legifrance structuré) */}
-        {ccLoaded && ccInfo && ccInfo.IDCC && (
-          <div className="my-4 border-t pt-3">
-            <h4 className="font-semibold text-indigo-900 mb-2">Détail complet de la convention collective (Légifrance)</h4>
-            {idccHtmlLoading && <p>Chargement du contenu détaillé...</p>}
-            {idccHtmlError && <p className="text-red-700">{idccHtmlError}</p>}
-            {idccHtml && (
-              <>
-                <h2 className="text-lg font-bold mb-2">{idccHtml.titre || ""}</h2>
-                {idccHtml.descriptionFusionHtml && (
-                  <div className="mb-2" dangerouslySetInnerHTML={{ __html: idccHtml.descriptionFusionHtml }} />
-                )}
-                {renderSections(idccHtml.sections)}
-                <button
-                  className="mt-4 px-4 py-2 bg-green-700 text-white rounded hover:bg-green-800"
-                  onClick={() => handleDownloadPrettyPdf(ccInfo.IDCC)}
-                >
-                  Télécharger ce détail au format PDF (mise en page lisible)
-                </button>
-              </>
-            )}
-          </div>
-        )}
+        {/* Détail complet Légifrance */}
+        <div className="my-4 border-t pt-3">
+          <h4 className="font-semibold text-indigo-900 mb-2">Détail complet de la convention collective (Légifrance)</h4>
+          {idccHtmlLoading && <p>Chargement du contenu détaillé...</p>}
+          {idccHtmlError && <p className="text-red-700">{idccHtmlError}</p>}
+          {idccHtml && idccHtml.conventions && idccHtml.conventions.length > 0 && (
+            <>
+              {renderAllConventions(idccHtml.conventions)}
+              {/* PDF bouton - désactive si erreur PDF côté backend */}
+              <button
+                className="mt-4 px-4 py-2 bg-green-700 text-white rounded hover:bg-green-800"
+                onClick={() => idccUsed && window.open(`https://hubshare-cmexpert.fr/legifrance/convention/html/${idccUsed}/pdf`, '_blank')}
+              >
+                Télécharger ce détail au format PDF (mise en page lisible)
+              </button>
+            </>
+          )}
+        </div>
       </div>
     </div>
   )
