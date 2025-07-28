@@ -4,86 +4,123 @@ export default function LabelsCertifications({ data }: { data: any }) {
   const labels = data.labels || []
   const divers = data.divers || []
   const siret = data.siret || data.etablissements?.[0]?.siret || null
+  const ape = data.ape || data.naf || data.etablissements?.[0]?.ape || data.etablissements?.[0]?.naf || null
 
   const [ccInfo, setCcInfo] = useState<any>(null)
   const [ccLoaded, setCcLoaded] = useState(false)
-  const [legiInfo, setLegiInfo] = useState<any>(null)
+  const [apeIdccs, setApeIdccs] = useState<any[]>([])
+  const [apeLoaded, setApeLoaded] = useState(false)
+  const [usedApe, setUsedApe] = useState(false)
+
+  const [legiInfos, setLegiInfos] = useState<any[]>([])
   const [legiLoaded, setLegiLoaded] = useState(false)
-  const [pdfUrl, setPdfUrl] = useState<string | null>(null)
-  const [legiRaw, setLegiRaw] = useState<any>(null)
-  const [pdfError, setPdfError] = useState<string | null>(null);
+  const [pdfUrls, setPdfUrls] = useState<any[]>([])
+  const [legiRaws, setLegiRaws] = useState<any[]>([])
+  const [pdfError, setPdfError] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
     setCcInfo(null)
     setCcLoaded(false)
-    setLegiInfo(null)
+    setApeIdccs([])
+    setApeLoaded(false)
+    setUsedApe(false)
+    setLegiInfos([])
     setLegiLoaded(false)
-    setPdfUrl(null)
-    setLegiRaw(null)
+    setPdfUrls([])
+    setLegiRaws([])
     setPdfError(null)
 
-    if (!siret) {
-      setCcLoaded(true)
-      setLegiLoaded(true)
-      return
+    const fetchApe = async (apeCode: string) => {
+      setUsedApe(true)
+      setApeLoaded(false)
+      try {
+        const res = await fetch(`https://siret-cc-backend.onrender.com/api/convention/by-ape?ape=${apeCode}`)
+        if (!res.ok) throw new Error('APE → IDCC non trouvé')
+        const idccList = await res.json()
+        if (cancelled) return
+        setApeIdccs(idccList)
+        setApeLoaded(true)
+        // Pour chaque IDCC trouvé, fetch legifrance
+        fetchLegifranceForIdccs(idccList.map(i => i['Code IDCC']))
+      } catch (e) {
+        setApeIdccs([])
+        setApeLoaded(true)
+      }
     }
 
-    const siretKey = String(siret).padStart(14, '0')
-    fetch(`https://siret-cc-backend.onrender.com/api/convention?siret=${siretKey}`)
-      .then(async res => {
-        if (!res.ok) throw new Error('Convention non trouvée')
-        const cc = await res.json()
+    const fetchLegifranceForIdccs = (idccs: string[]) => {
+      setLegiLoaded(false)
+      setLegiInfos([])
+      setPdfUrls([])
+      setLegiRaws([])
+      Promise.all(idccs.map(async idcc => {
+        if (!/^\d+$/.test(idcc)) return null // ignore "Autre" ou code texte
+        try {
+          const res = await fetch(`https://hubshare-cmexpert.fr/legifrance/convention/by-idcc/${idcc}`)
+          if (!res.ok) return null
+          const results = await res.json()
+          const convention = Array.isArray(results) && results.length > 0 ? results[0] : null
+          if (!convention) return null
+          return {
+            legiInfo: convention,
+            legiRaw: results,
+            pdfUrl: (convention.id && (convention.pdfFilePath || convention.pdfFileName))
+              ? `https://hubshare-cmexpert.fr/legifrance/convention/${convention.id}/pdf`
+              : null,
+            idcc
+          }
+        } catch (e) { return null }
+      })).then(legiResults => {
         if (cancelled) return
-        setCcInfo(cc)
-        setCcLoaded(true)
-
-        if (cc.IDCC) {
-          fetch(`https://hubshare-cmexpert.fr/legifrance/convention/by-idcc/${cc.IDCC}`)
-            .then(async res2 => {
-              if (!res2.ok) throw new Error('Legifrance non trouvé')
-              const results = await res2.json()
-              const convention = Array.isArray(results) && results.length > 0 ? results[0] : null
-              setLegiInfo(convention || null)
-              setLegiRaw(results)
-              setLegiLoaded(true)
-
-              if (convention && convention.id && (convention.pdfFilePath || convention.pdfFileName)) {
-                setPdfUrl(`https://hubshare-cmexpert.fr/legifrance/convention/${convention.id}/pdf`)
-              } else {
-                setPdfUrl(null)
-              }
-            })
-            .catch(() => {
-              setLegiInfo(null)
-              setLegiRaw(null)
-              setLegiLoaded(true)
-              setPdfUrl(null)
-            })
-        } else {
-          setLegiLoaded(true)
-          setPdfUrl(null)
-        }
-      })
-      .catch(() => {
-        setCcLoaded(true)
+        setLegiInfos(legiResults.filter(Boolean).map(r => r.legiInfo))
+        setPdfUrls(legiResults.filter(Boolean).map(r => r.pdfUrl))
+        setLegiRaws(legiResults.filter(Boolean).map(r => r.legiRaw))
         setLegiLoaded(true)
-        setPdfUrl(null)
-        setLegiRaw(null)
       })
+    }
+
+    if (siret) {
+      const siretKey = String(siret).padStart(14, '0')
+      fetch(`https://siret-cc-backend.onrender.com/api/convention?siret=${siretKey}`)
+        .then(async res => {
+          if (!res.ok) throw new Error('Convention non trouvée')
+          const cc = await res.json()
+          if (cancelled) return
+          setCcInfo(cc)
+          setCcLoaded(true)
+          if (cc.IDCC) {
+            fetchLegifranceForIdccs([cc.IDCC])
+          } else if (ape) {
+            fetchApe(ape)
+          } else {
+            setLegiLoaded(true)
+          }
+        })
+        .catch(() => {
+          setCcLoaded(true)
+          if (ape) fetchApe(ape)
+          else setLegiLoaded(true)
+        })
+    } else if (ape) {
+      fetchApe(ape)
+    } else {
+      setCcLoaded(true)
+      setApeLoaded(true)
+      setLegiLoaded(true)
+    }
 
     return () => { cancelled = true }
-  }, [siret])
+  }, [siret, ape])
 
-  // Pour le téléchargement, on tente d'ouvrir le PDF, et on gère l'erreur si le backend renvoie une erreur JSON
-  const handleDownloadPdf = async (e: React.MouseEvent<HTMLAnchorElement>) => {
+  // Téléchargement PDF, gère plusieurs conventions si besoin
+  const handleDownloadPdf = async (e: React.MouseEvent<HTMLAnchorElement>, pdfUrl: string) => {
     if (!pdfUrl) return;
     e.preventDefault();
     setPdfError(null);
     try {
       const res = await fetch(pdfUrl)
       if (res.ok && res.headers.get('content-type') === 'application/pdf') {
-        // Téléchargement direct si c'est un PDF
         window.open(pdfUrl, '_blank');
       } else {
         const json = await res.json().catch(() => ({}));
@@ -94,7 +131,6 @@ export default function LabelsCertifications({ data }: { data: any }) {
     }
   };
 
-  // Affichage JSON formaté
   const renderJson = (obj: any) =>
     <pre className="bg-gray-100 text-xs rounded p-2 overflow-auto">{JSON.stringify(obj, null, 2)}</pre>
 
@@ -116,8 +152,10 @@ export default function LabelsCertifications({ data }: { data: any }) {
       </div>
       <div className="bg-white p-4 rounded shadow">
         <h3 className="font-semibold mb-2">Convention collective</h3>
-        {(!ccLoaded || !legiLoaded) && <p>Chargement...</p>}
-        {ccLoaded && ccInfo && (
+        {(!ccLoaded && !apeLoaded) || !legiLoaded ? <p>Chargement...</p> : null}
+
+        {/* SIRET trouvé */}
+        {ccLoaded && ccInfo && ccInfo.IDCC && (
           <>
             <p><b>IDCC&nbsp;:</b> {ccInfo.IDCC}</p>
             <p><b>Mois référence&nbsp;:</b> {ccInfo.MOIS}</p>
@@ -128,24 +166,48 @@ export default function LabelsCertifications({ data }: { data: any }) {
             </details>
           </>
         )}
-        {ccLoaded && !ccInfo && (
+
+        {/* Fallback par APE */}
+        {usedApe && apeLoaded && apeIdccs.length > 0 && (
+          <div className="my-2">
+            <p className="text-yellow-700 font-semibold">
+              Aucun IDCC trouvé par SIRET, correspondance indicative calculée à partir du code APE&nbsp;
+              <span className="font-bold">{ape}</span> :
+            </p>
+            {apeIdccs
+              .filter(r => /^\d+$/.test(r['Code IDCC'])) // ne garde que les vrais codes IDCC
+              .map((row, i) => (
+                <div key={row['Code IDCC'] + '-' + i} className="mb-1">
+                  <b>IDCC proposé :</b> {row['Code IDCC']} {row["Intitul‚ du code IDCC"] && <span>({row["Intitul‚ du code IDCC"]})</span>}
+                </div>
+              ))}
+            <details className="my-2">
+              <summary className="cursor-pointer">Voir tous les résultats bruts APE→IDCC</summary>
+              {renderJson(apeIdccs)}
+            </details>
+          </div>
+        )}
+
+        {(ccLoaded && !ccInfo && apeLoaded && !apeIdccs.length) && (
           <p className="text-gray-600">
-            Aucune information sur la convention collective n’est disponible pour cet établissement.
+            Aucune information sur la convention collective n’est disponible pour cet établissement (ni via SIRET, ni via APE).
           </p>
         )}
-        {legiLoaded && legiInfo && (
-          <>
+
+        {/* Affichage conventions Legifrance (une ou plusieurs si multi-IDCC APE) */}
+        {legiLoaded && legiInfos.length > 0 && legiInfos.map((legiInfo, idx) => (
+          <div key={legiInfo.id || idx} className="my-4 border-t pt-3">
             <p><b>Libellé</b>&nbsp;: {legiInfo.titre || legiInfo.libelle || "Non disponible"}</p>
             <p><b>Identifiant Légifrance</b> : {legiInfo.id || "Non disponible"}</p>
-            {pdfUrl ? (
+            {pdfUrls[idx] ? (
               <>
                 <a
-                  href={pdfUrl}
+                  href={pdfUrls[idx]}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-block mt-2 px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700"
                   download
-                  onClick={handleDownloadPdf}
+                  onClick={e => handleDownloadPdf(e, pdfUrls[idx])}
                 >
                   Télécharger la convention collective au format PDF
                 </a>
@@ -174,10 +236,10 @@ export default function LabelsCertifications({ data }: { data: any }) {
             </details>
             <details className="my-2">
               <summary className="cursor-pointer">Voir la réponse brute Légifrance (tableau)</summary>
-              {renderJson(legiRaw)}
+              {renderJson(legiRaws[idx])}
             </details>
-          </>
-        )}
+          </div>
+        ))}
       </div>
     </div>
   )
