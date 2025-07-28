@@ -5,52 +5,61 @@ interface ConventionCollective {
   libelle: string
 }
 
-export default function LabelsCertifications({ data }: { data: any }) {
-  const labels = data.labels || []
-  const divers = data.divers || []
+const SIRET_JSON_FILES = [
+  '/data/json_1_siret_9999.json',
+  '/data/json_2_siret_9999.json',
+  '/data/json_3_siret_9999.json',
+  '/data/json_4_siret_9999.json'
+];
 
-  // On récupère le SIRET principal affiché
+export default function LabelsCertifications({ data }: { data: any }) {
+  const labels = data.labels || [];
+  const divers = data.divers || [];
+
   const siret = data.siret || data.etablissements?.[0]?.siret || null;
-  // On détermine le préfixe pour choisir le bon fichier JSON
-  const siretPrefix = siret ? String(siret)[0] : null;
-  // On prépare l'URL du fichier à charger
-  const jsonUrl = siretPrefix
-    ? `/data/json_${siretPrefix}_siret_9999.json`
-    : null;
 
   const [ccInfo, setCcInfo] = useState<ConventionCollective | null>(null)
   const [ccLoaded, setCcLoaded] = useState(false)
 
   useEffect(() => {
-    if (!jsonUrl || !siret) {
+    let cancelled = false;
+    if (!siret) {
       setCcLoaded(true);
       setCcInfo(null);
       return;
     }
     setCcLoaded(false);
-    fetch(jsonUrl)
-      .then(res => {
-        if (!res.ok) throw new Error("Erreur chargement fichier conventions");
-        return res.json();
-      })
-      .then((json) => {
-        const found = json[siret];
-        if (found) {
-          setCcInfo({
-            idcc: found.idcc,
-            libelle: found.libelle,
-          });
-        } else {
-          setCcInfo(null);
+    setCcInfo(null);
+
+    // Fonction asynchrone pour séquentiellement fetch jusqu'à trouver le SIRET
+    (async () => {
+      for (const url of SIRET_JSON_FILES) {
+        try {
+          const res = await fetch(url);
+          if (!res.ok) continue; // On passe au fichier suivant si 404 ou autre erreur
+          const json = await res.json();
+          const found = json[siret];
+          if (found) {
+            if (!cancelled) {
+              setCcInfo({
+                idcc: found.idcc,
+                libelle: found.libelle,
+              });
+              setCcLoaded(true);
+            }
+            return;
+          }
+        } catch (e) {
+          // Ignore l'erreur et tente le fichier suivant
         }
-      })
-      .catch(() => {
+      }
+      if (!cancelled) {
         setCcInfo(null);
-      })
-      .finally(() => {
         setCcLoaded(true);
-      });
-  }, [jsonUrl, siret]);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [siret]);
 
   return (
     <div className="space-y-4">
@@ -84,5 +93,5 @@ export default function LabelsCertifications({ data }: { data: any }) {
         )}
       </div>
     </div>
-  )
+  );
 }
