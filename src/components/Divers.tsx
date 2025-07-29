@@ -61,7 +61,8 @@ export default function LabelsCertifications({ data }: { data: any }) {
             setIdccUsed(cc.IDCC)
             fetchLegifranceHtml(cc.IDCC)
           }
-        } else if (res.status === 404) {
+        } else {
+          // Toujours tenter le fallback même si erreur ou 404
           fetchApeFallback()
         }
       } catch (e) {
@@ -77,6 +78,9 @@ export default function LabelsCertifications({ data }: { data: any }) {
       }
       setUsedApe(true)
       setApeLoaded(false)
+      // Debug log pour traçage
+      // eslint-disable-next-line no-console
+      console.log("Fallback APE déclenché pour", ape)
       try {
         // Correction : on passe le code APE "propre"
         const res = await fetch(`https://siret-cc-backend.onrender.com/api/convention/by-ape?ape=${ape}`)
