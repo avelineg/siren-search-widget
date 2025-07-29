@@ -5,11 +5,20 @@ function truncate(str: string, n: number) {
   return str && str.length > n ? str.substr(0, n - 1) + "…" : str
 }
 
+// Fonction utilitaire pour extraire le code APE "propre" (juste les 5 caractères)
+function extractApeCode(rawApe: string | null): string {
+  if (!rawApe) return ""
+  return String(rawApe).trim().split(/[ (]/)[0].toUpperCase()
+}
+
 export default function LabelsCertifications({ data }: { data: any }) {
   const labels = data.labels || []
   const divers = data.divers || []
   const siret = data.siret || data.etablissements?.[0]?.siret || null
-  const ape = data.ape || data.naf || data.etablissements?.[0]?.ape || data.etablissements?.[0]?.naf || null
+
+  // Correction ici : on extrait le code APE brut pour le fallback, même si data.ape inclut un libellé !
+  const apeFull = data.ape || data.naf || data.etablissements?.[0]?.ape || data.etablissements?.[0]?.naf || null
+  const ape = extractApeCode(apeFull)
 
   const [ccInfo, setCcInfo] = useState<any>(null)
   const [ccLoaded, setCcLoaded] = useState(false)
@@ -69,6 +78,7 @@ export default function LabelsCertifications({ data }: { data: any }) {
       setUsedApe(true)
       setApeLoaded(false)
       try {
+        // Correction : on passe le code APE "propre"
         const res = await fetch(`https://siret-cc-backend.onrender.com/api/convention/by-ape?ape=${ape}`)
         if (!res.ok) {
           setApeLoaded(true)
@@ -110,7 +120,7 @@ export default function LabelsCertifications({ data }: { data: any }) {
     fetchSiret()
     return () => { cancelled = true }
     // eslint-disable-next-line
-  }, [siret, ape])
+  }, [siret, apeFull]) // attention ici : relancer si apeFull change
 
   // Affichage sommaire façon Legifrance
   function renderSommaire(articles: any[]) {
