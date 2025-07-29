@@ -16,8 +16,15 @@ export default function LabelsCertifications({ data }: { data: any }) {
   const divers = data.divers || []
   const siret = data.siret || data.etablissements?.[0]?.siret || null
 
-  // Correction ici : on extrait le code APE brut pour le fallback, même si data.ape inclut un libellé !
-  const apeFull = data.ape || data.naf || data.etablissements?.[0]?.ape || data.etablissements?.[0]?.naf || null
+  // Correction : on extrait le code APE brut pour le fallback, même si data.ape inclut un libellé !
+  // On ajoute data.code_ape en priorité car c'est le champ issu du mapping principal
+  const apeFull =
+    data.code_ape ||
+    data.ape ||
+    data.naf ||
+    data.etablissements?.[0]?.ape ||
+    data.etablissements?.[0]?.naf ||
+    null
   const ape = extractApeCode(apeFull)
 
   const [ccInfo, setCcInfo] = useState<any>(null)
@@ -73,7 +80,7 @@ export default function LabelsCertifications({ data }: { data: any }) {
     }
 
     const fetchApeFallback = async () => {
-      console.log("FETCH APE FALLBACK ape=", ape, "apeFull=", apeFull, "data.ape=", data.ape)
+      console.log("FETCH APE FALLBACK ape=", ape, "apeFull=", apeFull, "data.code_ape=", data.code_ape, "data.ape=", data.ape, "data.naf=", data.naf)
       if (!ape) {
         setCcLoaded(true)
         setApeLoaded(true)
