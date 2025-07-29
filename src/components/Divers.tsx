@@ -63,23 +63,27 @@ export default function LabelsCertifications({ data }: { data: any }) {
           }
         } else {
           // Toujours tenter le fallback même si erreur ou 404
+          console.log("SIRET non trouvé ou erreur, on tente le fallback APE")
           fetchApeFallback()
         }
       } catch (e) {
+        console.log("Erreur lors du fetch SIRET, on tente le fallback APE")
         fetchApeFallback()
       }
     }
 
     const fetchApeFallback = async () => {
+      console.log("FETCH APE FALLBACK ape=", ape, "apeFull=", apeFull, "data.ape=", data.ape)
       if (!ape) {
         setCcLoaded(true)
         setApeLoaded(true)
+        // log si jamais on entre ici
+        console.warn("APE Fallback non tenté car ape est vide !", { ape, apeFull, data })
         return
       }
       setUsedApe(true)
       setApeLoaded(false)
       // Debug log pour traçage
-      // eslint-disable-next-line no-console
       console.log("Fallback APE déclenché pour", ape)
       try {
         // Correction : on passe le code APE "propre"
