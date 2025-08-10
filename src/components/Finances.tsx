@@ -13,30 +13,10 @@ import {
 
 const ACTE_DOWNLOAD_BASE = "https://hubshare-cmexpert.fr"; // Backend URL for acte downloads
 
-type BilanLike = {
-  // différentes variantes possibles selon les sources
-  dateCloture?: string | number | Date;
-  date_cloture?: string | number | Date;
-  exercice?: string | number;
-  annee?: string | number;
-
-  chiffreAffaires?: number | string;
-  chiffre_affaires?: number | string;
-  chiffre_affaires_net?: number | string;
-  ca?: number | string;
-  ca_net?: number | string;
-
-  resultatNet?: number | string;
-  resultat_net?: number | string;
-
-  effectif?: number | string;
-  effectif_moyen?: number | string;
-
-  capitalSocial?: number | string;
-  capital_social?: number | string;
-};
+type AnyObj = Record<string, any>;
 
 type FinanceRow = {
+  idBilan?: string;
   exercice: string;
   chiffre_affaires: number | null;
   resultat_net: number | null;
@@ -60,17 +40,77 @@ function coalesce<T>(...vals: T[]): T | undefined {
 function toNumber(val: unknown): number | null {
   if (typeof val === "number") return Number.isFinite(val) ? val : null;
   if (typeof val === "string") {
-    const n = Number(val.replace?.(/\s/g, "") ?? val);
+    const cleaned = val.replace?.(/\s/g, "").replace?.(/[^\d.-]/g, "") ?? val;
+    const n = Number(cleaned);
     return Number.isFinite(n) ? n : null;
   }
   return null;
 }
 
-function getExercice(b: BilanLike): string | undefined {
-  const cloture = coalesce(b.dateCloture, b.date_cloture);
+function getExercice(obj: AnyObj): string | undefined {
+  const cloture = coalesce(obj.dateCloture, obj.date_cloture);
   if (cloture) return String(cloture).slice(0, 4);
-  const exo = coalesce(b.exercice, b.annee);
+  const exo = coalesce(obj.exercice, obj.annee, obj.year);
   return exo ? String(exo) : undefined;
+}
+
+function getBilanId(obj: AnyObj): string | undefined {
+  return coalesce(
+    obj.bilanId,
+    obj.bilan_id,
+    obj.id,
+    obj._id,
+    obj.identifiant,
+    obj.uid
+  );
+}
+
+function pickNumbersFromRootOrNested(d: AnyObj) {
+  // Essaye diverses formes rencontrées dans bilans-saisis
+  const cr = coalesce(
+    d.compte_de_resultat,
+    d.compteDeResultat,
+    d.compte_resultat,
+    d.compte
+  ) || {};
+
+  const ca = coalesce(
+    toNumber(d.chiffreAffaires),
+    toNumber(d.chiffre_affaires),
+    toNumber(d.chiffreAffairesNet),
+    toNumber(d.chiffre_affaires_net),
+    toNumber(cr.chiffreAffaires),
+    toNumber(cr.chiffre_affaires),
+    toNumber(cr.chiffreAffairesNet),
+    toNumber(cr.chiffre_affaires_net)
+  );
+
+  const rn = coalesce(
+    toNumber(d.resultatNet),
+    toNumber(d.resultat_net),
+    toNumber(cr.resultatNet),
+    toNumber(cr.resultat_net)
+  );
+
+  const effectif = coalesce(
+    toNumber(d.effectifMoyen),
+    toNumber(d.effectif_moyen),
+    toNumber(d.effectif),
+    d.effectif // peut parfois être une chaîne ex: "NC"
+  );
+
+  const capital = coalesce(
+    toNumber(d.capitalSocial),
+    toNumber(d.capital_social),
+    toNumber(d.capital)
+  );
+
+  return {
+    chiffre_affaires: ca ?? null,
+    resultat_net: rn ?? null,
+    effectif: effectif ?? null,
+    capital_social: capital ?? null,
+  };
 }
 
 export default function FinancialData({ data }: { data?: { siren?: string } }) {
@@ -82,9 +122,10 @@ export default function FinancialData({ data }: { data?: { siren?: string } }) {
   const [actes, setActes] = useState<ActeLike[]>([]);
   const [loadingActes, setLoadingActes] = useState(true);
 
-  // Load bilans and actes via /documents-comptes endpoint
   useEffect(() => {
     if (!siren) return;
+
+    let cancelled = false;
     setLoading(true);
     setLoadingActes(true);
     setError(null);
@@ -93,11 +134,12 @@ export default function FinancialData({ data }: { data?: { siren?: string } }) {
 
     inpiEntreprise
       .get(`/${siren}/documents-comptes`)
-      .then((res) => {
+      .then(async (res) => {
+        if (cancelled) return;
         const payload = res.data ?? {};
 
-        // Bilans: accepter plusieurs structures
-        const bilansRaw: BilanLike[] = Array.isArray(payload)
+        // 1) Normaliser la liste des bilans
+        const bilansRaw: AnyObj[] = Array.isArray(payload)
           ? payload
           : payload.bilans ??
             payload.comptes_annuels ??
@@ -105,65 +147,93 @@ export default function FinancialData({ data }: { data?: { siren?: string } }) {
             payload.bilans_saisis ??
             [];
 
-        const mapped: FinanceRow[] = bilansRaw
+        const initialRows: FinanceRow[] = bilansRaw
           .map((f) => {
             const exercice = getExercice(f);
+            const idBilan = getBilanId(f);
+
+            const { chiffre_affaires, resultat_net, effectif, capital_social } =
+              pickNumbersFromRootOrNested(f);
+
             return {
+              idBilan,
               exercice: exercice ?? "",
-              chiffre_affaires:
-                coalesce(
-                  toNumber(f.chiffreAffaires),
-                  toNumber(f.chiffre_affaires),
-                  toNumber(f.chiffre_affaires_net),
-                  toNumber((f as any)?.compte_de_resultat?.chiffre_affaires), // fallback éventuel
-                  toNumber(f.ca),
-                  toNumber(f.ca_net)
-                ) ?? null,
-              resultat_net:
-                coalesce(
-                  toNumber(f.resultatNet),
-                  toNumber(f.resultat_net),
-                  toNumber((f as any)?.compte_de_resultat?.resultat_net)
-                ) ?? null,
-              effectif:
-                coalesce(
-                  toNumber(f.effectif),
-                  toNumber(f.effectif_moyen),
-                  (f as any)?.effectif
-                ) ?? null,
-              capital_social:
-                coalesce(
-                  toNumber(f.capitalSocial),
-                  toNumber(f.capital_social)
-                ) ?? null,
+              chiffre_affaires,
+              resultat_net,
+              effectif,
+              capital_social,
             };
           })
-          // garder uniquement ceux avec un exercice valide
-          .filter((row) => row.exercice)
+          .filter((r) => r.exercice)
           .sort((a, b) => Number(a.exercice) - Number(b.exercice));
 
-        setFinances(mapped);
+        setFinances(initialRows);
 
-        // Actes
+        // 2) Actes
         const actesRaw: ActeLike[] =
           payload.actes ?? payload.documents ?? payload.actes_inpi ?? [];
         setActes(Array.isArray(actesRaw) ? actesRaw : []);
+
+        // 3) Enrichir avec le détail bilans-saisis quand nécessaire
+        const needDetail = initialRows.filter(
+          (r) =>
+            r.idBilan &&
+            (r.chiffre_affaires === null ||
+              r.resultat_net === null ||
+              r.effectif === null ||
+              r.capital_social === null)
+        );
+
+        if (needDetail.length) {
+          // charge en parallèle; si beaucoup, on peut limiter la concurrence
+          await Promise.allSettled(
+            needDetail.map(async (row) => {
+              try {
+                const resp = await inpiEntreprise.get(
+                  `/${siren}/comptes-annuels/${row.idBilan}`
+                );
+                if (cancelled) return;
+
+                const d = resp.data ?? {};
+                const enriched = pickNumbersFromRootOrNested(d);
+
+                setFinances((prev) =>
+                  prev.map((p) =>
+                    p.idBilan === row.idBilan
+                      ? {
+                          ...p,
+                          ...enriched,
+                        }
+                      : p
+                  )
+                );
+              } catch {
+                // silencieux: si le détail échoue, on garde les valeurs existantes
+              }
+            })
+          );
+        }
       })
       .catch(() => {
+        if (cancelled) return;
         setError("Aucune donnée financière disponible via l’INPI.");
         setFinances([]);
         setActes([]);
       })
       .finally(() => {
+        if (cancelled) return;
         setLoading(false);
         setLoadingActes(false);
       });
+
+    return () => {
+      cancelled = true;
+    };
   }, [siren]);
 
   if (!siren) return null;
   if (loading) return <div>Chargement des données financières…</div>;
 
-  // Data for the chart
   const chartData = finances.map((f) => ({
     exercice: f.exercice,
     "Chiffre d'affaires":
@@ -245,7 +315,7 @@ export default function FinancialData({ data }: { data?: { siren?: string } }) {
             </thead>
             <tbody>
               {finances.map((f) => (
-                <tr key={f.exercice} className="border-b hover:bg-gray-50">
+                <tr key={f.idBilan ?? f.exercice} className="border-b hover:bg-gray-50">
                   <td className="px-2 py-1">{f.exercice}</td>
                   <td className="px-2 py-1">
                     {typeof f.chiffre_affaires === "number"
@@ -274,7 +344,7 @@ export default function FinancialData({ data }: { data?: { siren?: string } }) {
         </>
       )}
 
-      {/* Nouvelle mise en forme des actes INPI */}
+      {/* Actes INPI */}
       <div className="mt-8">
         <h4 className="font-semibold text-lg border-b pb-1 mb-4">Actes déposés (INPI)</h4>
         {loadingActes ? (
