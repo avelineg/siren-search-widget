@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { inpiEntreprise } from "../services/api";
 import {
   ResponsiveContainer,
@@ -11,7 +11,7 @@ import {
   CartesianGrid,
 } from "recharts";
 
-const ACTE_DOWNLOAD_BASE = "https://hubshare-cmexpert.fr"; // Backend URL for acte downloads
+const ACTE_DOWNLOAD_BASE = "https://hubshare-cmexpert.fr"; // Backend URL pour les téléchargements
 
 type AnyObj = Record<string, any>;
 
@@ -25,12 +25,22 @@ type FinanceRow = {
 };
 
 type ActeLike = {
-  id: string;
+  id?: string;
   dateDepot?: string;
   nomDocument?: string;
   libelle?: string;
   description?: string;
   typeRdd?: Array<{ typeActe?: string; decision?: string }>;
+};
+
+type DossierDoc = {
+  id?: string;
+  date?: string;
+  titre?: string;
+  type?: string; // "acte" | "document" | "bilan" | ...
+  source?: string; // d'où ça vient pour debug (actes, documents, bilan.fichiers, ...)
+  raw?: AnyObj; // référence brute pour debug
+  url?: string; // lien brut si dispo
 };
 
 function coalesce<T>(...vals: T[]): T | undefined {
@@ -66,7 +76,6 @@ function getBilanId(obj: AnyObj): string | undefined {
 }
 
 function pickNumbersFromRootOrNested(d: AnyObj) {
-  // Essaye diverses formes rencontrées dans bilans-saisis
   const cr = coalesce(
     d.compte_de_resultat,
     d.compteDeResultat,
@@ -113,6 +122,31 @@ function pickNumbersFromRootOrNested(d: AnyObj) {
   };
 }
 
+// Concurrence simple limitée pour les appels détail
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  limit: number,
+  worker: (item: T, index: number) => Promise<R>
+): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let idx = 0;
+
+  async function next() {
+    const current = idx++;
+    if (current >= items.length) return;
+    try {
+      results[current] = await worker(items[current], current);
+    } catch (e) {
+      // on ignore l'erreur, la valeur restera undefined
+    }
+    await next();
+  }
+
+  const workers = Array.from({ length: Math.min(limit, items.length) }, () => next());
+  await Promise.all(workers);
+  return results;
+}
+
 export default function FinancialData({ data }: { data?: { siren?: string } }) {
   const siren = data?.siren;
   const [finances, setFinances] = useState<FinanceRow[]>([]);
@@ -122,23 +156,37 @@ export default function FinancialData({ data }: { data?: { siren?: string } }) {
   const [actes, setActes] = useState<ActeLike[]>([]);
   const [loadingActes, setLoadingActes] = useState(true);
 
+  const [documents, setDocuments] = useState<DossierDoc[]>([]);
+  const [loadingDocs, setLoadingDocs] = useState(true);
+
+  const cancelledRef = useRef(false);
+
   useEffect(() => {
     if (!siren) return;
 
-    let cancelled = false;
+    cancelledRef.current = false;
     setLoading(true);
     setLoadingActes(true);
+    setLoadingDocs(true);
     setError(null);
     setFinances([]);
     setActes([]);
+    setDocuments([]);
 
-    inpiEntreprise
-      .get(`/${siren}/documents-comptes`)
-      .then(async (res) => {
-        if (cancelled) return;
+    (async () => {
+      try {
+        const res = await inpiEntreprise.get(`/${siren}/documents-comptes`);
+        if (cancelledRef.current) return;
+
         const payload = res.data ?? {};
 
-        // 1) Normaliser la liste des bilans
+        if (process.env.NODE_ENV !== "production") {
+          // Aide au debug local si besoin
+          // eslint-disable-next-line no-console
+          console.debug("[INPI documents-comptes] payload keys:", Object.keys(payload || {}));
+        }
+
+        // 1) Bilans: accepter plusieurs structures
         const bilansRaw: AnyObj[] = Array.isArray(payload)
           ? payload
           : payload.bilans ??
@@ -147,21 +195,16 @@ export default function FinancialData({ data }: { data?: { siren?: string } }) {
             payload.bilans_saisis ??
             [];
 
+        // mapping initial
         const initialRows: FinanceRow[] = bilansRaw
           .map((f) => {
             const exercice = getExercice(f);
             const idBilan = getBilanId(f);
-
-            const { chiffre_affaires, resultat_net, effectif, capital_social } =
-              pickNumbersFromRootOrNested(f);
-
+            const nums = pickNumbersFromRootOrNested(f);
             return {
               idBilan,
               exercice: exercice ?? "",
-              chiffre_affaires,
-              resultat_net,
-              effectif,
-              capital_social,
+              ...nums,
             };
           })
           .filter((r) => r.exercice)
@@ -169,13 +212,96 @@ export default function FinancialData({ data }: { data?: { siren?: string } }) {
 
         setFinances(initialRows);
 
-        // 2) Actes
+        // 2) Actes (déjà visibles séparément)
         const actesRaw: ActeLike[] =
-          payload.actes ?? payload.documents ?? payload.actes_inpi ?? [];
+          payload.actes ?? payload.documents_actes ?? [];
         setActes(Array.isArray(actesRaw) ? actesRaw : []);
 
-        // 3) Enrichir avec le détail bilans-saisis quand nécessaire
-        const needDetail = initialRows.filter(
+        // 3) Documents du dossier (agrégation de plusieurs sources)
+        const collectDocs: DossierDoc[] = [];
+
+        // a) actes -> documents téléchargeables
+        if (Array.isArray(actesRaw)) {
+          for (const a of actesRaw) {
+            collectDocs.push({
+              id: a?.id,
+              date: a?.dateDepot,
+              titre: a?.nomDocument || a?.libelle || "Acte",
+              type: "acte",
+              source: "actes",
+              raw: a as AnyObj,
+            });
+          }
+        }
+
+        // b) payload.documents / pieces / fichiers
+        const diverseDocsArrays: { arr?: AnyObj[]; label: string }[] = [
+          { arr: payload.documents, label: "documents" },
+          { arr: payload.pieces, label: "pieces" },
+          { arr: payload.fichiers, label: "fichiers" },
+          { arr: payload.rneDocuments, label: "rneDocuments" },
+        ];
+        for (const { arr, label } of diverseDocsArrays) {
+          if (Array.isArray(arr)) {
+            for (const d of arr) {
+              collectDocs.push({
+                id: coalesce(d.id, d.documentId, d.fichierId, d.uid),
+                date: coalesce(d.date, d.dateDepot, d.date_creation),
+                titre: coalesce(d.titre, d.title, d.nom, d.libelle, d.nomDocument, "Document"),
+                type: coalesce(d.type, d.categorie, "document"),
+                source: label,
+                raw: d,
+                url: d.url,
+              });
+            }
+          }
+        }
+
+        // c) fichiers attachés dans chaque bilan
+        for (const b of bilansRaw) {
+          const filesArr = coalesce(b.fichiers, b.files, b.documents, b.pieces) as AnyObj[] | undefined;
+          if (Array.isArray(filesArr)) {
+            for (const f of filesArr) {
+              collectDocs.push({
+                id: coalesce(f.id, f.documentId, f.fichierId, f.uid),
+                date: coalesce(f.date, f.dateDepot, f.date_creation, b.dateCloture, b.date_cloture),
+                titre: coalesce(
+                  f.titre,
+                  f.title,
+                  f.nom,
+                  f.libelle,
+                  f.nomDocument,
+                  "Fichier de bilan"
+                ),
+                type: coalesce(f.type, f.categorie, "bilan"),
+                source: "bilan.fichiers",
+                raw: f,
+                url: f.url,
+              });
+            }
+          }
+        }
+
+        // dédoublonner (id + titre)
+        const seen = new Set<string>();
+        const deduped = collectDocs.filter((d) => {
+          const key = `${d.id || ""}::${d.titre || ""}`;
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+
+        // tri par date descendante si possible
+        deduped.sort((a, b) => {
+          const da = a.date ? new Date(a.date).getTime() : 0;
+          const db = b.date ? new Date(b.date).getTime() : 0;
+          return db - da;
+        });
+
+        setDocuments(deduped);
+
+        // 4) Enrichir les montants avec le détail si manquants (limite de concurrence)
+        const rowsNeedingDetail = (initialRows || []).filter(
           (r) =>
             r.idBilan &&
             (r.chiffre_affaires === null ||
@@ -184,62 +310,78 @@ export default function FinancialData({ data }: { data?: { siren?: string } }) {
               r.capital_social === null)
         );
 
-        if (needDetail.length) {
-          // charge en parallèle; si beaucoup, on peut limiter la concurrence
-          await Promise.allSettled(
-            needDetail.map(async (row) => {
-              try {
-                const resp = await inpiEntreprise.get(
-                  `/${siren}/comptes-annuels/${row.idBilan}`
-                );
-                if (cancelled) return;
-
-                const d = resp.data ?? {};
-                const enriched = pickNumbersFromRootOrNested(d);
-
-                setFinances((prev) =>
-                  prev.map((p) =>
-                    p.idBilan === row.idBilan
-                      ? {
-                          ...p,
-                          ...enriched,
-                        }
-                      : p
-                  )
-                );
-              } catch {
-                // silencieux: si le détail échoue, on garde les valeurs existantes
-              }
-            })
-          );
+        if (rowsNeedingDetail.length) {
+          await mapWithConcurrency(rowsNeedingDetail, 3, async (row) => {
+            if (!row.idBilan) return row;
+            try {
+              const resp = await inpiEntreprise.get(
+                `/${siren}/comptes-annuels/${row.idBilan}`
+              );
+              if (cancelledRef.current) return row;
+              const d = resp.data ?? {};
+              const enriched = pickNumbersFromRootOrNested(d);
+              setFinances((prev) =>
+                prev.map((p) =>
+                  p.idBilan === row.idBilan
+                    ? {
+                        ...p,
+                        ...enriched,
+                      }
+                    : p
+                )
+              );
+            } catch {
+              // on ignore: si le détail échoue on garde l'existant
+            }
+            return row;
+          });
         }
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setError("Aucune donnée financière disponible via l’INPI.");
-        setFinances([]);
-        setActes([]);
-      })
-      .finally(() => {
-        if (cancelled) return;
-        setLoading(false);
-        setLoadingActes(false);
-      });
+      } catch (e) {
+        if (!cancelledRef.current) {
+          setError("Aucune donnée financière disponible via l’INPI.");
+          setFinances([]);
+          setActes([]);
+          setDocuments([]);
+        }
+      } finally {
+        if (!cancelledRef.current) {
+          setLoading(false);
+          setLoadingActes(false);
+          setLoadingDocs(false);
+        }
+      }
+    })();
 
     return () => {
-      cancelled = true;
+      cancelledRef.current = true;
     };
   }, [siren]);
 
+  const chartData = useMemo(
+    () =>
+      finances.map((f) => ({
+        exercice: f.exercice,
+        "Chiffre d'affaires":
+          typeof f.chiffre_affaires === "number" ? f.chiffre_affaires : null,
+        "Résultat net": typeof f.resultat_net === "number" ? f.resultat_net : null,
+      })),
+    [finances]
+  );
+
+  const renderDownloadHref = (doc: DossierDoc) => {
+    // priorité: actes -> endpoint acte
+    if (doc.type === "acte" || (doc.raw && Array.isArray(doc.raw?.typeRdd))) {
+      if (doc.id) return `${ACTE_DOWNLOAD_BASE}/api/download/acte/${doc.id}`;
+    }
+    // générique document
+    if (doc.id) return `${ACTE_DOWNLOAD_BASE}/api/download/document/${doc.id}`;
+    // url brute si présente
+    if (doc.url) return doc.url;
+    return undefined;
+  };
+
   if (!siren) return null;
   if (loading) return <div>Chargement des données financières…</div>;
-
-  const chartData = finances.map((f) => ({
-    exercice: f.exercice,
-    "Chiffre d'affaires":
-      typeof f.chiffre_affaires === "number" ? f.chiffre_affaires : null,
-    "Résultat net": typeof f.resultat_net === "number" ? f.resultat_net : null,
-  }));
 
   return (
     <div className="bg-white p-4 rounded shadow">
@@ -265,7 +407,9 @@ export default function FinancialData({ data }: { data?: { siren?: string } }) {
                 <XAxis dataKey="exercice" />
                 <YAxis
                   tickFormatter={(v) =>
-                    v === 0
+                    typeof v !== "number"
+                      ? ""
+                      : v === 0
                       ? "0"
                       : v >= 1_000_000
                       ? `${(v / 1_000_000).toLocaleString("fr-FR")} M€`
@@ -315,7 +459,7 @@ export default function FinancialData({ data }: { data?: { siren?: string } }) {
             </thead>
             <tbody>
               {finances.map((f) => (
-                <tr key={f.idBilan ?? f.exercice} className="border-b hover:bg-gray-50">
+                <tr key={(f.idBilan ?? "") + "-" + f.exercice} className="border-b hover:bg-gray-50">
                   <td className="px-2 py-1">{f.exercice}</td>
                   <td className="px-2 py-1">
                     {typeof f.chiffre_affaires === "number"
@@ -344,17 +488,17 @@ export default function FinancialData({ data }: { data?: { siren?: string } }) {
         </>
       )}
 
-      {/* Actes INPI */}
+      {/* Actes INPI (inchangé) */}
       <div className="mt-8">
-        <h4 className="font-semibold text-lg border-b pb-1 mb-4">Actes déposés (INPI)</h4>
+        <h4 className="font-semibold mb-3 text-lg border-b pb-1 mb-4">Actes déposés (INPI)</h4>
         {loadingActes ? (
           <div>Chargement des actes…</div>
-        ) : actes.length ? (
+        ) : Array.isArray(actes) && actes.length ? (
           <div className="space-y-6">
-            {actes.map((acte) => (
-              <div key={acte.id} className="bg-gray-50 p-4 rounded shadow-sm border">
+            {actes.map((acte, idx) => (
+              <div key={acte.id ?? `acte-${idx}`} className="bg-gray-50 p-4 rounded shadow-sm border">
                 <div className="flex flex-wrap items-center justify-between mb-2">
-                  <span className="font-bold text-blue-900 break-all">{acte.id}</span>
+                  <span className="font-bold text-blue-900 break-all">{acte.id ?? "—"}</span>
                   <span className="text-gray-500 text-sm ml-2">
                     {acte.dateDepot?.slice(0, 10) || "?"}
                   </span>
@@ -381,10 +525,19 @@ export default function FinancialData({ data }: { data?: { siren?: string } }) {
                 </div>
                 <div>
                   <a
-                    href={`${ACTE_DOWNLOAD_BASE}/api/download/acte/${acte.id}`}
+                    href={
+                      acte.id
+                        ? `${ACTE_DOWNLOAD_BASE}/api/download/acte/${acte.id}`
+                        : undefined
+                    }
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-block mt-1 px-3 py-1 rounded bg-blue-600 text-white hover:bg-blue-700 text-sm font-medium transition"
+                    className={`inline-block mt-1 px-3 py-1 rounded text-white text-sm font-medium transition ${
+                      acte.id ? "bg-blue-600 hover:bg-blue-700" : "bg-gray-400 cursor-not-allowed"
+                    }`}
+                    onClick={(e) => {
+                      if (!acte.id) e.preventDefault();
+                    }}
                   >
                     Télécharger PDF
                   </a>
@@ -394,6 +547,58 @@ export default function FinancialData({ data }: { data?: { siren?: string } }) {
           </div>
         ) : (
           <div className="text-gray-500 italic">Aucun acte disponible.</div>
+        )}
+      </div>
+
+      {/* Tous les documents du dossier INPI */}
+      <div className="mt-10">
+        <h4 className="font-semibold mb-3 text-lg border-b pb-1 mb-4">Documents du dossier (INPI)</h4>
+        {loadingDocs ? (
+          <div>Chargement des documents…</div>
+        ) : Array.isArray(documents) && documents.length ? (
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-sm">
+              <thead>
+                <tr className="border-b">
+                  <th className="px-2 py-1 text-left">Date</th>
+                  <th className="px-2 py-1 text-left">Titre</th>
+                  <th className="px-2 py-1 text-left">Type</th>
+                  <th className="px-2 py-1 text-left">Source</th>
+                  <th className="px-2 py-1 text-left">Télécharger</th>
+                </tr>
+              </thead>
+              <tbody>
+                {documents.map((doc, i) => {
+                  const href = renderDownloadHref(doc);
+                  return (
+                    <tr key={(doc.id ?? "doc") + "-" + i} className="border-b hover:bg-gray-50">
+                      <td className="px-2 py-1">{doc.date?.slice(0, 10) || "—"}</td>
+                      <td className="px-2 py-1">{doc.titre || "Document"}</td>
+                      <td className="px-2 py-1">{doc.type || "—"}</td>
+                      <td className="px-2 py-1 text-gray-500">{doc.source || "—"}</td>
+                      <td className="px-2 py-1">
+                        <a
+                          href={href}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className={`inline-block px-3 py-1 rounded text-white text-sm font-medium transition ${
+                            href ? "bg-blue-600 hover:bg-blue-700" : "bg-gray-400 cursor-not-allowed"
+                          }`}
+                          onClick={(e) => {
+                            if (!href) e.preventDefault();
+                          }}
+                        >
+                          Télécharger
+                        </a>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="text-gray-500 italic">Aucun document disponible.</div>
         )}
       </div>
     </div>
