@@ -13,13 +13,73 @@ import {
 
 const ACTE_DOWNLOAD_BASE = "https://hubshare-cmexpert.fr"; // Backend URL for acte downloads
 
-export default function FinancialData({ data }) {
+type BilanLike = {
+  // différentes variantes possibles selon les sources
+  dateCloture?: string | number | Date;
+  date_cloture?: string | number | Date;
+  exercice?: string | number;
+  annee?: string | number;
+
+  chiffreAffaires?: number | string;
+  chiffre_affaires?: number | string;
+  chiffre_affaires_net?: number | string;
+  ca?: number | string;
+  ca_net?: number | string;
+
+  resultatNet?: number | string;
+  resultat_net?: number | string;
+
+  effectif?: number | string;
+  effectif_moyen?: number | string;
+
+  capitalSocial?: number | string;
+  capital_social?: number | string;
+};
+
+type FinanceRow = {
+  exercice: string;
+  chiffre_affaires: number | null;
+  resultat_net: number | null;
+  effectif: number | null | string;
+  capital_social: number | null;
+};
+
+type ActeLike = {
+  id: string;
+  dateDepot?: string;
+  nomDocument?: string;
+  libelle?: string;
+  description?: string;
+  typeRdd?: Array<{ typeActe?: string; decision?: string }>;
+};
+
+function coalesce<T>(...vals: T[]): T | undefined {
+  return vals.find((v) => v !== undefined && v !== null && v !== "") as T | undefined;
+}
+
+function toNumber(val: unknown): number | null {
+  if (typeof val === "number") return Number.isFinite(val) ? val : null;
+  if (typeof val === "string") {
+    const n = Number(val.replace?.(/\s/g, "") ?? val);
+    return Number.isFinite(n) ? n : null;
+  }
+  return null;
+}
+
+function getExercice(b: BilanLike): string | undefined {
+  const cloture = coalesce(b.dateCloture, b.date_cloture);
+  if (cloture) return String(cloture).slice(0, 4);
+  const exo = coalesce(b.exercice, b.annee);
+  return exo ? String(exo) : undefined;
+}
+
+export default function FinancialData({ data }: { data?: { siren?: string } }) {
   const siren = data?.siren;
-  const [finances, setFinances] = useState([]);
+  const [finances, setFinances] = useState<FinanceRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const [actes, setActes] = useState([]);
+  const [actes, setActes] = useState<ActeLike[]>([]);
   const [loadingActes, setLoadingActes] = useState(true);
 
   // Load bilans and actes via /documents-comptes endpoint
@@ -30,27 +90,66 @@ export default function FinancialData({ data }) {
     setError(null);
     setFinances([]);
     setActes([]);
+
     inpiEntreprise
       .get(`/${siren}/documents-comptes`)
       .then((res) => {
-        // --- Bilans ---
-        const bilans = res.data.bilans || [];
-        setFinances(
-          bilans
-            .filter((f) => f.dateCloture)
-            .map((f) => ({
-              exercice: String(f.dateCloture).slice(0, 4),
-              chiffre_affaires: f.chiffreAffaires ?? f.chiffre_affaires_net ?? null,
-              resultat_net: f.resultatNet ?? null,
-              effectif: f.effectif ?? null,
-              capital_social: f.capitalSocial ?? null,
-            }))
-            .sort((a, b) => Number(a.exercice) - Number(b.exercice))
-        );
-        // --- Actes ---
-        setActes(res.data.actes || []);
+        const payload = res.data ?? {};
+
+        // Bilans: accepter plusieurs structures
+        const bilansRaw: BilanLike[] = Array.isArray(payload)
+          ? payload
+          : payload.bilans ??
+            payload.comptes_annuels ??
+            payload.bilansSaisis ??
+            payload.bilans_saisis ??
+            [];
+
+        const mapped: FinanceRow[] = bilansRaw
+          .map((f) => {
+            const exercice = getExercice(f);
+            return {
+              exercice: exercice ?? "",
+              chiffre_affaires:
+                coalesce(
+                  toNumber(f.chiffreAffaires),
+                  toNumber(f.chiffre_affaires),
+                  toNumber(f.chiffre_affaires_net),
+                  toNumber((f as any)?.compte_de_resultat?.chiffre_affaires), // fallback éventuel
+                  toNumber(f.ca),
+                  toNumber(f.ca_net)
+                ) ?? null,
+              resultat_net:
+                coalesce(
+                  toNumber(f.resultatNet),
+                  toNumber(f.resultat_net),
+                  toNumber((f as any)?.compte_de_resultat?.resultat_net)
+                ) ?? null,
+              effectif:
+                coalesce(
+                  toNumber(f.effectif),
+                  toNumber(f.effectif_moyen),
+                  (f as any)?.effectif
+                ) ?? null,
+              capital_social:
+                coalesce(
+                  toNumber(f.capitalSocial),
+                  toNumber(f.capital_social)
+                ) ?? null,
+            };
+          })
+          // garder uniquement ceux avec un exercice valide
+          .filter((row) => row.exercice)
+          .sort((a, b) => Number(a.exercice) - Number(b.exercice));
+
+        setFinances(mapped);
+
+        // Actes
+        const actesRaw: ActeLike[] =
+          payload.actes ?? payload.documents ?? payload.actes_inpi ?? [];
+        setActes(Array.isArray(actesRaw) ? actesRaw : []);
       })
-      .catch((err) => {
+      .catch(() => {
         setError("Aucune donnée financière disponible via l’INPI.");
         setFinances([]);
         setActes([]);
@@ -67,7 +166,8 @@ export default function FinancialData({ data }) {
   // Data for the chart
   const chartData = finances.map((f) => ({
     exercice: f.exercice,
-    "Chiffre d'affaires": typeof f.chiffre_affaires === "number" ? f.chiffre_affaires : null,
+    "Chiffre d'affaires":
+      typeof f.chiffre_affaires === "number" ? f.chiffre_affaires : null,
     "Résultat net": typeof f.resultat_net === "number" ? f.resultat_net : null,
   }));
 
@@ -144,7 +244,7 @@ export default function FinancialData({ data }) {
               </tr>
             </thead>
             <tbody>
-              {finances.map((f: any) => (
+              {finances.map((f) => (
                 <tr key={f.exercice} className="border-b hover:bg-gray-50">
                   <td className="px-2 py-1">{f.exercice}</td>
                   <td className="px-2 py-1">
@@ -157,7 +257,11 @@ export default function FinancialData({ data }) {
                       ? f.resultat_net.toLocaleString("fr-FR") + " €"
                       : "–"}
                   </td>
-                  <td className="px-2 py-1">{f.effectif ?? "–"}</td>
+                  <td className="px-2 py-1">
+                    {typeof f.effectif === "number" || typeof f.effectif === "string"
+                      ? String(f.effectif)
+                      : "–"}
+                  </td>
                   <td className="px-2 py-1">
                     {typeof f.capital_social === "number"
                       ? f.capital_social.toLocaleString("fr-FR") + " €"
@@ -172,16 +276,18 @@ export default function FinancialData({ data }) {
 
       {/* Nouvelle mise en forme des actes INPI */}
       <div className="mt-8">
-        <h4 className="font-semibold mb-3 text-lg border-b pb-1 mb-4">Actes déposés (INPI)</h4>
+        <h4 className="font-semibold text-lg border-b pb-1 mb-4">Actes déposés (INPI)</h4>
         {loadingActes ? (
           <div>Chargement des actes…</div>
         ) : actes.length ? (
           <div className="space-y-6">
-            {actes.map((acte: any) => (
+            {actes.map((acte) => (
               <div key={acte.id} className="bg-gray-50 p-4 rounded shadow-sm border">
                 <div className="flex flex-wrap items-center justify-between mb-2">
                   <span className="font-bold text-blue-900 break-all">{acte.id}</span>
-                  <span className="text-gray-500 text-sm ml-2">{acte.dateDepot?.slice(0, 10) || "?"}</span>
+                  <span className="text-gray-500 text-sm ml-2">
+                    {acte.dateDepot?.slice(0, 10) || "?"}
+                  </span>
                 </div>
                 <div className="mb-2">
                   <span className="block text-blue-700 font-medium">
@@ -190,12 +296,13 @@ export default function FinancialData({ data }) {
                   {acte.description && (
                     <span className="block text-gray-700">{acte.description}</span>
                   )}
-                  {/* Les sous-détails, typiquement typeRdd */}
                   {Array.isArray(acte.typeRdd) && acte.typeRdd.length > 0 && (
                     <ul className="mt-2 pl-4 list-disc space-y-1">
-                      {acte.typeRdd.map((t: any, i: number) => (
+                      {acte.typeRdd.map((t, i) => (
                         <li key={i}>
-                          <span className="font-semibold text-gray-800">{t.typeActe} :</span>{" "}
+                          <span className="font-semibold text-gray-800">
+                            {t.typeActe} :
+                          </span>{" "}
                           <span className="text-gray-700">{t.decision}</span>
                         </li>
                       ))}
