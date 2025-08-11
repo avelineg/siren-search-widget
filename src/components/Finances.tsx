@@ -11,7 +11,7 @@ import {
   CartesianGrid,
 } from "recharts";
 
-const ACTE_DOWNLOAD_BASE = "https://hubshare-cmexpert.fr"; // Backend URL pour les téléchargements
+const ACTE_DOWNLOAD_BASE = "https://hubshare-cmexpert.fr";
 
 type AnyObj = Record<string, any>;
 
@@ -37,114 +37,68 @@ type DossierDoc = {
   id?: string;
   date?: string;
   titre?: string;
-  type?: string; // "acte" | "document" | "bilan" | ...
-  source?: string; // d'où ça vient pour debug (actes, documents, bilan.fichiers, ...)
-  raw?: AnyObj; // référence brute pour debug
-  url?: string; // lien brut si dispo
+  type?: string; // "acte" | "bilan" | "bilansSaisis" | "document"
+  source?: string;
+  url?: string;
+  raw?: AnyObj;
 };
 
 function coalesce<T>(...vals: T[]): T | undefined {
   return vals.find((v) => v !== undefined && v !== null && v !== "") as T | undefined;
 }
 
-function toNumber(val: unknown): number | null {
+function parseAmount(val: unknown): number | null {
   if (typeof val === "number") return Number.isFinite(val) ? val : null;
   if (typeof val === "string") {
-    const cleaned = val.replace?.(/\s/g, "").replace?.(/[^\d.-]/g, "") ?? val;
+    const cleaned = val.replace(/\s/g, "").replace(/[^\d-]/g, ""); // garde le '-'
+    if (!cleaned) return null;
     const n = Number(cleaned);
     return Number.isFinite(n) ? n : null;
   }
   return null;
 }
 
-function getExercice(obj: AnyObj): string | undefined {
-  const cloture = coalesce(obj.dateCloture, obj.date_cloture);
-  if (cloture) return String(cloture).slice(0, 4);
-  const exo = coalesce(obj.exercice, obj.annee, obj.year);
-  return exo ? String(exo) : undefined;
+function yearFromDateStr(d?: string): string | undefined {
+  if (!d) return undefined;
+  const y = String(d).slice(0, 4);
+  return /^\d{4}$/.test(y) ? y : undefined;
 }
 
-function getBilanId(obj: AnyObj): string | undefined {
-  return coalesce(
-    obj.bilanId,
-    obj.bilan_id,
-    obj.id,
-    obj._id,
-    obj.identifiant,
-    obj.uid
-  );
+// Cherche une liasse par code et renvoie la valeur pour l'exercice N selon priorité des colonnes
+function getLiasseValueForN(liasses: AnyObj[] | undefined, code: string, columnPreference: Array<"m3" | "m1" | "m2" | "m4">): number | null {
+  if (!Array.isArray(liasses)) return null;
+  const row = liasses.find((l) => l?.code === code);
+  if (!row) return null;
+  for (const col of columnPreference) {
+    const v = parseAmount(row[col]);
+    if (v !== null) return v;
+  }
+  return null;
 }
 
-function pickNumbersFromRootOrNested(d: AnyObj) {
-  const cr = coalesce(
-    d.compte_de_resultat,
-    d.compteDeResultat,
-    d.compte_resultat,
-    d.compte
-  ) || {};
+// Extrait CA, RN, capital social depuis un objet bilans-saisis détaillé
+function extractNumbersFromBilansSaisis(d: AnyObj) {
+  // pages[].liasses[] attendues ici
+  const pages: AnyObj[] = d?.bilanSaisi?.bilan?.detail?.pages || d?.detail?.pages || [];
+  const allLiasses = pages.flatMap((p) => Array.isArray(p?.liasses) ? p.liases || p.liasses : []);
 
-  const ca = coalesce(
-    toNumber(d.chiffreAffaires),
-    toNumber(d.chiffre_affaires),
-    toNumber(d.chiffreAffairesNet),
-    toNumber(d.chiffre_affaires_net),
-    toNumber(cr.chiffreAffaires),
-    toNumber(cr.chiffre_affaires),
-    toNumber(cr.chiffreAffairesNet),
-    toNumber(cr.chiffre_affaires_net)
-  );
-
-  const rn = coalesce(
-    toNumber(d.resultatNet),
-    toNumber(d.resultat_net),
-    toNumber(cr.resultatNet),
-    toNumber(cr.resultat_net)
-  );
-
-  const effectif = coalesce(
-    toNumber(d.effectifMoyen),
-    toNumber(d.effectif_moyen),
-    toNumber(d.effectif),
-    d.effectif // peut parfois être une chaîne ex: "NC"
-  );
-
-  const capital = coalesce(
-    toNumber(d.capitalSocial),
-    toNumber(d.capital_social),
-    toNumber(d.capital)
-  );
+  // Mapping basé sur les données fournies et pratiques usuelles:
+  // - CA net: code FY (compte de résultat simplifié) -> m3 pour N
+  // - Résultat net: code HK -> m3 (repli GV -> m3)
+  // - Capital social: code DA -> m1
+  const chiffre_affaires =
+    getLiasseValueForN(allLiasses, "FY", ["m3", "m1", "m2", "m4"]);
+  const resultat_net =
+    getLiasseValueForN(allLiasses, "HK", ["m3", "m1", "m2", "m4"]) ??
+    getLiasseValueForN(allLiasses, "GV", ["m3", "m1", "m2", "m4"]); // repli
+  const capital_social =
+    getLiasseValueForN(allLiasses, "DA", ["m1", "m3", "m2", "m4"]);
 
   return {
-    chiffre_affaires: ca ?? null,
-    resultat_net: rn ?? null,
-    effectif: effectif ?? null,
-    capital_social: capital ?? null,
+    chiffre_affaires: chiffre_affaires ?? null,
+    resultat_net: resultat_net ?? null,
+    capital_social: capital_social ?? null,
   };
-}
-
-// Concurrence simple limitée pour les appels détail
-async function mapWithConcurrency<T, R>(
-  items: T[],
-  limit: number,
-  worker: (item: T, index: number) => Promise<R>
-): Promise<R[]> {
-  const results: R[] = new Array(items.length);
-  let idx = 0;
-
-  async function next() {
-    const current = idx++;
-    if (current >= items.length) return;
-    try {
-      results[current] = await worker(items[current], current);
-    } catch (e) {
-      // on ignore l'erreur, la valeur restera undefined
-    }
-    await next();
-  }
-
-  const workers = Array.from({ length: Math.min(limit, items.length) }, () => next());
-  await Promise.all(workers);
-  return results;
 }
 
 export default function FinancialData({ data }: { data?: { siren?: string } }) {
@@ -180,163 +134,117 @@ export default function FinancialData({ data }: { data?: { siren?: string } }) {
 
         const payload = res.data ?? {};
 
-        if (process.env.NODE_ENV !== "production") {
-          // Aide au debug local si besoin
-          // eslint-disable-next-line no-console
-          console.debug("[INPI documents-comptes] payload keys:", Object.keys(payload || {}));
-        }
+        // 1) Récup bilans saisis (liste)
+        const bilansSaisisRaw: AnyObj[] = Array.isArray(payload.bilansSaisis)
+          ? payload.bilansSaisis
+          : Array.isArray(payload.bilans_saisis)
+          ? payload.bilans_saisis
+          : [];
 
-        // 1) Bilans: accepter plusieurs structures
-        const bilansRaw: AnyObj[] = Array.isArray(payload)
-          ? payload
-          : payload.bilans ??
-            payload.comptes_annuels ??
-            payload.bilansSaisis ??
-            payload.bilans_saisis ??
-            [];
+        // 2) Construit les lignes finances depuis bilans-saisis
+        const rowsFromBilansSaisis: FinanceRow[] = bilansSaisisRaw
+          .map((b) => {
+            const idBilan = coalesce(b?.id, b?.bilanId, b?._id);
+            const exo =
+              yearFromDateStr(b?.bilanSaisi?.bilan?.identite?.dateClotureExercice) ??
+              yearFromDateStr(b?.dateCloture) ??
+              "";
+            const { chiffre_affaires, resultat_net, capital_social } = extractNumbersFromBilansSaisis(b);
 
-        // mapping initial
-        const initialRows: FinanceRow[] = bilansRaw
-          .map((f) => {
-            const exercice = getExercice(f);
-            const idBilan = getBilanId(f);
-            const nums = pickNumbersFromRootOrNested(f);
             return {
               idBilan,
-              exercice: exercice ?? "",
-              ...nums,
+              exercice: exo,
+              chiffre_affaires,
+              resultat_net,
+              effectif: null, // non fourni par ces liasses
+              capital_social,
             };
           })
           .filter((r) => r.exercice)
           .sort((a, b) => Number(a.exercice) - Number(b.exercice));
 
-        setFinances(initialRows);
+        setFinances(rowsFromBilansSaisis);
 
-        // 2) Actes (déjà visibles séparément)
-        const actesRaw: ActeLike[] =
-          payload.actes ?? payload.documents_actes ?? [];
-        setActes(Array.isArray(actesRaw) ? actesRaw : []);
+        // 3) Actes
+        const actesRaw: ActeLike[] = Array.isArray(payload.actes) ? payload.actes : [];
+        setActes(actesRaw);
 
-        // 3) Documents du dossier (agrégation de plusieurs sources)
-        const collectDocs: DossierDoc[] = [];
+        // 4) Documents du dossier: agrège actes + bilans + bilansSaisis + objets isolés
+        const coll: DossierDoc[] = [];
 
-        // a) actes -> documents téléchargeables
-        if (Array.isArray(actesRaw)) {
-          for (const a of actesRaw) {
-            collectDocs.push({
-              id: a?.id,
-              date: a?.dateDepot,
-              titre: a?.nomDocument || a?.libelle || "Acte",
-              type: "acte",
-              source: "actes",
-              raw: a as AnyObj,
-            });
-          }
+        // a) actes
+        for (const a of actesRaw) {
+          coll.push({
+            id: a?.id,
+            date: a?.dateDepot,
+            titre: a?.nomDocument || a?.libelle || "Acte",
+            type: "acte",
+            source: "actes",
+            raw: a as AnyObj,
+          });
         }
 
-        // b) payload.documents / pieces / fichiers
-        const diverseDocsArrays: { arr?: AnyObj[]; label: string }[] = [
-          { arr: payload.documents, label: "documents" },
-          { arr: payload.pieces, label: "pieces" },
-          { arr: payload.fichiers, label: "fichiers" },
-          { arr: payload.rneDocuments, label: "rneDocuments" },
-        ];
-        for (const { arr, label } of diverseDocsArrays) {
-          if (Array.isArray(arr)) {
-            for (const d of arr) {
-              collectDocs.push({
-                id: coalesce(d.id, d.documentId, d.fichierId, d.uid),
-                date: coalesce(d.date, d.dateDepot, d.date_creation),
-                titre: coalesce(d.titre, d.title, d.nom, d.libelle, d.nomDocument, "Document"),
-                type: coalesce(d.type, d.categorie, "document"),
-                source: label,
-                raw: d,
-                url: d.url,
-              });
-            }
-          }
-        }
-
-        // c) fichiers attachés dans chaque bilan
+        // b) bilans (métadonnées “CA_*” côté INPI)
+        const bilansRaw: AnyObj[] = Array.isArray(payload.bilans) ? payload.bilans : [];
         for (const b of bilansRaw) {
-          const filesArr = coalesce(b.fichiers, b.files, b.documents, b.pieces) as AnyObj[] | undefined;
-          if (Array.isArray(filesArr)) {
-            for (const f of filesArr) {
-              collectDocs.push({
-                id: coalesce(f.id, f.documentId, f.fichierId, f.uid),
-                date: coalesce(f.date, f.dateDepot, f.date_creation, b.dateCloture, b.date_cloture),
-                titre: coalesce(
-                  f.titre,
-                  f.title,
-                  f.nom,
-                  f.libelle,
-                  f.nomDocument,
-                  "Fichier de bilan"
-                ),
-                type: coalesce(f.type, f.categorie, "bilan"),
-                source: "bilan.fichiers",
-                raw: f,
-                url: f.url,
-              });
-            }
-          }
+          coll.push({
+            id: coalesce(b?.id, b?.bilanId),
+            date: coalesce(b?.dateCloture, b?.dateDepot),
+            titre: b?.nomDocument || "Bilan (INPI)",
+            type: "bilan",
+            source: "bilans",
+            raw: b,
+          });
         }
 
-        // dédoublonner (id + titre)
+        // c) bilansSaisis: on expose aussi comme documents (pratique pour téléchargement)
+        for (const b of bilansSaisisRaw) {
+          coll.push({
+            id: coalesce(b?.id, b?.bilanId),
+            date:
+              b?.bilanSaisi?.bilan?.identite?.dateClotureExercice ||
+              b?.dateCloture ||
+              b?.dateDepot,
+            titre: "Bilan saisi (liasse INPI)",
+            type: "bilansSaisis",
+            source: "bilansSaisis",
+            raw: b,
+          });
+        }
+
+        // d) objet isolé au top-level (ex: PJ_52) si présent
+        if (payload?.typeDocument && payload?.id) {
+          coll.push({
+            id: payload.id,
+            date: payload.dateDepot || payload.updatedAt,
+            titre: payload.nomDocument || payload.libelle || "Document",
+            type: payload.typeDocument || "document",
+            source: "payload",
+            raw: payload,
+          });
+        }
+
+        // Dédupe
         const seen = new Set<string>();
-        const deduped = collectDocs.filter((d) => {
-          const key = `${d.id || ""}::${d.titre || ""}`;
-          if (seen.has(key)) return false;
-          seen.add(key);
+        const docs = coll.filter((d) => {
+          const k = `${d.type || ""}::${d.id || ""}::${d.titre || ""}`;
+          if (seen.has(k)) return false;
+          seen.add(k);
           return true;
         });
 
-        // tri par date descendante si possible
-        deduped.sort((a, b) => {
-          const da = a.date ? new Date(a.date).getTime() : 0;
-          const db = b.date ? new Date(b.date).getTime() : 0;
-          return db - da;
+        // Tri par date décroissante si possible
+        docs.sort((a, b) => {
+          const ta = a.date ? Date.parse(a.date) : NaN;
+          const tb = b.date ? Date.parse(b.date) : NaN;
+          if (Number.isNaN(ta) && Number.isNaN(tb)) return 0;
+          if (Number.isNaN(ta)) return 1;
+          if (Number.isNaN(tb)) return -1;
+          return tb - ta;
         });
 
-        setDocuments(deduped);
-
-        // 4) Enrichir les montants avec le détail si manquants (limite de concurrence)
-        const rowsNeedingDetail = (initialRows || []).filter(
-          (r) =>
-            r.idBilan &&
-            (r.chiffre_affaires === null ||
-              r.resultat_net === null ||
-              r.effectif === null ||
-              r.capital_social === null)
-        );
-
-        if (rowsNeedingDetail.length) {
-          await mapWithConcurrency(rowsNeedingDetail, 3, async (row) => {
-            if (!row.idBilan) return row;
-            try {
-              const resp = await inpiEntreprise.get(
-                `/${siren}/comptes-annuels/${row.idBilan}`
-              );
-              if (cancelledRef.current) return row;
-              const d = resp.data ?? {};
-              const enriched = pickNumbersFromRootOrNested(d);
-              setFinances((prev) =>
-                prev.map((p) =>
-                  p.idBilan === row.idBilan
-                    ? {
-                        ...p,
-                        ...enriched,
-                      }
-                    : p
-                )
-              );
-            } catch {
-              // on ignore: si le détail échoue on garde l'existant
-            }
-            return row;
-          });
-        }
-      } catch (e) {
+        setDocuments(docs);
+      } catch (_e) {
         if (!cancelledRef.current) {
           setError("Aucune donnée financière disponible via l’INPI.");
           setFinances([]);
@@ -369,15 +277,13 @@ export default function FinancialData({ data }: { data?: { siren?: string } }) {
   );
 
   const renderDownloadHref = (doc: DossierDoc) => {
-    // priorité: actes -> endpoint acte
-    if (doc.type === "acte" || (doc.raw && Array.isArray(doc.raw?.typeRdd))) {
-      if (doc.id) return `${ACTE_DOWNLOAD_BASE}/api/download/acte/${doc.id}`;
+    if (doc.id) {
+      // Votre backend sait télécharger par id via /api/download/acte/:id
+      return `${ACTE_DOWNLOAD_BASE}/api/download/acte/${doc.id}`;
     }
-    // générique document
-    if (doc.id) return `${ACTE_DOWNLOAD_BASE}/api/download/document/${doc.id}`;
-    // url brute si présente
     if (doc.url) return doc.url;
     return undefined;
+    // Si vous avez un endpoint distinct pour les documents non-actes, dites-le et on ajuste ici.
   };
 
   if (!siren) return null;
@@ -386,6 +292,7 @@ export default function FinancialData({ data }: { data?: { siren?: string } }) {
   return (
     <div className="bg-white p-4 rounded shadow">
       <h3 className="font-semibold mb-2">Données financières (INPI)</h3>
+
       {error || !finances.length ? (
         <div>
           {error || "Aucune donnée financière disponible."}
@@ -406,7 +313,7 @@ export default function FinancialData({ data }: { data?: { siren?: string } }) {
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="exercice" />
                 <YAxis
-                  tickFormatter={(v) =>
+                  tickFormatter={(v: any) =>
                     typeof v !== "number"
                       ? ""
                       : v === 0
@@ -447,6 +354,7 @@ export default function FinancialData({ data }: { data?: { siren?: string } }) {
               </LineChart>
             </ResponsiveContainer>
           </div>
+
           <table className="min-w-full text-sm mb-8">
             <thead>
               <tr className="border-b">
@@ -488,7 +396,7 @@ export default function FinancialData({ data }: { data?: { siren?: string } }) {
         </>
       )}
 
-      {/* Actes INPI (inchangé) */}
+      {/* Actes INPI */}
       <div className="mt-8">
         <h4 className="font-semibold mb-3 text-lg border-b pb-1 mb-4">Actes déposés (INPI)</h4>
         {loadingActes ? (
