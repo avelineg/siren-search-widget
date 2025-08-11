@@ -50,7 +50,7 @@ function coalesce<T>(...vals: T[]): T | undefined {
 function parseAmount(val: unknown): number | null {
   if (typeof val === "number") return Number.isFinite(val) ? val : null;
   if (typeof val === "string") {
-    const cleaned = val.replace(/\s/g, "").replace(/[^\d-]/g, ""); // garde le '-'
+    const cleaned = val.replace(/\s/g, "").replace(/[^\d-]/g, "");
     if (!cleaned) return null;
     const n = Number(cleaned);
     return Number.isFinite(n) ? n : null;
@@ -64,8 +64,21 @@ function yearFromDateStr(d?: string): string | undefined {
   return /^\d{4}$/.test(y) ? y : undefined;
 }
 
-// Cherche une liasse par code et renvoie la valeur pour l'exercice N selon priorité des colonnes
-function getLiasseValueForN(liasses: AnyObj[] | undefined, code: string, columnPreference: Array<"m3" | "m1" | "m2" | "m4">): number | null {
+function flattenLiasses(pages: AnyObj[] | undefined): AnyObj[] {
+  if (!Array.isArray(pages)) return [];
+  const out: AnyObj[] = [];
+  for (const p of pages) {
+    if (Array.isArray(p?.liasses)) out.push(...p.liasses);
+  }
+  return out;
+}
+
+// Récupère la valeur d'une liasse avec une préférence d'ordre de colonnes
+function getLiasseValue(
+  liasses: AnyObj[] | undefined,
+  code: string,
+  columnPreference: Array<"m1" | "m3" | "m2" | "m4">
+): number | null {
   if (!Array.isArray(liasses)) return null;
   const row = liasses.find((l) => l?.code === code);
   if (!row) return null;
@@ -76,23 +89,27 @@ function getLiasseValueForN(liasses: AnyObj[] | undefined, code: string, columnP
   return null;
 }
 
-// Extrait CA, RN, capital social depuis un objet bilans-saisis détaillé
+// Extrait CA, RN, capital social depuis un objet bilans-saisis détaillé (via votre JSON)
 function extractNumbersFromBilansSaisis(d: AnyObj) {
-  // pages[].liasses[] attendues ici
-  const pages: AnyObj[] = d?.bilanSaisi?.bilan?.detail?.pages || d?.detail?.pages || [];
-  const allLiasses = pages.flatMap((p) => Array.isArray(p?.liasses) ? p.liases || p.liasses : []);
+  const pages: AnyObj[] =
+    d?.bilanSaisi?.bilan?.detail?.pages ||
+    d?.detail?.pages ||
+    [];
+  const liasses = flattenLiasses(pages);
 
-  // Mapping basé sur les données fournies et pratiques usuelles:
-  // - CA net: code FY (compte de résultat simplifié) -> m3 pour N
-  // - Résultat net: code HK -> m3 (repli GV -> m3)
-  // - Capital social: code DA -> m1
+  // Aligné sur votre retour:
+  // - CA = FG (repli FJ), priorité colonnes m1 puis m3 puis m2 puis m4
+  // - RN = DI (repli HN), priorité m1 puis m3 puis m2 puis m4
+  // - Capital social = DA, priorité m1
   const chiffre_affaires =
-    getLiasseValueForN(allLiasses, "FY", ["m3", "m1", "m2", "m4"]);
+    getLiasseValue(liasses, "FG", ["m1", "m3", "m2", "m4"]) ??
+    getLiasseValue(liasses, "FJ", ["m1", "m3", "m2", "m4"]);
+
   const resultat_net =
-    getLiasseValueForN(allLiasses, "HK", ["m3", "m1", "m2", "m4"]) ??
-    getLiasseValueForN(allLiasses, "GV", ["m3", "m1", "m2", "m4"]); // repli
-  const capital_social =
-    getLiasseValueForN(allLiasses, "DA", ["m1", "m3", "m2", "m4"]);
+    getLiasseValue(liasses, "DI", ["m1", "m3", "m2", "m4"]) ??
+    getLiasseValue(liasses, "HN", ["m1", "m3", "m2", "m4"]);
+
+  const capital_social = getLiasseValue(liasses, "DA", ["m1", "m3", "m2", "m4"]);
 
   return {
     chiffre_affaires: chiffre_affaires ?? null,
@@ -134,14 +151,14 @@ export default function FinancialData({ data }: { data?: { siren?: string } }) {
 
         const payload = res.data ?? {};
 
-        // 1) Récup bilans saisis (liste)
+        // 1) Bilans saisis (liste)
         const bilansSaisisRaw: AnyObj[] = Array.isArray(payload.bilansSaisis)
           ? payload.bilansSaisis
           : Array.isArray(payload.bilans_saisis)
           ? payload.bilans_saisis
           : [];
 
-        // 2) Construit les lignes finances depuis bilans-saisis
+        // 2) Construit les lignes finances à partir des bilans saisis
         const rowsFromBilansSaisis: FinanceRow[] = bilansSaisisRaw
           .map((b) => {
             const idBilan = coalesce(b?.id, b?.bilanId, b?._id);
@@ -149,14 +166,16 @@ export default function FinancialData({ data }: { data?: { siren?: string } }) {
               yearFromDateStr(b?.bilanSaisi?.bilan?.identite?.dateClotureExercice) ??
               yearFromDateStr(b?.dateCloture) ??
               "";
-            const { chiffre_affaires, resultat_net, capital_social } = extractNumbersFromBilansSaisis(b);
+
+            const { chiffre_affaires, resultat_net, capital_social } =
+              extractNumbersFromBilansSaisis(b);
 
             return {
               idBilan,
               exercice: exo,
               chiffre_affaires,
               resultat_net,
-              effectif: null, // non fourni par ces liasses
+              effectif: null, // pas présent dans ces liasses
               capital_social,
             };
           })
@@ -169,7 +188,7 @@ export default function FinancialData({ data }: { data?: { siren?: string } }) {
         const actesRaw: ActeLike[] = Array.isArray(payload.actes) ? payload.actes : [];
         setActes(actesRaw);
 
-        // 4) Documents du dossier: agrège actes + bilans + bilansSaisis + objets isolés
+        // 4) Documents du dossier: actes + bilans + bilansSaisis + éventuel doc top-level
         const coll: DossierDoc[] = [];
 
         // a) actes
@@ -184,7 +203,7 @@ export default function FinancialData({ data }: { data?: { siren?: string } }) {
           });
         }
 
-        // b) bilans (métadonnées “CA_*” côté INPI)
+        // b) bilans (métadonnées INPI)
         const bilansRaw: AnyObj[] = Array.isArray(payload.bilans) ? payload.bilans : [];
         for (const b of bilansRaw) {
           coll.push({
@@ -197,7 +216,7 @@ export default function FinancialData({ data }: { data?: { siren?: string } }) {
           });
         }
 
-        // c) bilansSaisis: on expose aussi comme documents (pratique pour téléchargement)
+        // c) bilansSaisis comme documents téléchargeables
         for (const b of bilansSaisisRaw) {
           coll.push({
             id: coalesce(b?.id, b?.bilanId),
@@ -212,7 +231,7 @@ export default function FinancialData({ data }: { data?: { siren?: string } }) {
           });
         }
 
-        // d) objet isolé au top-level (ex: PJ_52) si présent
+        // d) doc top-level éventuel
         if (payload?.typeDocument && payload?.id) {
           coll.push({
             id: payload.id,
@@ -224,7 +243,7 @@ export default function FinancialData({ data }: { data?: { siren?: string } }) {
           });
         }
 
-        // Dédupe
+        // Dédupe et tri
         const seen = new Set<string>();
         const docs = coll.filter((d) => {
           const k = `${d.type || ""}::${d.id || ""}::${d.titre || ""}`;
@@ -233,7 +252,6 @@ export default function FinancialData({ data }: { data?: { siren?: string } }) {
           return true;
         });
 
-        // Tri par date décroissante si possible
         docs.sort((a, b) => {
           const ta = a.date ? Date.parse(a.date) : NaN;
           const tb = b.date ? Date.parse(b.date) : NaN;
@@ -278,12 +296,10 @@ export default function FinancialData({ data }: { data?: { siren?: string } }) {
 
   const renderDownloadHref = (doc: DossierDoc) => {
     if (doc.id) {
-      // Votre backend sait télécharger par id via /api/download/acte/:id
       return `${ACTE_DOWNLOAD_BASE}/api/download/acte/${doc.id}`;
     }
     if (doc.url) return doc.url;
     return undefined;
-    // Si vous avez un endpoint distinct pour les documents non-actes, dites-le et on ajuste ici.
   };
 
   if (!siren) return null;
