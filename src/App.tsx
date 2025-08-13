@@ -373,19 +373,19 @@ function App() {
             {tabIndex === 4 && <Divers data={data} />}
           </div>
 
-          {data.inpiRaw && (
-            <details
-              className="mt-10 bg-gray-100 p-4 rounded text-xs overflow-auto"
-              style={{ maxHeight: 400 }}
-            >
-              <summary className="font-semibold cursor-pointer">
-                Détail brut de la requête INPI (JSON)
-              </summary>
-              <pre>{JSON.stringify(data.inpiRaw, null, 2)}</pre>
-            </details>
-          )}
-        </div>
-      )}
+        //{data.inpiRaw && (
+        //    <details
+        //      className="mt-10 bg-gray-100 p-4 rounded text-xs overflow-auto"
+        //      style={{ maxHeight: 400 }}
+        //    >
+        //      <summary className="font-semibold cursor-pointer">
+        //        Détail brut de la requête INPI (JSON)
+        //      </summary>
+        //      <pre>{JSON.stringify(data.inpiRaw, null, 2)}</pre>
+        //    </details>
+        //  )}
+        //</div>
+      //)}
       {!loading && !error && !data && (
         <div className="text-center text-gray-500 mt-8">
           Aucun résultat n'a été trouvé.
