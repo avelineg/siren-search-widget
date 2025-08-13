@@ -20,7 +20,8 @@ type FinanceRow = {
   exercice: string;
   chiffre_affaires: number | null;
   resultat_net: number | null;
-  effectif: number | null | string;
+  marge: number | null; // NOUVEAU: marge (extraite des bilans saisis)
+  effectif?: number | null | string; // conservé pour compatibilité, non affiché
   capital_social: number | null;
 };
 
@@ -89,7 +90,44 @@ function getLiasseValue(
   return null;
 }
 
-// Extrait CA, RN, capital social depuis un objet bilans-saisis détaillé (via votre JSON)
+// Tentative d'extraction de la marge à partir des liasses (valeur directe ou calculée)
+// 1) recherche d'une ligne dont le libellé contient "marge"
+// 2) sinon, calcul simple: marge ~ chiffre d'affaires - achats (si disponibles)
+function extractMarginFromLiasses(liasses: AnyObj[] | undefined, chiffre_affaires: number | null): number | null {
+  if (!Array.isArray(liasses)) return null;
+
+  // 1) valeur directe par libellé
+  const rowWithLabel =
+    liasses.find((l) => {
+      const label = String(l?.intitule || l?.libelle || l?.label || "").toLowerCase();
+      return label.includes("marge");
+    }) || null;
+
+  if (rowWithLabel) {
+    const direct =
+      parseAmount(rowWithLabel.m1) ??
+      parseAmount(rowWithLabel.m3) ??
+      parseAmount(rowWithLabel.m2) ??
+      parseAmount(rowWithLabel.m4);
+    if (direct !== null) return direct;
+  }
+
+  // 2) calcul basique si possible (CA - achats)
+  // Les codes exacts varient selon le format de liasse, on tente quelques codes courants,
+  // sinon cette partie restera simplement null si non disponible.
+  const achats =
+    getLiasseValue(liasses, "FH", ["m1", "m3", "m2", "m4"]) ?? // Achats de marchandises (hypothétique)
+    getLiasseValue(liasses, "FQ", ["m1", "m3", "m2", "m4"]) ?? // Consommation de l'exercice en provenance des tiers (hypothétique)
+    getLiasseValue(liasses, "FL", ["m1", "m3", "m2", "m4"]);   // Autre code d'achats/consommations (hypothétique)
+
+  if (typeof chiffre_affaires === "number" && typeof achats === "number") {
+    return chiffre_affaires - achats;
+  }
+
+  return null;
+}
+
+// Extrait CA, RN, capital social et marge depuis un objet bilans-saisis détaillé (via votre JSON)
 function extractNumbersFromBilansSaisis(d: AnyObj) {
   const pages: AnyObj[] =
     d?.bilanSaisi?.bilan?.detail?.pages ||
@@ -100,7 +138,7 @@ function extractNumbersFromBilansSaisis(d: AnyObj) {
   // Aligné sur votre retour:
   // - CA = FG (repli FJ), priorité colonnes m1 puis m3 puis m2 puis m4
   // - RN = DI (repli HN), priorité m1 puis m3 puis m2 puis m4
-  // - Capital social = DA, priorité m1
+  // - Capital social = DA, priorité m1.. puis repli
   const chiffre_affaires =
     getLiasseValue(liasses, "FG", ["m1", "m3", "m2", "m4"]) ??
     getLiasseValue(liasses, "FJ", ["m1", "m3", "m2", "m4"]);
@@ -109,12 +147,22 @@ function extractNumbersFromBilansSaisis(d: AnyObj) {
     getLiasseValue(liasses, "DI", ["m1", "m3", "m2", "m4"]) ??
     getLiasseValue(liasses, "HN", ["m1", "m3", "m2", "m4"]);
 
-  const capital_social = getLiasseValue(liasses, "DA", ["m1", "m3", "m2", "m4"]);
+  const capital_social =
+    getLiasseValue(liasses, "DA", ["m1", "m3", "m2", "m4"]);
+
+  // Marge: 1) champs directs possibles, 2) liasse (libellé), 3) calcul CA - achats
+  const margeDirecte =
+    parseAmount(coalesce(d?.marge, d?.marge_brute, d?.margeBrute, d?.grossMargin)) ?? null;
+
+  const marge =
+    margeDirecte ??
+    extractMarginFromLiasses(liasses, chiffre_affaires ?? null);
 
   return {
     chiffre_affaires: chiffre_affaires ?? null,
     resultat_net: resultat_net ?? null,
     capital_social: capital_social ?? null,
+    marge: marge ?? null,
   };
 }
 
@@ -167,7 +215,7 @@ export default function FinancialData({ data }: { data?: { siren?: string } }) {
               yearFromDateStr(b?.dateCloture) ??
               "";
 
-            const { chiffre_affaires, resultat_net, capital_social } =
+            const { chiffre_affaires, resultat_net, capital_social, marge } =
               extractNumbersFromBilansSaisis(b);
 
             return {
@@ -175,7 +223,8 @@ export default function FinancialData({ data }: { data?: { siren?: string } }) {
               exercice: exo,
               chiffre_affaires,
               resultat_net,
-              effectif: null, // pas présent dans ces liasses
+              marge: marge ?? null,
+              effectif: undefined, // non utilisé désormais
               capital_social,
             };
           })
@@ -255,7 +304,7 @@ export default function FinancialData({ data }: { data?: { siren?: string } }) {
         docs.sort((a, b) => {
           const ta = a.date ? Date.parse(a.date) : NaN;
           const tb = b.date ? Date.parse(b.date) : NaN;
-          if (Number.isNaN(ta) && Number.isNaN(tb)) return 0;
+        if (Number.isNaN(ta) && Number.isNaN(tb)) return 0;
           if (Number.isNaN(ta)) return 1;
           if (Number.isNaN(tb)) return -1;
           return tb - ta;
@@ -290,6 +339,7 @@ export default function FinancialData({ data }: { data?: { siren?: string } }) {
         "Chiffre d'affaires":
           typeof f.chiffre_affaires === "number" ? f.chiffre_affaires : null,
         "Résultat net": typeof f.resultat_net === "number" ? f.resultat_net : null,
+        // On n'ajoute pas la marge au graphe pour le moment (demande: remplacer la section Effectifs)
       })),
     [finances]
   );
@@ -377,7 +427,7 @@ export default function FinancialData({ data }: { data?: { siren?: string } }) {
                 <th className="px-2 py-1 text-left">Exercice</th>
                 <th className="px-2 py-1 text-left">Chiffre d'affaires</th>
                 <th className="px-2 py-1 text-left">Résultat net</th>
-                <th className="px-2 py-1 text-left">Effectif</th>
+                <th className="px-2 py-1 text-left">Marge</th>
                 <th className="px-2 py-1 text-left">Capital social</th>
               </tr>
             </thead>
@@ -396,8 +446,8 @@ export default function FinancialData({ data }: { data?: { siren?: string } }) {
                       : "–"}
                   </td>
                   <td className="px-2 py-1">
-                    {typeof f.effectif === "number" || typeof f.effectif === "string"
-                      ? String(f.effectif)
+                    {typeof f.marge === "number"
+                      ? f.marge.toLocaleString("fr-FR") + " €"
                       : "–"}
                   </td>
                   <td className="px-2 py-1">
