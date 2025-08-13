@@ -10,6 +10,7 @@ import {
   Legend,
   CartesianGrid,
 } from "recharts";
+import { formatDateFR } from "../services/mapping";
 
 const ACTE_DOWNLOAD_BASE = "https://hubshare-cmexpert.fr";
 
@@ -43,8 +44,8 @@ type DossierDoc = {
   mimeType?: string;
   raw?: AnyObj;
 
-  // Nouveaux champs de dates séparées
-  dateDepot?: string;     // date de dépôt/publication
+  // Dates séparées et explicites
+  dateDepot?: string;     // date de dépôt/publication (parution)
   dateDocument?: string;  // date du document (ex: date de clôture pour bilans)
 };
 
@@ -283,7 +284,6 @@ export default function FinancialData({ data }: { data?: { siren?: string } }) {
           if (!id) continue; // pas de téléchargement si pas d'id
           const titre = a?.nomDocument || a?.libelle || "Acte (PDF)";
           const dateDepot = a?.dateDepot;
-          // On tente une date de document si présente
           const dateDocument = coalesce(
             (a as AnyObj)?.dateDocument,
             (a as AnyObj)?.dateActe
@@ -369,7 +369,6 @@ export default function FinancialData({ data }: { data?: { siren?: string } }) {
         "Chiffre d'affaires":
           typeof f.chiffre_affaires === "number" ? f.chiffre_affaires : null,
         "Résultat net": typeof f.resultat_net === "number" ? f.resultat_net : null,
-        // Marge non affichée sur le graphe (seulement dans le tableau)
       })),
     [finances]
   );
@@ -395,7 +394,6 @@ export default function FinancialData({ data }: { data?: { siren?: string } }) {
     const pdf = getDocPdfUrl(doc);
     if (pdf) {
       setPreviewTitle(doc.titre || "Aperçu du document");
-      // Ajoute un hash pour forcer l'affichage intégré et éviter certaines toolbars
       const embedUrl = pdf.includes("#") ? pdf : `${pdf}#view=FitH`;
       setPreviewUrl(embedUrl);
     }
@@ -404,6 +402,9 @@ export default function FinancialData({ data }: { data?: { siren?: string } }) {
   const closePreview = () => {
     setPreviewUrl(null);
   };
+
+  // Utilitaire local pour formater proprement une date ISO/avec time
+  const formatDocDate = (d?: string) => (d ? formatDateFR(d.slice(0, 10)) : "—");
 
   if (!siren) return null;
   if (loading) return <div>Chargement des données financières…</div>;
@@ -529,7 +530,7 @@ export default function FinancialData({ data }: { data?: { siren?: string } }) {
                   <th className="px-2 py-1 text-left">Type</th>
                   <th className="px-2 py-1 text-left">Source</th>
                   <th className="px-2 py-1 text-left">Date du document</th>
-                  <th className="px-2 py-1 text-left">Date de dépôt</th>
+                  <th className="px-2 py-1 text-left">Date de dépôt (parution)</th>
                   <th className="px-2 py-1 text-left">Aperçu</th>
                   <th className="px-2 py-1 text-left">Télécharger</th>
                 </tr>
@@ -537,16 +538,16 @@ export default function FinancialData({ data }: { data?: { siren?: string } }) {
               <tbody>
                 {documents.map((doc, i) => {
                   const pdfUrl = getDocPdfUrl(doc)!; // garanti téléchargeable
-                  const docDate = doc.dateDocument ? doc.dateDocument.slice(0, 10) : "—";
-                  const depotDate = doc.dateDepot ? doc.dateDepot.slice(0, 10) : "—";
+                  const docDateFR = formatDocDate(doc.dateDocument);
+                  const depotDateFR = formatDocDate(doc.dateDepot);
 
                   return (
                     <tr key={(doc.id ?? "doc") + "-" + i} className="border-b hover:bg-gray-50">
                       <td className="px-2 py-1">{doc.titre || "Document"}</td>
                       <td className="px-2 py-1">{doc.type || "—"}</td>
                       <td className="px-2 py-1 text-gray-500">{doc.source || "—"}</td>
-                      <td className="px-2 py-1">{docDate}</td>
-                      <td className="px-2 py-1">{depotDate}</td>
+                      <td className="px-2 py-1" title={doc.dateDocument || ""}>{docDateFR}</td>
+                      <td className="px-2 py-1" title={doc.dateDepot || ""}>{depotDateFR}</td>
                       <td className="px-2 py-1">
                         <button
                           className="px-3 py-1 rounded text-white text-sm font-medium transition bg-indigo-600 hover:bg-indigo-700"
