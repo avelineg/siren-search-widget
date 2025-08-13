@@ -20,7 +20,7 @@ type FinanceRow = {
   exercice: string;
   chiffre_affaires: number | null;
   resultat_net: number | null;
-  marge: number | null; // NOUVEAU: marge (extraite des bilans saisis)
+  marge: number | null; // marge (extraite des bilans saisis)
   effectif?: number | null | string; // conservé pour compatibilité, non affiché
   capital_social: number | null;
 };
@@ -40,8 +40,9 @@ type DossierDoc = {
   titre?: string;
   type?: string; // "acte" | "bilan" | "bilansSaisis" | "document"
   source?: string;
-  url?: string;
+  url?: string; // lien direct (PDF si disponible)
   raw?: AnyObj;
+  mimeType?: string;
 };
 
 function coalesce<T>(...vals: T[]): T | undefined {
@@ -91,8 +92,6 @@ function getLiasseValue(
 }
 
 // Tentative d'extraction de la marge à partir des liasses (valeur directe ou calculée)
-// 1) recherche d'une ligne dont le libellé contient "marge"
-// 2) sinon, calcul simple: marge ~ chiffre d'affaires - achats (si disponibles)
 function extractMarginFromLiasses(liasses: AnyObj[] | undefined, chiffre_affaires: number | null): number | null {
   if (!Array.isArray(liasses)) return null;
 
@@ -113,12 +112,10 @@ function extractMarginFromLiasses(liasses: AnyObj[] | undefined, chiffre_affaire
   }
 
   // 2) calcul basique si possible (CA - achats)
-  // Les codes exacts varient selon le format de liasse, on tente quelques codes courants,
-  // sinon cette partie restera simplement null si non disponible.
   const achats =
-    getLiasseValue(liasses, "FH", ["m1", "m3", "m2", "m4"]) ?? // Achats de marchandises (hypothétique)
-    getLiasseValue(liasses, "FQ", ["m1", "m3", "m2", "m4"]) ?? // Consommation de l'exercice en provenance des tiers (hypothétique)
-    getLiasseValue(liasses, "FL", ["m1", "m3", "m2", "m4"]);   // Autre code d'achats/consommations (hypothétique)
+    getLiasseValue(liasses, "FH", ["m1", "m3", "m2", "m4"]) ?? // Achats marchandises (exemples)
+    getLiasseValue(liasses, "FQ", ["m1", "m3", "m2", "m4"]) ?? // Consommations
+    getLiasseValue(liasses, "FL", ["m1", "m3", "m2", "m4"]);
 
   if (typeof chiffre_affaires === "number" && typeof achats === "number") {
     return chiffre_affaires - achats;
@@ -127,7 +124,7 @@ function extractMarginFromLiasses(liasses: AnyObj[] | undefined, chiffre_affaire
   return null;
 }
 
-// Extrait CA, RN, capital social et marge depuis un objet bilans-saisis détaillé (via votre JSON)
+// Extrait CA, RN, capital social et marge depuis un objet bilans-saisis détaillé
 function extractNumbersFromBilansSaisis(d: AnyObj) {
   const pages: AnyObj[] =
     d?.bilanSaisi?.bilan?.detail?.pages ||
@@ -135,10 +132,6 @@ function extractNumbersFromBilansSaisis(d: AnyObj) {
     [];
   const liasses = flattenLiasses(pages);
 
-  // Aligné sur votre retour:
-  // - CA = FG (repli FJ), priorité colonnes m1 puis m3 puis m2 puis m4
-  // - RN = DI (repli HN), priorité m1 puis m3 puis m2 puis m4
-  // - Capital social = DA, priorité m1.. puis repli
   const chiffre_affaires =
     getLiasseValue(liasses, "FG", ["m1", "m3", "m2", "m4"]) ??
     getLiasseValue(liasses, "FJ", ["m1", "m3", "m2", "m4"]);
@@ -150,7 +143,7 @@ function extractNumbersFromBilansSaisis(d: AnyObj) {
   const capital_social =
     getLiasseValue(liasses, "DA", ["m1", "m3", "m2", "m4"]);
 
-  // Marge: 1) champs directs possibles, 2) liasse (libellé), 3) calcul CA - achats
+  // Marge: champs directs possibles -> liasse -> calcul CA - achats
   const margeDirecte =
     parseAmount(coalesce(d?.marge, d?.marge_brute, d?.margeBrute, d?.grossMargin)) ?? null;
 
@@ -178,6 +171,10 @@ export default function FinancialData({ data }: { data?: { siren?: string } }) {
   const [documents, setDocuments] = useState<DossierDoc[]>([]);
   const [loadingDocs, setLoadingDocs] = useState(true);
 
+  // Aperçu PDF
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewTitle, setPreviewTitle] = useState<string>("Aperçu du document");
+
   const cancelledRef = useRef(false);
 
   useEffect(() => {
@@ -199,7 +196,7 @@ export default function FinancialData({ data }: { data?: { siren?: string } }) {
 
         const payload = res.data ?? {};
 
-        // 1) Bilans saisis (liste)
+        // 1) Bilans saisis (liste JSON)
         const bilansSaisisRaw: AnyObj[] = Array.isArray(payload.bilansSaisis)
           ? payload.bilansSaisis
           : Array.isArray(payload.bilans_saisis)
@@ -224,7 +221,7 @@ export default function FinancialData({ data }: { data?: { siren?: string } }) {
               chiffre_affaires,
               resultat_net,
               marge: marge ?? null,
-              effectif: undefined, // non utilisé désormais
+              effectif: undefined, // non affiché
               capital_social,
             };
           })
@@ -237,10 +234,10 @@ export default function FinancialData({ data }: { data?: { siren?: string } }) {
         const actesRaw: ActeLike[] = Array.isArray(payload.actes) ? payload.actes : [];
         setActes(actesRaw);
 
-        // 4) Documents du dossier: actes + bilans + bilansSaisis + éventuel doc top-level
+        // 4) Documents du dossier: actes + bilans (PDF) + bilansSaisis (JSON) + éventuel doc top-level
         const coll: DossierDoc[] = [];
 
-        // a) actes
+        // a) actes (téléchargeables PDF via endpoint)
         for (const a of actesRaw) {
           coll.push({
             id: a?.id,
@@ -252,7 +249,7 @@ export default function FinancialData({ data }: { data?: { siren?: string } }) {
           });
         }
 
-        // b) bilans (métadonnées INPI)
+        // b) bilans (métadonnées INPI) — on tente de récupérer une URL PDF si exposée par le backend INPI
         const bilansRaw: AnyObj[] = Array.isArray(payload.bilans) ? payload.bilans : [];
         for (const b of bilansRaw) {
           coll.push({
@@ -261,11 +258,13 @@ export default function FinancialData({ data }: { data?: { siren?: string } }) {
             titre: b?.nomDocument || "Bilan (INPI)",
             type: "bilan",
             source: "bilans",
+            url: coalesce(b?.url, b?.downloadUrl, b?.pdfUrl, b?.urlPdf) as string | undefined,
+            mimeType: (b?.mimeType || b?.contentType) as string | undefined,
             raw: b,
           });
         }
 
-        // c) bilansSaisis comme documents téléchargeables
+        // c) bilansSaisis (JSON) — listés mais non téléchargeables
         for (const b of bilansSaisisRaw) {
           coll.push({
             id: coalesce(b?.id, b?.bilanId),
@@ -273,14 +272,15 @@ export default function FinancialData({ data }: { data?: { siren?: string } }) {
               b?.bilanSaisi?.bilan?.identite?.dateClotureExercice ||
               b?.dateCloture ||
               b?.dateDepot,
-            titre: "Bilan saisi (liasse INPI)",
+            titre: "Bilan saisi (liasse INPI - JSON)",
             type: "bilansSaisis",
             source: "bilansSaisis",
+            url: undefined, // force aucune URL (non téléchargeable)
             raw: b,
           });
         }
 
-        // d) doc top-level éventuel
+        // d) doc top-level éventuel (on n'en fait pas un téléchargement par défaut)
         if (payload?.typeDocument && payload?.id) {
           coll.push({
             id: payload.id,
@@ -288,6 +288,8 @@ export default function FinancialData({ data }: { data?: { siren?: string } }) {
             titre: payload.nomDocument || payload.libelle || "Document",
             type: payload.typeDocument || "document",
             source: "payload",
+            url: coalesce(payload?.url, payload?.downloadUrl) as string | undefined,
+            mimeType: (payload?.mimeType || payload?.contentType) as string | undefined,
             raw: payload,
           });
         }
@@ -304,7 +306,7 @@ export default function FinancialData({ data }: { data?: { siren?: string } }) {
         docs.sort((a, b) => {
           const ta = a.date ? Date.parse(a.date) : NaN;
           const tb = b.date ? Date.parse(b.date) : NaN;
-        if (Number.isNaN(ta) && Number.isNaN(tb)) return 0;
+          if (Number.isNaN(ta) && Number.isNaN(tb)) return 0;
           if (Number.isNaN(ta)) return 1;
           if (Number.isNaN(tb)) return -1;
           return tb - ta;
@@ -339,17 +341,60 @@ export default function FinancialData({ data }: { data?: { siren?: string } }) {
         "Chiffre d'affaires":
           typeof f.chiffre_affaires === "number" ? f.chiffre_affaires : null,
         "Résultat net": typeof f.resultat_net === "number" ? f.resultat_net : null,
-        // On n'ajoute pas la marge au graphe pour le moment (demande: remplacer la section Effectifs)
+        // Marge non affichée sur le graphe (seulement dans le tableau)
       })),
     [finances]
   );
 
-  const renderDownloadHref = (doc: DossierDoc) => {
-    if (doc.id) {
+  // Détermine si un doc est un PDF téléchargeable et retourne son URL
+  const getDocPdfUrl = (doc: DossierDoc): string | undefined => {
+    // bilans saisis JSON: non téléchargeables
+    if (doc.type === "bilansSaisis") return undefined;
+
+    // actes: téléchargement via endpoint
+    if (doc.type === "acte" && doc.id) {
       return `${ACTE_DOWNLOAD_BASE}/api/download/acte/${doc.id}`;
     }
-    if (doc.url) return doc.url;
+
+    // bilans déposés: nécessite une URL PDF connue
+    if (doc.type === "bilan") {
+      const url =
+        doc.url ||
+        coalesce(doc.raw?.url, doc.raw?.downloadUrl, doc.raw?.pdfUrl, doc.raw?.urlPdf);
+      const mime = (doc.mimeType || doc.raw?.mimeType || doc.raw?.contentType || "").toLowerCase();
+
+      // heuristique: url .pdf ou mime type pdf
+      if (typeof url === "string" && (/\.pdf(\?|$)/i.test(url) || mime.includes("pdf"))) {
+        return url;
+      }
+      return undefined;
+    }
+
+    // autres: si explicitement PDF
+    const url = doc.url;
+    const mime = (doc.mimeType || doc.raw?.mimeType || doc.raw?.contentType || "").toLowerCase();
+    if (typeof url === "string" && (/\.pdf(\?|$)/i.test(url) || mime.includes("pdf"))) {
+      return url;
+    }
+
     return undefined;
+  };
+
+  const canPreview = (doc: DossierDoc) => {
+    const pdf = getDocPdfUrl(doc);
+    return typeof pdf === "string";
+  };
+
+  const openPreview = (doc: DossierDoc) => {
+    const pdf = getDocPdfUrl(doc);
+    if (pdf) {
+      setPreviewTitle(doc.titre || "Aperçu du document");
+      setPreviewUrl(pdf);
+    }
+  };
+
+  const closePreview = () => {
+    setPreviewUrl(null);
   };
 
   if (!siren) return null;
@@ -462,69 +507,7 @@ export default function FinancialData({ data }: { data?: { siren?: string } }) {
         </>
       )}
 
-      {/* Actes INPI */}
-      <div className="mt-8">
-        <h4 className="font-semibold mb-3 text-lg border-b pb-1 mb-4">Actes déposés (INPI)</h4>
-        {loadingActes ? (
-          <div>Chargement des actes…</div>
-        ) : Array.isArray(actes) && actes.length ? (
-          <div className="space-y-6">
-            {actes.map((acte, idx) => (
-              <div key={acte.id ?? `acte-${idx}`} className="bg-gray-50 p-4 rounded shadow-sm border">
-                <div className="flex flex-wrap items-center justify-between mb-2">
-                  <span className="font-bold text-blue-900 break-all">{acte.id ?? "—"}</span>
-                  <span className="text-gray-500 text-sm ml-2">
-                    {acte.dateDepot?.slice(0, 10) || "?"}
-                  </span>
-                </div>
-                <div className="mb-2">
-                  <span className="block text-blue-700 font-medium">
-                    {acte.nomDocument || acte.libelle || "Acte"}
-                  </span>
-                  {acte.description && (
-                    <span className="block text-gray-700">{acte.description}</span>
-                  )}
-                  {Array.isArray(acte.typeRdd) && acte.typeRdd.length > 0 && (
-                    <ul className="mt-2 pl-4 list-disc space-y-1">
-                      {acte.typeRdd.map((t, i) => (
-                        <li key={i}>
-                          <span className="font-semibold text-gray-800">
-                            {t.typeActe} :
-                          </span>{" "}
-                          <span className="text-gray-700">{t.decision}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-                <div>
-                  <a
-                    href={
-                      acte.id
-                        ? `${ACTE_DOWNLOAD_BASE}/api/download/acte/${acte.id}`
-                        : undefined
-                    }
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className={`inline-block mt-1 px-3 py-1 rounded text-white text-sm font-medium transition ${
-                      acte.id ? "bg-blue-600 hover:bg-blue-700" : "bg-gray-400 cursor-not-allowed"
-                    }`}
-                    onClick={(e) => {
-                      if (!acte.id) e.preventDefault();
-                    }}
-                  >
-                    Télécharger PDF
-                  </a>
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="text-gray-500 italic">Aucun acte disponible.</div>
-        )}
-      </div>
-
-      {/* Tous les documents du dossier INPI */}
+      {/* Documents et téléchargements */}
       <div className="mt-10">
         <h4 className="font-semibold mb-3 text-lg border-b pb-1 mb-4">Documents du dossier (INPI)</h4>
         {loadingDocs ? (
@@ -538,12 +521,17 @@ export default function FinancialData({ data }: { data?: { siren?: string } }) {
                   <th className="px-2 py-1 text-left">Titre</th>
                   <th className="px-2 py-1 text-left">Type</th>
                   <th className="px-2 py-1 text-left">Source</th>
+                  <th className="px-2 py-1 text-left">Aperçu</th>
                   <th className="px-2 py-1 text-left">Télécharger</th>
                 </tr>
               </thead>
               <tbody>
                 {documents.map((doc, i) => {
-                  const href = renderDownloadHref(doc);
+                  const pdfUrl = getDocPdfUrl(doc);
+                  const isPreviewable = !!pdfUrl;
+                  const isDownloadable = !!pdfUrl; // on restreint aux PDF uniquement
+                  const isBilansSaisis = doc.type === "bilansSaisis";
+
                   return (
                     <tr key={(doc.id ?? "doc") + "-" + i} className="border-b hover:bg-gray-50">
                       <td className="px-2 py-1">{doc.date?.slice(0, 10) || "—"}</td>
@@ -551,19 +539,39 @@ export default function FinancialData({ data }: { data?: { siren?: string } }) {
                       <td className="px-2 py-1">{doc.type || "—"}</td>
                       <td className="px-2 py-1 text-gray-500">{doc.source || "—"}</td>
                       <td className="px-2 py-1">
-                        <a
-                          href={href}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className={`inline-block px-3 py-1 rounded text-white text-sm font-medium transition ${
-                            href ? "bg-blue-600 hover:bg-blue-700" : "bg-gray-400 cursor-not-allowed"
+                        <button
+                          className={`px-3 py-1 rounded text-white text-sm font-medium transition ${
+                            isPreviewable ? "bg-indigo-600 hover:bg-indigo-700" : "bg-gray-400 cursor-not-allowed"
                           }`}
-                          onClick={(e) => {
-                            if (!href) e.preventDefault();
+                          onClick={() => {
+                            if (isPreviewable) openPreview(doc);
                           }}
+                          disabled={!isPreviewable}
+                          title={
+                            isPreviewable
+                              ? "Voir l’aperçu du PDF"
+                              : isBilansSaisis
+                                ? "Aperçu indisponible pour les bilans saisis (JSON)"
+                                : "Aperçu indisponible"
+                          }
                         >
-                          Télécharger
-                        </a>
+                          Aperçu
+                        </button>
+                      </td>
+                      <td className="px-2 py-1">
+                        {isDownloadable ? (
+                          <button
+                            className="px-3 py-1 rounded text-white text-sm font-medium transition bg-blue-600 hover:bg-blue-700"
+                            onClick={() => openPreview(doc)}
+                            title="Afficher l’aperçu avant téléchargement"
+                          >
+                            Télécharger
+                          </button>
+                        ) : (
+                          <span className="text-gray-500 italic">
+                            {isBilansSaisis ? "Non téléchargeable (JSON)" : "Indisponible"}
+                          </span>
+                        )}
                       </td>
                     </tr>
                   );
@@ -575,6 +583,48 @@ export default function FinancialData({ data }: { data?: { siren?: string } }) {
           <div className="text-gray-500 italic">Aucun document disponible.</div>
         )}
       </div>
+
+      {/* Modal d’aperçu PDF */}
+      {previewUrl && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center"
+          style={{ background: "rgba(0,0,0,0.6)" }}
+          onClick={closePreview}
+        >
+          <div
+            className="bg-white rounded shadow-lg max-w-5xl w-[90%] h-[80%] flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="px-4 py-3 border-b flex items-center justify-between">
+              <h5 className="font-semibold">{previewTitle}</h5>
+              <div className="flex items-center gap-2">
+                <a
+                  href={previewUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-3 py-1 rounded bg-blue-600 text-white text-sm hover:bg-blue-700"
+                >
+                  Télécharger le PDF
+                </a>
+                <button
+                  className="px-3 py-1 rounded bg-gray-200 text-gray-800 text-sm hover:bg-gray-300"
+                  onClick={closePreview}
+                >
+                  Fermer
+                </button>
+              </div>
+            </div>
+            <div className="flex-1">
+              <iframe
+                src={previewUrl}
+                title="Aperçu PDF"
+                className="w-full h-full"
+                style={{ border: "none" }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
