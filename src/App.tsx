@@ -49,7 +49,7 @@ function fallbackDisplayName(obj: any, parentName?: string): string {
       ? [obj.prenom, obj.nom_usage || obj.nom].filter(Boolean).join(" ")
       : null) ||
     parentName ||
-    "(\u00c9tablissement sans nom)"
+    "(Établissement sans nom)"
   );
 }
 
@@ -109,13 +109,13 @@ function App() {
 
   // Application du fallback sur les résultats et leurs établissements enfants
   const safeResults = Array.isArray(results)
-    ? results.map(r => {
+    ? results.map((r) => {
         const legalName = fallbackDisplayName(r);
         return {
           ...r,
           displayName: legalName,
           matching_etablissements: Array.isArray(r.matching_etablissements)
-            ? r.matching_etablissements.map(etab => ({
+            ? r.matching_etablissements.map((etab: any) => ({
                 ...etab,
                 displayName: fallbackDisplayName(etab, legalName),
               }))
@@ -125,11 +125,12 @@ function App() {
     : [];
 
   // Le SIRET à utiliser pour l'avis de situation SIRENE est celui de l'établissement affiché (ou sélectionné)
-  const siretAffiche = data?.siret || selectedCode || (data?.etablissements?.[0]?.siret);
+  const siretAffiche = data?.siret || selectedCode || data?.etablissements?.[0]?.siret;
 
   // Clé unique pour la recherche courante (SIREN principal)
   const searchKey = data?.siren || "";
 
+  // Vue liste de résultats lorsqu'aucun établissement n'est sélectionné
   if (!selectedCode && safeResults.length > 0) {
     return (
       <div className="max-w-5xl mx-auto mt-5 p-4">
@@ -162,7 +163,7 @@ function App() {
 
         <div>
           <ul>
-            {safeResults.map((r, idx) => (
+            {safeResults.map((r: any, idx: number) => (
               <li key={idx} className="mb-6 flex flex-col gap-1 bg-white border rounded p-3 shadow-sm">
                 <span style={{ fontWeight: "bold", fontSize: "1.1em" }}>
                   {r.displayName} — SIREN: {r.siren}
@@ -184,6 +185,7 @@ function App() {
                     )}
                   </span>
                 </span>
+
                 {Array.isArray(r.matching_etablissements) && r.matching_etablissements.length > 0 && (
                   <button
                     type="button"
@@ -200,66 +202,66 @@ function App() {
                       : `Afficher les établissements (${r.matching_etablissements.length})`}
                   </button>
                 )}
+
                 {openEtabs[r.siren] &&
                   Array.isArray(r.matching_etablissements) && (
                     <ul className="ml-4 mt-2 space-y-2">
-                      {r.matching_etablissements.map(
-                        (etab: any, eidx: number) => (
-                          <li
-                            key={eidx}
-                            className="flex flex-wrap items-center gap-2 border-b pb-1"
-                            style={{ alignItems: "flex-start" }}
-                          >
-                            <span style={{ fontWeight: "bold" }}>
-                              {etab.displayName}
-                            </span>
-                            <span style={{ fontWeight: 400 }}>
-                              — SIRET: {etab.siret}
-                            </span>
-                            <span className="text-xs text-gray-600 ml-1">
-                              {getEtablissementAdresse(etab)
-                                ? `— ${getEtablissementAdresse(etab)}`
-                                : ""}
-                            </span>
-                            <span
-                              className="px-2 py-1 rounded text-xs"
-                              style={{
-                                background:
-                                  etab.statut === "ferme"
-                                    ? "#fde8ea"
-                                    : "#e6faea",
-                                color:
-                                  etab.statut === "ferme"
-                                    ? "#b71c1c"
-                                    : "#208b42",
-                                fontWeight: 600,
-                              }}
-                              title={
+                      {r.matching_etablissements.map((etab: any, eidx: number) => (
+                        <li
+                          key={eidx}
+                          className="flex flex-wrap items-center gap-2 border-b pb-1"
+                          style={{ alignItems: "flex-start" }}
+                        >
+                          <span style={{ fontWeight: "bold" }}>
+                            {etab.displayName}
+                          </span>
+                          <span style={{ fontWeight: 400 }}>
+                            — SIRET: {etab.siret}
+                          </span>
+                          <span className="text-xs text-gray-600 ml-1">
+                            {getEtablissementAdresse(etab)
+                              ? `— ${getEtablissementAdresse(etab)}`
+                              : ""}
+                          </span>
+                          <span
+                            className="px-2 py-1 rounded text-xs"
+                            style={{
+                              background:
                                 etab.statut === "ferme"
-                                  ? "Établissement fermé"
-                                  : "Établissement actif"
-                              }
-                            >
-                              {etab.statut === "ferme" ? "Fermé" : "Actif"}
-                              {etab.statut === "ferme" &&
-                                etab.date_fermeture && (
-                                  <span className="ml-1 text-xs text-gray-500">
-                                    (le {formatDateFR(etab.date_fermeture)})
-                                  </span>
-                                )}
-                            </span>
-                            <button
-                              className="ml-2 px-2 py-1 bg-green-600 text-white rounded hover:bg-green-700 text-xs"
-                              style={{ marginTop: 0 }}
-                              onClick={() => setSelectedCode(etab.siret)}
-                            >
-                              Voir établissement
-                            </button>
-                          </li>
-                        )
-                      )}
+                                  ? "#fde8ea"
+                                  : "#e6faea",
+                              color:
+                                etab.statut === "ferme"
+                                  ? "#b71c1c"
+                                  : "#208b42",
+                              fontWeight: 600,
+                            }}
+                            title={
+                              etab.statut === "ferme"
+                                ? "Établissement fermé"
+                                : "Établissement actif"
+                            }
+                          >
+                            {etab.statut === "ferme" ? "Fermé" : "Actif"}
+                            {etab.statut === "ferme" &&
+                              etab.date_fermeture && (
+                                <span className="ml-1 text-xs text-gray-500">
+                                  (le {formatDateFR(etab.date_fermeture)})
+                                </span>
+                              )}
+                          </span>
+                          <button
+                            className="ml-2 px-2 py-1 bg-green-600 text-white rounded hover:bg-green-700 text-xs"
+                            style={{ marginTop: 0 }}
+                            onClick={() => setSelectedCode(etab.siret)}
+                          >
+                            Voir établissement
+                          </button>
+                        </li>
+                      ))}
                     </ul>
                   )}
+
                 <button
                   className="mt-2 bg-blue-600 text-white px-2 py-1 rounded hover:bg-blue-700 text-sm self-start"
                   onClick={() => setSelectedCode(r.siren)}
@@ -274,9 +276,11 @@ function App() {
     );
   }
 
+  // Vue fiche entreprise
   return (
     <div className="max-w-5xl mx-auto mt-5 p-4">
       <h1 className="text-2xl font-bold mb-6">Recherche d'entreprises</h1>
+
       <form
         className="flex items-center gap-3 mb-7"
         onSubmit={handleSearch}
@@ -306,7 +310,8 @@ function App() {
       {data && (
         <div>
           <CompanyHeader {...data} />
-          {/* Bouton de téléchargement de l'avis de situation SIRENE juste sous l'en-tête */}
+
+          {/* Bouton de téléchargement de l'avis de situation SIRENE */}
           {siretAffiche && (
             <div className="mb-4 mt-2">
               <a
@@ -361,31 +366,33 @@ function App() {
               <EtablissementsSelector
                 etablissements={data.etablissements || []}
                 selected={selectedCode}
-                onSelect={setSelectedCode}
+                onSelect={handleSelectEtablissement}
                 legalUnitName={data.displayName}
                 searchKey={searchKey}
               />
             )}
-            {tabIndex === 2 && (
-              <Dirigeants dirigeants={data.dirigeants || []} />
-            )}
+            {tabIndex === 2 && <Dirigeants dirigeants={data.dirigeants || []} />}
             {tabIndex === 3 && <Finances data={data} />}
             {tabIndex === 4 && <Divers data={data} />}
           </div>
 
-        //{data.inpiRaw && (
-        //    <details
-        //      className="mt-10 bg-gray-100 p-4 rounded text-xs overflow-auto"
-        //      style={{ maxHeight: 400 }}
-        //    >
-        //      <summary className="font-semibold cursor-pointer">
-        //        Détail brut de la requête INPI (JSON)
-        //      </summary>
-        //      <pre>{JSON.stringify(data.inpiRaw, null, 2)}</pre>
-        //    </details>
-        //  )}
-        //</div>
-      //)}
+          {/* Section JSON brut INPI - désactivée */}
+          {/*
+          {data.inpiRaw && (
+            <details
+              className="mt-10 bg-gray-100 p-4 rounded text-xs overflow-auto"
+              style={{ maxHeight: 400 }}
+            >
+              <summary className="font-semibold cursor-pointer">
+                Détail brut de la requête INPI (JSON)
+              </summary>
+              <pre>{JSON.stringify(data.inpiRaw, null, 2)}</pre>
+            </details>
+          )}
+          */}
+        </div>
+      )}
+
       {!loading && !error && !data && (
         <div className="text-center text-gray-500 mt-8">
           Aucun résultat n'a été trouvé.
