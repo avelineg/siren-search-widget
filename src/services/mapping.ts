@@ -1,6 +1,6 @@
 import { getEntrepriseBySiren } from './inpiBackend'
 import { sirene, recherche } from './api'
-import { tvaFRFromSiren } from './tva'
+import { tvaFRFromSiren, validateTvaViaVies } from './tva'
 import naf from '../naf.json'
 import formesJuridique from '../formeJuridique.json'
 import { effectifTrancheLabel } from './effectifs'
@@ -55,9 +55,9 @@ function getFormeJuridiqueLabel(code: string): string | undefined {
   if (!code) return undefined;
   // Essaye les versions normalisées (code, code sans zéros, code padStart)
   return (
-    formesJuridique[code] ||
-    formesJuridique[code.replace(/^0+/, '')] ||
-    formesJuridique[code.padStart(4, '0')]
+    (formesJuridique as any)[code] ||
+    (formesJuridique as any)[code.replace(/^0+/, '')] ||
+    (formesJuridique as any)[code.padStart(4, '0')]
   );
 }
 
@@ -346,16 +346,26 @@ export async function fetchEtablissementBySiren(siren: string) {
     "-";
 
   const tvaNum = tvaFRFromSiren(siren);
+  // Nouvelle vérification via VIES backend (si disponible)
+  let tvaValid: boolean | null = null;
+  if (tvaNum) {
+    try {
+      const res = await validateTvaViaVies('FR', tvaNum.slice(2));
+      tvaValid = res?.valid ?? null;
+    } catch {
+      tvaValid = null;
+    }
+  }
 
   // Dirigeants enrichis avec la correspondance des rôles
-  let dirigeants = [];
+  let dirigeants: any[] = [];
   const pouvoirs = getInpi("formality.content.personneMorale.composition.pouvoirs", inpiData);
   if (isEI) {
     // Pour EI, utilise le nom/prénom ou nom_complet
-    let nom = sireneUL.nom || inpiData.nom || "";
-    let prenoms = sireneUL.prenom || inpiData.prenom || "";
-    if (sireneUL.nom_complet || inpiData.nom_complet) {
-      nom = sireneUL.nom_complet || inpiData.nom_complet;
+    let nom = (sireneUL as any).nom || (inpiData as any).nom || "";
+    let prenoms = (sireneUL as any).prenom || (inpiData as any).prenom || "";
+    if ((sireneUL as any).nom_complet || (inpiData as any).nom_complet) {
+      nom = (sireneUL as any).nom_complet || (inpiData as any).nom_complet;
       prenoms = "";
     }
     dirigeants = [
@@ -373,14 +383,14 @@ export async function fetchEtablissementBySiren(siren: string) {
           prenoms: p.individu.descriptionPersonne.prenoms,
           genre: p.individu.descriptionPersonne.genre,
           dateNaissance: p.individu.descriptionPersonne.dateDeNaissance,
-          role: dirigeantRoles[p.individu.descriptionPersonne.role] || p.individu.descriptionPersonne.role,
+          role: (dirigeantRoles as any)[p.individu.descriptionPersonne.role] || p.individu.descriptionPersonne.role,
         };
       }
       if (p.entreprise) {
         return {
           nom: p.entreprise.denomination,
           siren: p.entreprise.siren,
-          role: dirigeantRoles[p.roleEntreprise] || p.roleEntreprise
+          role: (dirigeantRoles as any)[p.roleEntreprise] || p.roleEntreprise
         };
       }
       return p;
@@ -393,26 +403,26 @@ export async function fetchEtablissementBySiren(siren: string) {
   let finances: any[] = [];
   if (Array.isArray(inpiData.comptes_annuels) && inpiData.comptes_annuels.length > 0) {
     finances = inpiData.comptes_annuels
-      .filter(f => f.date_cloture)
-      .map(f => ({
+      .filter((f: any) => f.date_cloture)
+      .map((f: any) => ({
         exercice: String(f.date_cloture).slice(0, 4),
         ca: f.chiffre_affaires ?? f.chiffre_affaires_net ?? null,
         resultat_net: f.resultat_net ?? null,
         effectif: f.effectif ?? null,
         capital_social: f.capital_social ?? null
       }))
-      .sort((a, b) => Number(a.exercice) - Number(b.exercice));
+      .sort((a: any, b: any) => Number(a.exercice) - Number(b.exercice));
   } else if (Array.isArray(inpiData.financialStatements) && inpiData.financialStatements.length > 0) {
     finances = inpiData.financialStatements
-      .filter(f => f.fiscalYear)
-      .map(f => ({
+      .filter((f: any) => f.fiscalYear)
+      .map((f: any) => ({
         exercice: String(f.fiscalYear),
         ca: f.turnover ?? null,
         resultat_net: f.netResult ?? null,
         effectif: f.workforce ?? null,
         capital_social: f.shareCapital ?? null
       }))
-      .sort((a, b) => Number(a.exercice) - Number(b.exercice));
+      .sort((a: any, b: any) => Number(a.exercice) - Number(b.exercice));
   }
 
   const statut_diffusion =
@@ -428,8 +438,8 @@ export async function fetchEtablissementBySiren(siren: string) {
     forme_juridique,
     categorie_juridique: forme_juridique_code,
     siren,
-    siret: siege?.siret || "-",
-    tva: { numero: tvaNum || '-', valide: null },
+    siret: (siege as any)?.siret || "-",
+    tva: { numero: tvaNum || '-', valide: tvaValid },
     code_ape,
     libelle_ape,
     tranche_effectifs,
@@ -457,15 +467,15 @@ export async function fetchEtablissementBySiret(siret: string) {
   // Récupérer TOUTES les infos du SIREN (pour lister tous les établissements)
   const base = await fetchEtablissementBySiren(siren);
   // Sélectionner établissement courant pour les infos principales
-  const selected = base.etablissements.find(e => e.siret === siret) || base.etablissements[0];
+  const selected = base.etablissements.find((e: any) => e.siret === siret) || base.etablissements[0];
   return {
     ...base,
     siret: selected?.siret || "-",
     adresse: selected?.adresse || "-",
     ville: selected?.ville || "-",
-    statut: selected?.statut,
-    date_fermeture: selected?.date_fermeture,
-    displayName: selected?.displayName || base.displayName || "-",
+    statut: (selected as any)?.statut,
+    date_fermeture: (selected as any)?.date_fermeture,
+    displayName: (selected as any)?.displayName || (base as any).displayName || "-",
   }
 }
 
