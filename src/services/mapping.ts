@@ -91,6 +91,15 @@ export function formatDateFR(date: string | undefined | null): string | null {
   return `${d}/${m}/${y}`;
 }
 
+// Détection d'un établissement situé à Paris (ville ou code postal 75xxx)
+function isParisLocalisation(ville?: string | null, adresse?: string | null): boolean {
+  const v = (ville || "").toString().toLowerCase();
+  const a = (adresse || "").toString().toLowerCase();
+  const hasParisInVille = v.includes("paris");
+  const hasParisPostal = /\b75\d{3}\b/.test(a) || /\b75\d{3}\b/.test(v);
+  return hasParisInVille || hasParisPostal;
+}
+
 // Statut = fermé SEULEMENT si une date de fermeture existe
 function etablissementStatut(etab: any) {
   const date_fermeture = etab.dateFermetureEtablissement || etab.date_fermeture || etab.dateEffetFermeture || null;
@@ -253,8 +262,17 @@ export async function fetchEtablissementBySiren(siren: string) {
     }];
   }
 
-  // Choix du siège
-  const siege = etablissements.find(e => e.est_siege) || etablissements[0] || {};
+  // Choix du siège en privilégiant un établissement HORS Paris
+  const siege =
+    // 1) Siège et hors Paris
+    etablissements.find(e => e.est_siege && !isParisLocalisation(e.ville, e.adresse)) ||
+    // 2) N'importe quel établissement hors Paris
+    etablissements.find(e => !isParisLocalisation(e.ville, e.adresse)) ||
+    // 3) Siège (même si Paris)
+    etablissements.find(e => e.est_siege) ||
+    // 4) Fallback: premier
+    etablissements[0] || {};
+
   let adresse = siege?.adresse || "-";
   let statut = siege?.statut || "actif";
   let date_fermeture = siege?.date_fermeture || null;
