@@ -178,8 +178,11 @@ export default function FinancialData({ data }: { data?: { siren?: string } }) {
 
   const cancelledRef = useRef(false);
 
-  // Base backend (ex: https://hubshare-cmexpert.fr/api)
-  const API_BASE = (import.meta.env.VITE_API_URL || "").replace(/\/+$/, "");
+  // Base backend (ex: https://hubshare-cmexpert.fr/api). Fallback /api si non défini.
+  const API_BASE = (
+    import.meta.env.VITE_API_URL ||
+    (typeof window !== "undefined" ? `${window.location.origin}/api` : "/api")
+  ).replace(/\/+$/, "");
 
   useEffect(() => {
     if (!siren) return;
@@ -233,14 +236,15 @@ export default function FinancialData({ data }: { data?: { siren?: string } }) {
         setFinances(rowsFromBilansSaisis);
 
         // 3) Documents téléchargeables via VOTRE backend
-        //    - Actes: /api/download/acte/:id (déjà fonctionnel chez vous)
-        //    - Bilans: /api/download/bilan/:id (à ajouter côté backend, cf. route express ci-dessous)
+        //    - Actes:  GET {API_BASE}/download/acte/:id
+        //    - Bilans: GET {API_BASE}/download/bilan/:id  (route que vous venez d'ajouter)
         const coll: DossierDoc[] = [];
 
         // a) Bilans déposés (PDF via backend)
         const bilansRaw: AnyObj[] = Array.isArray(payload.bilans) ? payload.bilans : [];
         for (const b of bilansRaw) {
-          const id = coalesce(b?.id, b?.bilanId) as string | undefined;
+          const id =
+            coalesce(b?.id, b?.bilanId, b?.documentId, b?.uuid) as string | undefined;
           const titre =
             (b?.nomDocument as string | undefined) ||
             (b?.libelle as string | undefined) ||
@@ -252,13 +256,13 @@ export default function FinancialData({ data }: { data?: { siren?: string } }) {
             b?.dateDocument
           );
 
-          if (id && API_BASE) {
+          if (id) {
             coll.push({
               id,
               titre,
               type: "bilan",
-              source: "inpi",
-              url: `${API_BASE}/download/bilan/${id}`,
+              source: "INPI",
+              url: `${API_BASE}/download/bilan/${encodeURIComponent(id)}`,
               mimeType: "application/pdf",
               raw: b,
               dateDepot,
@@ -270,18 +274,18 @@ export default function FinancialData({ data }: { data?: { siren?: string } }) {
         // b) Actes (PDF via backend)
         const actesRaw: ActeLike[] = Array.isArray(payload.actes) ? payload.actes : [];
         for (const a of actesRaw) {
-          const id = a?.id;
+          const id = (a as AnyObj)?.id || (a as AnyObj)?.documentId;
           const titre = a?.nomDocument || a?.libelle || "Acte (PDF)";
           const dateDepot = a?.dateDepot;
           const dateDocument = coalesce((a as AnyObj)?.dateDocument, (a as AnyObj)?.dateActe);
 
-          if (id && API_BASE) {
+          if (id) {
             coll.push({
               id,
               titre,
               type: "acte",
-              source: "inpi",
-              url: `${API_BASE}/download/acte/${id}`,
+              source: "INPI",
+              url: `${API_BASE}/download/acte/${encodeURIComponent(id)}`,
               mimeType: "application/pdf",
               raw: a as AnyObj,
               dateDepot,
@@ -326,7 +330,7 @@ export default function FinancialData({ data }: { data?: { siren?: string } }) {
     return () => {
       cancelledRef.current = true;
     };
-  }, [siren]);
+  }, [siren, API_BASE]);
 
   const chartData = useMemo(
     () =>
@@ -347,8 +351,11 @@ export default function FinancialData({ data }: { data?: { siren?: string } }) {
     const pdf = getDocPdfUrl(doc);
     if (!pdf) return;
 
+    // Optionnel: pour forcer un affichage navigateur si votre backend supporte ?inline=1
+    const previewUrl = pdf.includes("?") ? `${pdf}&inline=1` : `${pdf}?inline=1`;
+
     try {
-      const resp = await axios.get(pdf, { responseType: "blob" });
+      const resp = await axios.get(previewUrl, { responseType: "blob" });
       const blob = resp.data as Blob;
       const url = URL.createObjectURL(blob);
 
@@ -359,11 +366,11 @@ export default function FinancialData({ data }: { data?: { siren?: string } }) {
       objectUrlRef.current = url;
 
       setPreviewTitle(doc.titre || "Aperçu du document");
-      setPreviewOriginalUrl(pdf);
+      setPreviewOriginalUrl(previewUrl);
       setPreviewBlobUrl(url);
-    } catch (e) {
+    } catch {
       // Fallback: si CORS interdit le blob, on ouvre dans un nouvel onglet
-      window.open(pdf, "_blank", "noopener,noreferrer");
+      window.open(previewUrl, "_blank", "noopener,noreferrer");
     }
   };
 
@@ -384,7 +391,7 @@ export default function FinancialData({ data }: { data?: { siren?: string } }) {
     };
   }, []);
 
-  const formatDocDate = (d?: string) => (d ? formatDateFR(d.slice(0, 10)) : "—");
+  const formatDocDate = (d?: string) => (d ? formatDateFR(d.slice(0, 10)) || "—" : "—");
 
   if (!siren) return null;
   if (loading) return <div>Chargement des données financières…</div>;
