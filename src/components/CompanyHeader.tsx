@@ -136,23 +136,23 @@ export default function CompanyHeader(props: Props) {
             </li>
           )}
         </ul>
-        <ul className="flex-1 space-y-2 min-w-[220px] list-disc pl-6">
-          {props.email && (
-            <li>
-              <b>Email :</b> {props.email}
-            </li>
-          )}
-          {props.telephone && (
-            <li>
-              <b>Téléphone :</b> {props.telephone}
-            </li>
-          )}
-          {props.site_web && (
-            <li>
-              <b>Site web :</b> <a href={props.site_web} target="_blank" rel="noopener noreferrer">{props.site_web}</a>
-            </li>
-          )}
-        </ul>
+//        <ul className="flex-1 space-y-2 min-w-[220px] list-disc pl-6">
+//          {props.email && (
+//            <li>
+//              <b>Email :</b> {props.email}
+//            </li>
+//          )}
+//          {props.telephone && (
+//            <li>
+//              <b>Téléphone :</b> {props.telephone}
+//            </li>
+//          )}
+//          {props.site_web && (
+//            <li>
+//              <b>Site web :</b> <a href={props.site_web} target="_blank" rel="noopener noreferrer">{props.site_web}</a>
+//            </li>
+//          )}
+//        </ul>
       </div>
     </div>
   );
