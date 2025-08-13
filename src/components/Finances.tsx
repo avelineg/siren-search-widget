@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import axios from "axios";
 import { inpiEntreprise } from "../services/api";
 import {
   ResponsiveContainer,
@@ -12,8 +13,6 @@ import {
 } from "recharts";
 import { formatDateFR } from "../services/mapping";
 
-const ACTE_DOWNLOAD_BASE = "https://hubshare-cmexpert.fr";
-
 type AnyObj = Record<string, any>;
 
 type FinanceRow = {
@@ -21,8 +20,8 @@ type FinanceRow = {
   exercice: string;
   chiffre_affaires: number | null;
   resultat_net: number | null;
-  marge: number | null; // marge (extraite des bilans saisis)
-  effectif?: number | null | string; // conservé pour compatibilité, non affiché
+  marge: number | null;
+  effectif?: number | null | string;
   capital_social: number | null;
 };
 
@@ -40,11 +39,10 @@ type DossierDoc = {
   titre?: string;
   type?: "acte" | "bilan";
   source?: string;
-  url?: string; // lien direct PDF si connu
+  url?: string; // Lien direct PDF uniquement
   mimeType?: string;
   raw?: AnyObj;
 
-  // Dates séparées et explicites
   dateDepot?: string;     // date de dépôt/publication (parution)
   dateDocument?: string;  // date du document (ex: date de clôture pour bilans)
 };
@@ -173,8 +171,10 @@ export default function FinancialData({ data }: { data?: { siren?: string } }) {
   const [loadingDocs, setLoadingDocs] = useState(true);
 
   // Aperçu PDF
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewBlobUrl, setPreviewBlobUrl] = useState<string | null>(null);
+  const [previewOriginalUrl, setPreviewOriginalUrl] = useState<string | null>(null);
   const [previewTitle, setPreviewTitle] = useState<string>("Aperçu du document");
+  const objectUrlRef = useRef<string | null>(null);
 
   const cancelledRef = useRef(false);
 
@@ -229,10 +229,10 @@ export default function FinancialData({ data }: { data?: { siren?: string } }) {
 
         setFinances(rowsFromBilansSaisis);
 
-        // 3) Documents du dossier TÉLÉCHARGEABLES UNIQUEMENT
+        // 3) Documents du dossier: on NE GARDE QUE les liens PDF DIRECTS
         const coll: DossierDoc[] = [];
 
-        // a) Bilans déposés (PDF) — métadonnées INPI + heuristiques URL, sinon fallback via backend
+        // a) Bilans déposés (PDF) — on ne retient que si URL PDF directe connue
         const bilansRaw: AnyObj[] = Array.isArray(payload.bilans) ? payload.bilans : [];
         for (const b of bilansRaw) {
           const id = coalesce(b?.id, b?.bilanId) as string | undefined;
@@ -247,29 +247,19 @@ export default function FinancialData({ data }: { data?: { siren?: string } }) {
             b?.dateDocument
           );
 
-          // Essaye de récupérer une URL PDF directe
-          const urlDirect = coalesce(b?.url, b?.downloadUrl, b?.pdfUrl, b?.urlPdf) as
-            | string
-            | undefined;
+          // URL PDF directe uniquement
+          const urlDirect = coalesce(b?.url, b?.downloadUrl, b?.pdfUrl, b?.urlPdf) as string | undefined;
           const mime = (b?.mimeType || b?.contentType || "").toLowerCase();
-
-          // Heuristique PDF
           const isDirectPdf = !!urlDirect && (/\.pdf(\?|$)/i.test(urlDirect) || mime.includes("pdf"));
 
-          // Fallback: route de téléchargement backend si id présent
-          const fallbackPdf = id ? `${ACTE_DOWNLOAD_BASE}/api/download/bilan/${id}` : undefined;
-
-          const finalUrl = isDirectPdf ? urlDirect : fallbackPdf;
-
-          // N'ajoute que s'il est téléchargeable (URL PDF déterminée)
-          if (finalUrl) {
+          if (isDirectPdf && urlDirect) {
             coll.push({
               id,
               titre,
               type: "bilan",
               source: "bilans",
-              url: finalUrl,
-              mimeType: isDirectPdf ? "application/pdf" : undefined,
+              url: urlDirect,
+              mimeType: "application/pdf",
               raw: b,
               dateDepot,
               dateDocument,
@@ -277,29 +267,36 @@ export default function FinancialData({ data }: { data?: { siren?: string } }) {
           }
         }
 
-        // b) Actes (PDF) — téléchargement via backend
+        // b) Actes (PDF) — pareil, seulement si URL PDF directe présente
         const actesRaw: ActeLike[] = Array.isArray(payload.actes) ? payload.actes : [];
         for (const a of actesRaw) {
           const id = a?.id;
-          if (!id) continue; // pas de téléchargement si pas d'id
           const titre = a?.nomDocument || a?.libelle || "Acte (PDF)";
           const dateDepot = a?.dateDepot;
-          const dateDocument = coalesce(
-            (a as AnyObj)?.dateDocument,
-            (a as AnyObj)?.dateActe
-          );
+          const dateDocument = coalesce((a as AnyObj)?.dateDocument, (a as AnyObj)?.dateActe);
 
-          coll.push({
-            id,
-            titre,
-            type: "acte",
-            source: "actes",
-            url: `${ACTE_DOWNLOAD_BASE}/api/download/acte/${id}`,
-            mimeType: "application/pdf",
-            raw: a as AnyObj,
-            dateDepot,
-            dateDocument,
-          });
+          const urlDirect = coalesce(
+            (a as AnyObj)?.url,
+            (a as AnyObj)?.downloadUrl,
+            (a as AnyObj)?.pdfUrl,
+            (a as AnyObj)?.urlPdf
+          ) as string | undefined;
+          const mime = (((a as AnyObj)?.mimeType || (a as AnyObj)?.contentType) || "").toLowerCase();
+          const isDirectPdf = !!urlDirect && (/\.pdf(\?|$)/i.test(urlDirect) || mime.includes("pdf"));
+
+          if (isDirectPdf && urlDirect) {
+            coll.push({
+              id,
+              titre,
+              type: "acte",
+              source: "actes",
+              url: urlDirect,
+              mimeType: "application/pdf",
+              raw: a as AnyObj,
+              dateDepot,
+              dateDocument,
+            });
+          }
         }
 
         // d) Optionnel: doc top-level s'il est un PDF
@@ -309,7 +306,7 @@ export default function FinancialData({ data }: { data?: { siren?: string } }) {
             | undefined;
           const mime = (payload?.mimeType || payload?.contentType || "").toLowerCase();
           const isPdf = !!url && (/\.pdf(\?|$)/i.test(url) || mime.includes("pdf"));
-          if (isPdf) {
+          if (isPdf && url) {
             coll.push({
               id: payload.id,
               titre: payload.nomDocument || payload.libelle || "Document",
@@ -327,7 +324,7 @@ export default function FinancialData({ data }: { data?: { siren?: string } }) {
         // Dédupe et tri (du plus récent au plus ancien par date de dépôt si dispo, sinon date doc)
         const seen = new Set<string>();
         const docs = coll.filter((d) => {
-          const k = `${d.type || ""}::${d.id || ""}::${d.titre || ""}`;
+          const k = `${d.url || ""}::${d.titre || ""}`;
           if (seen.has(k)) return false;
           seen.add(k);
           return true;
@@ -373,15 +370,8 @@ export default function FinancialData({ data }: { data?: { siren?: string } }) {
     [finances]
   );
 
-  // Détermine si un doc est un PDF téléchargeable et retourne son URL (déjà filtré à l'assemblage, gardé ici pour robustesse)
+  // Détermine si un doc est un PDF téléchargeable (déjà filtré lors de l’assemblage)
   const getDocPdfUrl = (doc: DossierDoc): string | undefined => {
-    if (doc.type === "acte" && doc.id) {
-      return doc.url || `${ACTE_DOWNLOAD_BASE}/api/download/acte/${doc.id}`;
-    }
-    if (doc.type === "bilan") {
-      if (doc.url && /\.pdf(\?|$)/i.test(doc.url)) return doc.url;
-      if (doc.id) return `${ACTE_DOWNLOAD_BASE}/api/download/bilan/${doc.id}`;
-    }
     const url = doc.url;
     const mime = (doc.mimeType || doc.raw?.mimeType || doc.raw?.contentType || "").toLowerCase();
     if (typeof url === "string" && (/\.pdf(\?|$)/i.test(url) || mime.includes("pdf"))) {
@@ -390,18 +380,47 @@ export default function FinancialData({ data }: { data?: { siren?: string } }) {
     return undefined;
   };
 
-  const openPreview = (doc: DossierDoc) => {
+  // Prévisualisation: on récupère le PDF en blob pour éviter les téléchargements forcés
+  const openPreview = async (doc: DossierDoc) => {
     const pdf = getDocPdfUrl(doc);
-    if (pdf) {
+    if (!pdf) return;
+
+    try {
+      const resp = await axios.get(pdf, { responseType: "blob" });
+      const blob = resp.data as Blob;
+      const url = URL.createObjectURL(blob);
+
+      // Cleanup ancien objectURL si nécessaire
+      if (objectUrlRef.current) {
+        URL.revokeObjectURL(objectUrlRef.current);
+      }
+      objectUrlRef.current = url;
+
       setPreviewTitle(doc.titre || "Aperçu du document");
-      const embedUrl = pdf.includes("#") ? pdf : `${pdf}#view=FitH`;
-      setPreviewUrl(embedUrl);
+      setPreviewOriginalUrl(pdf);
+      setPreviewBlobUrl(url);
+    } catch (e) {
+      // Fallback: si CORS interdit le blob, on ouvre dans un nouvel onglet
+      window.open(pdf, "_blank", "noopener,noreferrer");
     }
   };
 
   const closePreview = () => {
-    setPreviewUrl(null);
+    setPreviewOriginalUrl(null);
+    setPreviewBlobUrl(null);
+    if (objectUrlRef.current) {
+      URL.revokeObjectURL(objectUrlRef.current);
+      objectUrlRef.current = null;
+    }
   };
+
+  useEffect(() => {
+    return () => {
+      if (objectUrlRef.current) {
+        URL.revokeObjectURL(objectUrlRef.current);
+      }
+    };
+  }, []);
 
   // Utilitaire local pour formater proprement une date ISO/avec time
   const formatDocDate = (d?: string) => (d ? formatDateFR(d.slice(0, 10)) : "—");
@@ -516,7 +535,7 @@ export default function FinancialData({ data }: { data?: { siren?: string } }) {
         </>
       )}
 
-      {/* Documents téléchargeables uniquement */}
+      {/* Documents téléchargeables (PDF directs uniquement) */}
       <div className="mt-10">
         <h4 className="font-semibold mb-3 text-lg border-b pb-1 mb-4">Documents téléchargeables</h4>
         {loadingDocs ? (
@@ -537,12 +556,12 @@ export default function FinancialData({ data }: { data?: { siren?: string } }) {
               </thead>
               <tbody>
                 {documents.map((doc, i) => {
-                  const pdfUrl = getDocPdfUrl(doc)!; // garanti téléchargeable
+                  const pdfUrl = getDocPdfUrl(doc)!; // garanti PDF direct
                   const docDateFR = formatDocDate(doc.dateDocument);
                   const depotDateFR = formatDocDate(doc.dateDepot);
 
                   return (
-                    <tr key={(doc.id ?? "doc") + "-" + i} className="border-b hover:bg-gray-50">
+                    <tr key={(doc.url ?? "doc") + "-" + i} className="border-b hover:bg-gray-50">
                       <td className="px-2 py-1">{doc.titre || "Document"}</td>
                       <td className="px-2 py-1">{doc.type || "—"}</td>
                       <td className="px-2 py-1 text-gray-500">{doc.source || "—"}</td>
@@ -575,12 +594,12 @@ export default function FinancialData({ data }: { data?: { siren?: string } }) {
             </table>
           </div>
         ) : (
-          <div className="text-gray-500 italic">Aucun document téléchargeable.</div>
+          <div className="text-gray-500 italic">Aucun document PDF direct disponible.</div>
         )}
       </div>
 
       {/* Modal d’aperçu PDF */}
-      {previewUrl && (
+      {previewBlobUrl && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center"
           style={{ background: "rgba(0,0,0,0.6)" }}
@@ -593,14 +612,16 @@ export default function FinancialData({ data }: { data?: { siren?: string } }) {
             <div className="px-4 py-3 border-b flex items-center justify-between">
               <h5 className="font-semibold">{previewTitle}</h5>
               <div className="flex items-center gap-2">
-                <a
-                  href={previewUrl.replace(/#.*$/, "")}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="px-3 py-1 rounded bg-blue-600 text-white text-sm hover:bg-blue-700"
-                >
-                  Ouvrir dans un nouvel onglet
-                </a>
+                {previewOriginalUrl && (
+                  <a
+                    href={previewOriginalUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-3 py-1 rounded bg-blue-600 text-white text-sm hover:bg-blue-700"
+                  >
+                    Ouvrir dans un nouvel onglet
+                  </a>
+                )}
                 <button
                   className="px-3 py-1 rounded bg-gray-200 text-gray-800 text-sm hover:bg-gray-300"
                   onClick={closePreview}
@@ -610,9 +631,9 @@ export default function FinancialData({ data }: { data?: { siren?: string } }) {
               </div>
             </div>
             <div className="flex-1">
-              <object data={previewUrl} type="application/pdf" className="w-full h-full">
+              <object data={previewBlobUrl} type="application/pdf" className="w-full h-full">
                 <iframe
-                  src={previewUrl}
+                  src={previewBlobUrl}
                   title="Aperçu PDF"
                   className="w-full h-full"
                   style={{ border: "none" }}
