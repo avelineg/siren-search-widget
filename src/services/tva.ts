@@ -21,7 +21,10 @@ export function tvaFRFromSiren(siren: string): string {
  *
  * Retourne null si la vérification échoue (réseau/erreur serveur).
  */
-export async function validateTvaViaVies(countryCode: string, vatNumber: string): Promise<{ valid: boolean; name?: string; address?: string } | null> {
+export async function validateTvaViaVies(
+  countryCode: string,
+  vatNumber: string
+): Promise<{ valid: boolean; name?: string; address?: string } | null> {
   try {
     const res = await vies.get('/check', {
       params: { countryCode, vatNumber },
@@ -41,10 +44,12 @@ export async function validateTvaViaVies(countryCode: string, vatNumber: string)
 }
 
 /**
- * Pratique: vérifie directement à partir d’un SIREN FR.
+ * Vérifie directement à partir d’un SIREN FR.
  * Retourne { numero, valid } ou { numero, valid: null } si non vérifiable.
  */
-export async function validateTvaFromSirenFR(siren: string): Promise<{ numero: string; valid: boolean | null }> {
+export async function validateTvaFromSirenFR(
+  siren: string
+): Promise<{ numero: string; valid: boolean | null }> {
   const numero = tvaFRFromSiren(siren);
   if (!numero) return { numero: '', valid: null };
   const check = await validateTvaViaVies('FR', numero.slice(2)); // enlève FR
