@@ -9,7 +9,7 @@ interface Props {
   siret: string;
   ville?: string;
   adresse?: string;
-  tva?: { numero: string; valide: boolean };
+  tva?: { numero: string; valide: boolean | null }; // accepte null (indéterminé)
   code_ape?: string;
   libelle_ape?: string;
   forme_juridique?: string;
@@ -97,59 +97,12 @@ export default function CompanyHeader(props: Props) {
           )}
           {props.categorie_entreprise && (
             <li>
-              <b>Catégorie :</b> {props.categorie_entreprise}
+              <b>Catégorie d’entreprise :</b> {props.categorie_entreprise}
             </li>
           )}
           {props.capital_social !== undefined && (
             <li>
-              <b>Capital social :</b> {props.capital_social?.toLocaleString?.() ?? props.capital_social ?? '–'} €
-            </li>
-          )}
-          {props.tranche_effectif && (
-            <li>
-              <b>Tranche effectif :</b> {props.tranche_effectif}
-            </li>
-          )}
-          {props.date_creation && (
-            <li>
-              <b>Date de création :</b> {props.date_creation}
-            </li>
-          )}
-          {props.date_fermeture && (
-            <li>
-              <b>Date de fermeture :</b> {props.date_fermeture}
-            </li>
-          )}
-          {props.statut && (
-            <li>
-              <b>Statut :</b> {props.statut === "ferme" ? "Fermé" : "Actif"}
-            </li>
-          )}
-          {props.rcs && (
-            <li>
-              <b>RCS :</b> {props.rcs}
-            </li>
-          )}
-          {props.greffe && (
-            <li>
-              <b>Greffe :</b> {props.greffe}
-            </li>
-          )}
-        </ul>
-        <ul className="flex-1 space-y-2 min-w-[220px] list-disc pl-6">
-          {props.email && (
-            <li>
-              <b>Email :</b> {props.email}
-            </li>
-          )}
-          {props.telephone && (
-            <li>
-              <b>Téléphone :</b> {props.telephone}
-            </li>
-          )}
-          {props.site_web && (
-            <li>
-              <b>Site web :</b> <a href={props.site_web} target="_blank" rel="noopener noreferrer">{props.site_web}</a>
+              <b>Capital social :</b> {props.capital_social}
             </li>
           )}
         </ul>
