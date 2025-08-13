@@ -36,13 +36,16 @@ type ActeLike = {
 
 type DossierDoc = {
   id?: string;
-  date?: string;
   titre?: string;
-  type?: string; // "acte" | "bilan" | "bilansSaisis" | "document"
+  type?: "acte" | "bilan";
   source?: string;
-  url?: string; // lien direct (PDF si disponible)
-  raw?: AnyObj;
+  url?: string; // lien direct PDF si connu
   mimeType?: string;
+  raw?: AnyObj;
+
+  // Nouveaux champs de dates séparées
+  dateDepot?: string;     // date de dépôt/publication
+  dateDocument?: string;  // date du document (ex: date de clôture pour bilans)
 };
 
 function coalesce<T>(...vals: T[]): T | undefined {
@@ -165,9 +168,6 @@ export default function FinancialData({ data }: { data?: { siren?: string } }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const [actes, setActes] = useState<ActeLike[]>([]);
-  const [loadingActes, setLoadingActes] = useState(true);
-
   const [documents, setDocuments] = useState<DossierDoc[]>([]);
   const [loadingDocs, setLoadingDocs] = useState(true);
 
@@ -182,11 +182,9 @@ export default function FinancialData({ data }: { data?: { siren?: string } }) {
 
     cancelledRef.current = false;
     setLoading(true);
-    setLoadingActes(true);
     setLoadingDocs(true);
     setError(null);
     setFinances([]);
-    setActes([]);
     setDocuments([]);
 
     (async () => {
@@ -196,7 +194,7 @@ export default function FinancialData({ data }: { data?: { siren?: string } }) {
 
         const payload = res.data ?? {};
 
-        // 1) Bilans saisis (liste JSON)
+        // 1) Bilans saisis (liste JSON) — utilisés uniquement pour les chiffres, pas listés
         const bilansSaisisRaw: AnyObj[] = Array.isArray(payload.bilansSaisis)
           ? payload.bilansSaisis
           : Array.isArray(payload.bilans_saisis)
@@ -230,71 +228,103 @@ export default function FinancialData({ data }: { data?: { siren?: string } }) {
 
         setFinances(rowsFromBilansSaisis);
 
-        // 3) Actes
-        const actesRaw: ActeLike[] = Array.isArray(payload.actes) ? payload.actes : [];
-        setActes(actesRaw);
-
-        // 4) Documents du dossier: actes + bilans (PDF) + bilansSaisis (JSON) + éventuel doc top-level
+        // 3) Documents du dossier TÉLÉCHARGEABLES UNIQUEMENT
         const coll: DossierDoc[] = [];
 
-        // a) actes (téléchargeables PDF via endpoint)
-        for (const a of actesRaw) {
-          coll.push({
-            id: a?.id,
-            date: a?.dateDepot,
-            titre: a?.nomDocument || a?.libelle || "Acte",
-            type: "acte",
-            source: "actes",
-            raw: a as AnyObj,
-          });
-        }
-
-        // b) bilans (métadonnées INPI) — on tente de récupérer une URL PDF si exposée par le backend INPI
+        // a) Bilans déposés (PDF) — métadonnées INPI + heuristiques URL, sinon fallback via backend
         const bilansRaw: AnyObj[] = Array.isArray(payload.bilans) ? payload.bilans : [];
         for (const b of bilansRaw) {
+          const id = coalesce(b?.id, b?.bilanId) as string | undefined;
+          const titre =
+            (b?.nomDocument as string | undefined) ||
+            (b?.libelle as string | undefined) ||
+            "Bilan déposé (PDF)";
+          const dateDepot = coalesce(b?.dateDepot, b?.date_depot);
+          const dateDocument = coalesce(
+            b?.dateCloture,
+            b?.date_cloture,
+            b?.dateDocument
+          );
+
+          // Essaye de récupérer une URL PDF directe
+          const urlDirect = coalesce(b?.url, b?.downloadUrl, b?.pdfUrl, b?.urlPdf) as
+            | string
+            | undefined;
+          const mime = (b?.mimeType || b?.contentType || "").toLowerCase();
+
+          // Heuristique PDF
+          const isDirectPdf = !!urlDirect && (/\.pdf(\?|$)/i.test(urlDirect) || mime.includes("pdf"));
+
+          // Fallback: route de téléchargement backend si id présent
+          const fallbackPdf = id ? `${ACTE_DOWNLOAD_BASE}/api/download/bilan/${id}` : undefined;
+
+          const finalUrl = isDirectPdf ? urlDirect : fallbackPdf;
+
+          // N'ajoute que s'il est téléchargeable (URL PDF déterminée)
+          if (finalUrl) {
+            coll.push({
+              id,
+              titre,
+              type: "bilan",
+              source: "bilans",
+              url: finalUrl,
+              mimeType: isDirectPdf ? "application/pdf" : undefined,
+              raw: b,
+              dateDepot,
+              dateDocument,
+            });
+          }
+        }
+
+        // b) Actes (PDF) — téléchargement via backend
+        const actesRaw: ActeLike[] = Array.isArray(payload.actes) ? payload.actes : [];
+        for (const a of actesRaw) {
+          const id = a?.id;
+          if (!id) continue; // pas de téléchargement si pas d'id
+          const titre = a?.nomDocument || a?.libelle || "Acte (PDF)";
+          const dateDepot = a?.dateDepot;
+          // On tente une date de document si présente
+          const dateDocument = coalesce(
+            (a as AnyObj)?.dateDocument,
+            (a as AnyObj)?.dateActe
+          );
+
           coll.push({
-            id: coalesce(b?.id, b?.bilanId),
-            date: coalesce(b?.dateCloture, b?.dateDepot),
-            titre: b?.nomDocument || "Bilan (INPI)",
-            type: "bilan",
-            source: "bilans",
-            url: coalesce(b?.url, b?.downloadUrl, b?.pdfUrl, b?.urlPdf) as string | undefined,
-            mimeType: (b?.mimeType || b?.contentType) as string | undefined,
-            raw: b,
+            id,
+            titre,
+            type: "acte",
+            source: "actes",
+            url: `${ACTE_DOWNLOAD_BASE}/api/download/acte/${id}`,
+            mimeType: "application/pdf",
+            raw: a as AnyObj,
+            dateDepot,
+            dateDocument,
           });
         }
 
-        // c) bilansSaisis (JSON) — listés mais non téléchargeables
-        for (const b of bilansSaisisRaw) {
-          coll.push({
-            id: coalesce(b?.id, b?.bilanId),
-            date:
-              b?.bilanSaisi?.bilan?.identite?.dateClotureExercice ||
-              b?.dateCloture ||
-              b?.dateDepot,
-            titre: "Bilan saisi (liasse INPI - JSON)",
-            type: "bilansSaisis",
-            source: "bilansSaisis",
-            url: undefined, // force aucune URL (non téléchargeable)
-            raw: b,
-          });
+        // d) Optionnel: doc top-level s'il est un PDF
+        if (payload?.id) {
+          const url = coalesce(payload?.url, payload?.downloadUrl, payload?.pdfUrl, payload?.urlPdf) as
+            | string
+            | undefined;
+          const mime = (payload?.mimeType || payload?.contentType || "").toLowerCase();
+          const isPdf = !!url && (/\.pdf(\?|$)/i.test(url) || mime.includes("pdf"));
+          if (isPdf) {
+            coll.push({
+              id: payload.id,
+              titre: payload.nomDocument || payload.libelle || "Document",
+              type: "bilan",
+              source: payload.typeDocument || "payload",
+              url,
+              mimeType: "application/pdf",
+              raw: payload,
+              dateDepot: coalesce(payload?.dateDepot, payload?.updatedAt),
+              dateDocument: (payload as AnyObj)?.dateDocument,
+            });
+          }
         }
 
-        // d) doc top-level éventuel (on n'en fait pas un téléchargement par défaut)
-        if (payload?.typeDocument && payload?.id) {
-          coll.push({
-            id: payload.id,
-            date: payload.dateDepot || payload.updatedAt,
-            titre: payload.nomDocument || payload.libelle || "Document",
-            type: payload.typeDocument || "document",
-            source: "payload",
-            url: coalesce(payload?.url, payload?.downloadUrl) as string | undefined,
-            mimeType: (payload?.mimeType || payload?.contentType) as string | undefined,
-            raw: payload,
-          });
-        }
-
-        // Dédupe et tri
+        // Dédupe et tri (du plus récent au plus ancien par date de dépôt si dispo, sinon date doc)
         const seen = new Set<string>();
         const docs = coll.filter((d) => {
           const k = `${d.type || ""}::${d.id || ""}::${d.titre || ""}`;
@@ -304,8 +334,8 @@ export default function FinancialData({ data }: { data?: { siren?: string } }) {
         });
 
         docs.sort((a, b) => {
-          const ta = a.date ? Date.parse(a.date) : NaN;
-          const tb = b.date ? Date.parse(b.date) : NaN;
+          const ta = a.dateDepot ? Date.parse(a.dateDepot) : (a.dateDocument ? Date.parse(a.dateDocument) : NaN);
+          const tb = b.dateDepot ? Date.parse(b.dateDepot) : (b.dateDocument ? Date.parse(b.dateDocument) : NaN);
           if (Number.isNaN(ta) && Number.isNaN(tb)) return 0;
           if (Number.isNaN(ta)) return 1;
           if (Number.isNaN(tb)) return -1;
@@ -317,13 +347,11 @@ export default function FinancialData({ data }: { data?: { siren?: string } }) {
         if (!cancelledRef.current) {
           setError("Aucune donnée financière disponible via l’INPI.");
           setFinances([]);
-          setActes([]);
           setDocuments([]);
         }
       } finally {
         if (!cancelledRef.current) {
           setLoading(false);
-          setLoadingActes(false);
           setLoadingDocs(false);
         }
       }
@@ -346,50 +374,30 @@ export default function FinancialData({ data }: { data?: { siren?: string } }) {
     [finances]
   );
 
-  // Détermine si un doc est un PDF téléchargeable et retourne son URL
+  // Détermine si un doc est un PDF téléchargeable et retourne son URL (déjà filtré à l'assemblage, gardé ici pour robustesse)
   const getDocPdfUrl = (doc: DossierDoc): string | undefined => {
-    // bilans saisis JSON: non téléchargeables
-    if (doc.type === "bilansSaisis") return undefined;
-
-    // actes: téléchargement via endpoint
     if (doc.type === "acte" && doc.id) {
-      return `${ACTE_DOWNLOAD_BASE}/api/download/acte/${doc.id}`;
+      return doc.url || `${ACTE_DOWNLOAD_BASE}/api/download/acte/${doc.id}`;
     }
-
-    // bilans déposés: nécessite une URL PDF connue
     if (doc.type === "bilan") {
-      const url =
-        doc.url ||
-        coalesce(doc.raw?.url, doc.raw?.downloadUrl, doc.raw?.pdfUrl, doc.raw?.urlPdf);
-      const mime = (doc.mimeType || doc.raw?.mimeType || doc.raw?.contentType || "").toLowerCase();
-
-      // heuristique: url .pdf ou mime type pdf
-      if (typeof url === "string" && (/\.pdf(\?|$)/i.test(url) || mime.includes("pdf"))) {
-        return url;
-      }
-      return undefined;
+      if (doc.url && /\.pdf(\?|$)/i.test(doc.url)) return doc.url;
+      if (doc.id) return `${ACTE_DOWNLOAD_BASE}/api/download/bilan/${doc.id}`;
     }
-
-    // autres: si explicitement PDF
     const url = doc.url;
     const mime = (doc.mimeType || doc.raw?.mimeType || doc.raw?.contentType || "").toLowerCase();
     if (typeof url === "string" && (/\.pdf(\?|$)/i.test(url) || mime.includes("pdf"))) {
       return url;
     }
-
     return undefined;
-  };
-
-  const canPreview = (doc: DossierDoc) => {
-    const pdf = getDocPdfUrl(doc);
-    return typeof pdf === "string";
   };
 
   const openPreview = (doc: DossierDoc) => {
     const pdf = getDocPdfUrl(doc);
     if (pdf) {
       setPreviewTitle(doc.titre || "Aperçu du document");
-      setPreviewUrl(pdf);
+      // Ajoute un hash pour forcer l'affichage intégré et éviter certaines toolbars
+      const embedUrl = pdf.includes("#") ? pdf : `${pdf}#view=FitH`;
+      setPreviewUrl(embedUrl);
     }
   };
 
@@ -507,9 +515,9 @@ export default function FinancialData({ data }: { data?: { siren?: string } }) {
         </>
       )}
 
-      {/* Documents et téléchargements */}
+      {/* Documents téléchargeables uniquement */}
       <div className="mt-10">
-        <h4 className="font-semibold mb-3 text-lg border-b pb-1 mb-4">Documents du dossier (INPI)</h4>
+        <h4 className="font-semibold mb-3 text-lg border-b pb-1 mb-4">Documents téléchargeables</h4>
         {loadingDocs ? (
           <div>Chargement des documents…</div>
         ) : Array.isArray(documents) && documents.length ? (
@@ -517,61 +525,47 @@ export default function FinancialData({ data }: { data?: { siren?: string } }) {
             <table className="min-w-full text-sm">
               <thead>
                 <tr className="border-b">
-                  <th className="px-2 py-1 text-left">Date</th>
                   <th className="px-2 py-1 text-left">Titre</th>
                   <th className="px-2 py-1 text-left">Type</th>
                   <th className="px-2 py-1 text-left">Source</th>
+                  <th className="px-2 py-1 text-left">Date du document</th>
+                  <th className="px-2 py-1 text-left">Date de dépôt</th>
                   <th className="px-2 py-1 text-left">Aperçu</th>
                   <th className="px-2 py-1 text-left">Télécharger</th>
                 </tr>
               </thead>
               <tbody>
                 {documents.map((doc, i) => {
-                  const pdfUrl = getDocPdfUrl(doc);
-                  const isPreviewable = !!pdfUrl;
-                  const isDownloadable = !!pdfUrl; // on restreint aux PDF uniquement
-                  const isBilansSaisis = doc.type === "bilansSaisis";
+                  const pdfUrl = getDocPdfUrl(doc)!; // garanti téléchargeable
+                  const docDate = doc.dateDocument ? doc.dateDocument.slice(0, 10) : "—";
+                  const depotDate = doc.dateDepot ? doc.dateDepot.slice(0, 10) : "—";
 
                   return (
                     <tr key={(doc.id ?? "doc") + "-" + i} className="border-b hover:bg-gray-50">
-                      <td className="px-2 py-1">{doc.date?.slice(0, 10) || "—"}</td>
                       <td className="px-2 py-1">{doc.titre || "Document"}</td>
                       <td className="px-2 py-1">{doc.type || "—"}</td>
                       <td className="px-2 py-1 text-gray-500">{doc.source || "—"}</td>
+                      <td className="px-2 py-1">{docDate}</td>
+                      <td className="px-2 py-1">{depotDate}</td>
                       <td className="px-2 py-1">
                         <button
-                          className={`px-3 py-1 rounded text-white text-sm font-medium transition ${
-                            isPreviewable ? "bg-indigo-600 hover:bg-indigo-700" : "bg-gray-400 cursor-not-allowed"
-                          }`}
-                          onClick={() => {
-                            if (isPreviewable) openPreview(doc);
-                          }}
-                          disabled={!isPreviewable}
-                          title={
-                            isPreviewable
-                              ? "Voir l’aperçu du PDF"
-                              : isBilansSaisis
-                                ? "Aperçu indisponible pour les bilans saisis (JSON)"
-                                : "Aperçu indisponible"
-                          }
+                          className="px-3 py-1 rounded text-white text-sm font-medium transition bg-indigo-600 hover:bg-indigo-700"
+                          onClick={() => openPreview(doc)}
+                          title="Voir l’aperçu du PDF"
                         >
                           Aperçu
                         </button>
                       </td>
                       <td className="px-2 py-1">
-                        {isDownloadable ? (
-                          <button
-                            className="px-3 py-1 rounded text-white text-sm font-medium transition bg-blue-600 hover:bg-blue-700"
-                            onClick={() => openPreview(doc)}
-                            title="Afficher l’aperçu avant téléchargement"
-                          >
-                            Télécharger
-                          </button>
-                        ) : (
-                          <span className="text-gray-500 italic">
-                            {isBilansSaisis ? "Non téléchargeable (JSON)" : "Indisponible"}
-                          </span>
-                        )}
+                        <a
+                          href={pdfUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="px-3 py-1 rounded text-white text-sm font-medium transition bg-blue-600 hover:bg-blue-700"
+                          title="Télécharger le PDF"
+                        >
+                          Télécharger
+                        </a>
                       </td>
                     </tr>
                   );
@@ -580,7 +574,7 @@ export default function FinancialData({ data }: { data?: { siren?: string } }) {
             </table>
           </div>
         ) : (
-          <div className="text-gray-500 italic">Aucun document disponible.</div>
+          <div className="text-gray-500 italic">Aucun document téléchargeable.</div>
         )}
       </div>
 
@@ -599,12 +593,12 @@ export default function FinancialData({ data }: { data?: { siren?: string } }) {
               <h5 className="font-semibold">{previewTitle}</h5>
               <div className="flex items-center gap-2">
                 <a
-                  href={previewUrl}
+                  href={previewUrl.replace(/#.*$/, "")}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="px-3 py-1 rounded bg-blue-600 text-white text-sm hover:bg-blue-700"
                 >
-                  Télécharger le PDF
+                  Ouvrir dans un nouvel onglet
                 </a>
                 <button
                   className="px-3 py-1 rounded bg-gray-200 text-gray-800 text-sm hover:bg-gray-300"
@@ -615,12 +609,14 @@ export default function FinancialData({ data }: { data?: { siren?: string } }) {
               </div>
             </div>
             <div className="flex-1">
-              <iframe
-                src={previewUrl}
-                title="Aperçu PDF"
-                className="w-full h-full"
-                style={{ border: "none" }}
-              />
+              <object data={previewUrl} type="application/pdf" className="w-full h-full">
+                <iframe
+                  src={previewUrl}
+                  title="Aperçu PDF"
+                  className="w-full h-full"
+                  style={{ border: "none" }}
+                />
+              </object>
             </div>
           </div>
         </div>
