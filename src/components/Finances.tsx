@@ -39,7 +39,7 @@ type DossierDoc = {
   titre?: string;
   type?: "acte" | "bilan";
   source?: string;
-  url?: string; // Lien direct PDF uniquement
+  url?: string; // Lien (backend) de téléchargement/aperçu
   mimeType?: string;
   raw?: AnyObj;
 
@@ -178,6 +178,9 @@ export default function FinancialData({ data }: { data?: { siren?: string } }) {
 
   const cancelledRef = useRef(false);
 
+  // Base backend (ex: https://hubshare-cmexpert.fr/api)
+  const API_BASE = (import.meta.env.VITE_API_URL || "").replace(/\/+$/, "");
+
   useEffect(() => {
     if (!siren) return;
 
@@ -229,10 +232,12 @@ export default function FinancialData({ data }: { data?: { siren?: string } }) {
 
         setFinances(rowsFromBilansSaisis);
 
-        // 3) Documents du dossier: on NE GARDE QUE les liens PDF DIRECTS
+        // 3) Documents téléchargeables via VOTRE backend
+        //    - Actes: /api/download/acte/:id (déjà fonctionnel chez vous)
+        //    - Bilans: /api/download/bilan/:id (à ajouter côté backend, cf. route express ci-dessous)
         const coll: DossierDoc[] = [];
 
-        // a) Bilans déposés (PDF) — on ne retient que si URL PDF directe connue
+        // a) Bilans déposés (PDF via backend)
         const bilansRaw: AnyObj[] = Array.isArray(payload.bilans) ? payload.bilans : [];
         for (const b of bilansRaw) {
           const id = coalesce(b?.id, b?.bilanId) as string | undefined;
@@ -247,18 +252,13 @@ export default function FinancialData({ data }: { data?: { siren?: string } }) {
             b?.dateDocument
           );
 
-          // URL PDF directe uniquement
-          const urlDirect = coalesce(b?.url, b?.downloadUrl, b?.pdfUrl, b?.urlPdf) as string | undefined;
-          const mime = (b?.mimeType || b?.contentType || "").toLowerCase();
-          const isDirectPdf = !!urlDirect && (/\.pdf(\?|$)/i.test(urlDirect) || mime.includes("pdf"));
-
-          if (isDirectPdf && urlDirect) {
+          if (id && API_BASE) {
             coll.push({
               id,
               titre,
               type: "bilan",
-              source: "bilans",
-              url: urlDirect,
+              source: "inpi",
+              url: `${API_BASE}/download/bilan/${id}`,
               mimeType: "application/pdf",
               raw: b,
               dateDepot,
@@ -267,7 +267,7 @@ export default function FinancialData({ data }: { data?: { siren?: string } }) {
           }
         }
 
-        // b) Actes (PDF) — pareil, seulement si URL PDF directe présente
+        // b) Actes (PDF via backend)
         const actesRaw: ActeLike[] = Array.isArray(payload.actes) ? payload.actes : [];
         for (const a of actesRaw) {
           const id = a?.id;
@@ -275,22 +275,13 @@ export default function FinancialData({ data }: { data?: { siren?: string } }) {
           const dateDepot = a?.dateDepot;
           const dateDocument = coalesce((a as AnyObj)?.dateDocument, (a as AnyObj)?.dateActe);
 
-          const urlDirect = coalesce(
-            (a as AnyObj)?.url,
-            (a as AnyObj)?.downloadUrl,
-            (a as AnyObj)?.pdfUrl,
-            (a as AnyObj)?.urlPdf
-          ) as string | undefined;
-          const mime = (((a as AnyObj)?.mimeType || (a as AnyObj)?.contentType) || "").toLowerCase();
-          const isDirectPdf = !!urlDirect && (/\.pdf(\?|$)/i.test(urlDirect) || mime.includes("pdf"));
-
-          if (isDirectPdf && urlDirect) {
+          if (id && API_BASE) {
             coll.push({
               id,
               titre,
               type: "acte",
-              source: "actes",
-              url: urlDirect,
+              source: "inpi",
+              url: `${API_BASE}/download/acte/${id}`,
               mimeType: "application/pdf",
               raw: a as AnyObj,
               dateDepot,
@@ -299,32 +290,10 @@ export default function FinancialData({ data }: { data?: { siren?: string } }) {
           }
         }
 
-        // d) Optionnel: doc top-level s'il est un PDF
-        if (payload?.id) {
-          const url = coalesce(payload?.url, payload?.downloadUrl, payload?.pdfUrl, payload?.urlPdf) as
-            | string
-            | undefined;
-          const mime = (payload?.mimeType || payload?.contentType || "").toLowerCase();
-          const isPdf = !!url && (/\.pdf(\?|$)/i.test(url) || mime.includes("pdf"));
-          if (isPdf && url) {
-            coll.push({
-              id: payload.id,
-              titre: payload.nomDocument || payload.libelle || "Document",
-              type: "bilan",
-              source: payload.typeDocument || "payload",
-              url,
-              mimeType: "application/pdf",
-              raw: payload,
-              dateDepot: coalesce(payload?.dateDepot, payload?.updatedAt),
-              dateDocument: (payload as AnyObj)?.dateDocument,
-            });
-          }
-        }
-
         // Dédupe et tri (du plus récent au plus ancien par date de dépôt si dispo, sinon date doc)
         const seen = new Set<string>();
         const docs = coll.filter((d) => {
-          const k = `${d.url || ""}::${d.titre || ""}`;
+          const k = `${d.type || ""}::${d.id || ""}::${d.titre || ""}`;
           if (seen.has(k)) return false;
           seen.add(k);
           return true;
@@ -370,15 +339,8 @@ export default function FinancialData({ data }: { data?: { siren?: string } }) {
     [finances]
   );
 
-  // Détermine si un doc est un PDF téléchargeable (déjà filtré lors de l’assemblage)
-  const getDocPdfUrl = (doc: DossierDoc): string | undefined => {
-    const url = doc.url;
-    const mime = (doc.mimeType || doc.raw?.mimeType || doc.raw?.contentType || "").toLowerCase();
-    if (typeof url === "string" && (/\.pdf(\?|$)/i.test(url) || mime.includes("pdf"))) {
-      return url;
-    }
-    return undefined;
-  };
+  // On retourne l'URL telle quelle: c'est votre endpoint backend
+  const getDocPdfUrl = (doc: DossierDoc): string | undefined => doc.url;
 
   // Prévisualisation: on récupère le PDF en blob pour éviter les téléchargements forcés
   const openPreview = async (doc: DossierDoc) => {
@@ -422,7 +384,6 @@ export default function FinancialData({ data }: { data?: { siren?: string } }) {
     };
   }, []);
 
-  // Utilitaire local pour formater proprement une date ISO/avec time
   const formatDocDate = (d?: string) => (d ? formatDateFR(d.slice(0, 10)) : "—");
 
   if (!siren) return null;
@@ -535,7 +496,7 @@ export default function FinancialData({ data }: { data?: { siren?: string } }) {
         </>
       )}
 
-      {/* Documents téléchargeables (PDF directs uniquement) */}
+      {/* Documents téléchargeables via backend */}
       <div className="mt-10">
         <h4 className="font-semibold mb-3 text-lg border-b pb-1 mb-4">Documents téléchargeables</h4>
         {loadingDocs ? (
@@ -556,7 +517,7 @@ export default function FinancialData({ data }: { data?: { siren?: string } }) {
               </thead>
               <tbody>
                 {documents.map((doc, i) => {
-                  const pdfUrl = getDocPdfUrl(doc)!; // garanti PDF direct
+                  const pdfUrl = getDocPdfUrl(doc)!; // endpoint backend
                   const docDateFR = formatDocDate(doc.dateDocument);
                   const depotDateFR = formatDocDate(doc.dateDepot);
 
@@ -594,7 +555,7 @@ export default function FinancialData({ data }: { data?: { siren?: string } }) {
             </table>
           </div>
         ) : (
-          <div className="text-gray-500 italic">Aucun document PDF direct disponible.</div>
+          <div className="text-gray-500 italic">Aucun document téléchargeable.</div>
         )}
       </div>
 
