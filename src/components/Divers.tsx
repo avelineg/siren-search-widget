@@ -11,13 +11,31 @@ function extractApeCode(rawApe: string | null): string {
   return String(rawApe).trim().split(/[ (]/)[0].toUpperCase()
 }
 
+// Base URL du backend (si vide => même origine)
+const BACKEND_BASE =
+  (import.meta as any)?.env?.VITE_BACKEND_BASE?.replace(/\/+$/, '') || ""
+
+type IdccItem = {
+  siret: string
+  idcc: string
+  libelle?: string | null
+  periode?: string | null
+  source?: string | null
+  source_updated_at?: string | null
+}
+
+type IdccResponse = {
+  siret: string
+  count: number
+  items: IdccItem[]
+}
+
 export default function LabelsCertifications({ data }: { data: any }) {
   const labels = data.labels || []
   const divers = data.divers || []
   const siret = data.siret || data.etablissements?.[0]?.siret || null
 
-  // Correction : on extrait le code APE brut pour le fallback, même si data.ape inclut un libellé !
-  // On ajoute data.code_ape en priorité car c'est le champ issu du mapping principal
+  // garde ce qui existe déjà si tu l’affiches ailleurs
   const apeFull =
     data.code_ape ||
     data.ape ||
@@ -27,117 +45,74 @@ export default function LabelsCertifications({ data }: { data: any }) {
     null
   const ape = extractApeCode(apeFull)
 
-  const [ccInfo, setCcInfo] = useState<any>(null)
-  const [ccLoaded, setCcLoaded] = useState(false)
-  const [apeIdccs, setApeIdccs] = useState<any[]>([])
-  const [apeLoaded, setApeLoaded] = useState(false)
-  const [usedApe, setUsedApe] = useState(false)
+  const [idccApi, setIdccApi] = useState<IdccResponse | null>(null)
+  const [idccApiLoaded, setIdccApiLoaded] = useState(false)
 
+  const [idccUsed, setIdccUsed] = useState<string | null>(null)
   const [idccHtml, setIdccHtml] = useState<any>(null)
   const [idccHtmlLoading, setIdccHtmlLoading] = useState(false)
   const [idccHtmlError, setIdccHtmlError] = useState<string | null>(null)
-  const [idccUsed, setIdccUsed] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
-    setCcInfo(null)
-    setCcLoaded(false)
-    setApeIdccs([])
-    setApeLoaded(false)
-    setUsedApe(false)
+    setIdccApi(null)
+    setIdccApiLoaded(false)
+    setIdccUsed(null)
     setIdccHtml(null)
     setIdccHtmlError(null)
     setIdccHtmlLoading(false)
-    setIdccUsed(null)
 
-    // On essaye d'abord SIRET
-    const fetchSiret = async () => {
+    const fetchIdccBySiret = async () => {
       if (!siret) {
-        fetchApeFallback()
+        setIdccApiLoaded(true)
         return
       }
       const siretKey = String(siret).padStart(14, '0')
       try {
-        const res = await fetch(`https://siret-cc-backend.onrender.com/api/convention?siret=${siretKey}`)
-        if (res.ok) {
-          const cc = await res.json()
-          if (cancelled) return
-          setCcInfo(cc)
-          setCcLoaded(true)
-          if (cc.IDCC) {
-            setIdccUsed(cc.IDCC)
-            fetchLegifranceHtml(cc.IDCC)
-          }
-        } else {
-          // Toujours tenter le fallback même si erreur ou 404
-          console.log("SIRET non trouvé ou erreur, on tente le fallback APE")
-          fetchApeFallback()
-        }
-      } catch (e) {
-        console.log("Erreur lors du fetch SIRET, on tente le fallback APE")
-        fetchApeFallback()
-      }
-    }
-
-    const fetchApeFallback = async () => {
-      console.log("FETCH APE FALLBACK ape=", ape, "apeFull=", apeFull, "data.code_ape=", data.code_ape, "data.ape=", data.ape, "data.naf=", data.naf)
-      if (!ape) {
-        setCcLoaded(true)
-        setApeLoaded(true)
-        // log si jamais on entre ici
-        console.warn("APE Fallback non tenté car ape est vide !", { ape, apeFull, data })
-        return
-      }
-      setUsedApe(true)
-      setApeLoaded(false)
-      // Debug log pour traçage
-      console.log("Fallback APE déclenché pour", ape)
-      try {
-        // Correction : on passe le code APE "propre"
-        const res = await fetch(`https://siret-cc-backend.onrender.com/api/convention/by-ape?ape=${ape}`)
+        const res = await fetch(`${BACKEND_BASE}/api/idcc/${encodeURIComponent(siretKey)}`)
         if (!res.ok) {
-          setApeLoaded(true)
+          setIdccApiLoaded(true)
           return
         }
-        const idccList = await res.json()
+        const json: IdccResponse = await res.json()
         if (cancelled) return
-        setApeIdccs(idccList)
-        setApeLoaded(true)
-        const firstIdcc = idccList.find((row: any) => /^\d+$/.test(row['Code IDCC']))?.['Code IDCC']
-        if (firstIdcc) {
-          setIdccUsed(firstIdcc)
-          fetchLegifranceHtml(firstIdcc)
+        setIdccApi(json)
+        setIdccApiLoaded(true)
+
+        if (json.count > 0 && json.items?.[0]?.idcc) {
+          const idcc = String(json.items[0].idcc)
+          setIdccUsed(idcc)
+          fetchLegifranceHtml(idcc)
         }
-      } catch (e) {
-        setApeLoaded(true)
+      } catch (_e) {
+        setIdccApiLoaded(true)
       }
     }
 
-    // Correction ici : nettoyer l'IDCC pour enlever les zéros initiaux
     const fetchLegifranceHtml = async (idcc: string) => {
-      const idccClean = String(idcc).replace(/^0+/, '');
-      if (!idccClean || !/^\d+$/.test(idccClean)) return
+      const idccClean = String(idcc).replace(/^0+/, '')
+      if (!/^\d+$/.test(idccClean)) return
       setIdccHtmlLoading(true)
       setIdccHtml(null)
       setIdccHtmlError(null)
       try {
-        const res = await fetch(`https://hubshare-cmexpert.fr/legifrance/convention/html/${idccClean}`)
+        const res = await fetch(`${BACKEND_BASE}/legifrance/convention/html/${idccClean}`)
         if (!res.ok) throw new Error('Erreur lors de la récupération du détail Légifrance')
         const data = await res.json()
         if (cancelled) return
         setIdccHtml(data)
         setIdccHtmlLoading(false)
       } catch (e: any) {
-        setIdccHtmlError(e.message || "Erreur lors de la récupération du détail Légifrance")
+        setIdccHtmlError(e?.message || "Erreur lors de la récupération du détail Légifrance")
         setIdccHtmlLoading(false)
         setIdccHtml(null)
       }
     }
 
-    fetchSiret()
+    fetchIdccBySiret()
     return () => { cancelled = true }
-    // eslint-disable-next-line
-  }, [siret, apeFull]) // attention ici : relancer si apeFull change
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [siret])
 
   // Affichage sommaire façon Legifrance
   function renderSommaire(articles: any[]) {
@@ -234,6 +209,11 @@ export default function LabelsCertifications({ data }: { data: any }) {
       ? idccHtml.conventions[0].titre
       : ""
 
+  // Détails “métadonnées” IDCC (si dispo dans la 1ère ligne)
+  const meta = idccApi?.items?.[0]
+  const moisRef = meta?.periode || undefined
+  const majSource = meta?.source_updated_at || undefined
+
   return (
     <div className="space-y-6">
       <div className="bg-white p-4 rounded shadow">
@@ -243,6 +223,7 @@ export default function LabelsCertifications({ data }: { data: any }) {
         ))}
         {labels.length === 0 && <p>Aucun label.</p>}
       </div>
+
       <div className="bg-white p-4 rounded shadow">
         <h3 className="font-semibold mb-2 text-indigo-900">Divers</h3>
         {divers.map((d: any, i: number) => (
@@ -250,49 +231,52 @@ export default function LabelsCertifications({ data }: { data: any }) {
         ))}
         {divers.length === 0 && <p>Rien à afficher.</p>}
       </div>
+
       <div className="bg-white p-6 rounded shadow border border-indigo-100">
         <h3 className="font-bold text-2xl mb-4 text-indigo-900 border-b-2 border-indigo-200 pb-2 flex items-center">
           Convention collective&nbsp;
-          {conventionName && <span className="text-indigo-700 ml-1">« {conventionName} »</span>}
+          {conventionName && <span className="text-indigo-700 ml-1">« {conventionName} »</span>}
         </h3>
-        {(!ccLoaded && !apeLoaded) && <p>Chargement...</p>}
-        {ccLoaded && ccInfo && ccInfo.IDCC && (
+
+        {!idccApiLoaded && <p>Chargement…</p>}
+
+        {idccApiLoaded && idccApi && idccApi.count > 0 && (
           <div className="mb-4 text-base">
-            <span className="inline-block mr-4 font-semibold text-gray-900">IDCC&nbsp;: <span className="font-bold">{ccInfo.IDCC}</span></span>
-            <span className="inline-block mr-4 text-gray-700">Mois référence&nbsp;: <span className="font-bold">{ccInfo.MOIS}</span></span>
-            <span className="inline-block text-gray-700">Date MAJ&nbsp;: <span className="font-bold">{ccInfo.DATE_MAJ}</span></span>
+            <span className="inline-block mr-4 font-semibold text-gray-900">
+              IDCC&nbsp;:
+              <span className="font-bold">
+                {idccApi.items[0].idcc}
+              </span>
+              {idccApi.items[0].libelle ? <span className="ml-1 text-gray-700">({idccApi.items[0].libelle})</span> : null}
+            </span>
+            {moisRef && (
+              <span className="inline-block mr-4 text-gray-700">
+                Mois référence&nbsp;: <span className="font-bold">{moisRef}</span>
+              </span>
+            )}
+            {majSource && (
+              <span className="inline-block text-gray-700">
+                Date MAJ (source)&nbsp;: <span className="font-bold">{new Date(majSource).toLocaleDateString('fr-FR')}</span>
+              </span>
+            )}
           </div>
         )}
-        {usedApe && apeLoaded && apeIdccs.length > 0 && (
-          <div className="my-2">
-            <p className="text-yellow-700 font-semibold">
-              Aucun IDCC trouvé par SIRET, correspondance indicative calculée à partir du code APE&nbsp;
-              <span className="font-bold">{ape}</span> :
-            </p>
-            {apeIdccs
-              .filter(r => /^\d+$/.test(r['Code IDCC']))
-              .map((row, i) => (
-                <div key={row['Code IDCC'] + '-' + i} className="mb-1">
-                  <b>IDCC proposé :</b> {row['Code IDCC']} {row["Intitul‚ du code IDCC"] && <span>({row["Intitul‚ du code IDCC"]})</span>}
-                </div>
-              ))}
-          </div>
-        )}
-        {(ccLoaded && !ccInfo && apeLoaded && !apeIdccs.length) && (
+
+        {idccApiLoaded && (!idccApi || idccApi.count === 0) && (
           <p className="text-gray-600">
-            Aucune information sur la convention collective n’est disponible pour cet établissement (ni via SIRET, ni via APE).
+            Aucune information sur la convention collective n’est disponible pour cet établissement.
           </p>
         )}
 
         <div className="my-10">
-          {idccHtmlLoading && <p>Chargement du contenu détaillé...</p>}
+          {idccHtmlLoading && <p>Chargement du contenu détaillé…</p>}
           {idccHtmlError && <p className="text-red-700">{idccHtmlError}</p>}
           {idccHtml && idccHtml.conventions && idccHtml.conventions.length > 0 && (
             <>
               {renderAllConventionsLegifrance(idccHtml.conventions)}
               <button
                 className="mt-8 px-6 py-3 bg-green-700 text-white rounded hover:bg-green-800 text-lg font-semibold shadow"
-                onClick={() => idccUsed && window.open(`https://hubshare-cmexpert.fr/legifrance/convention/html/${String(idccUsed).replace(/^0+/, '')}/pdf`, '_blank')}
+                onClick={() => idccUsed && window.open(`${BACKEND_BASE}/legifrance/convention/html/${String(idccUsed).replace(/^0+/, '')}/pdf`, '_blank')}
               >
                 Télécharger ce détail au format PDF
               </button>
