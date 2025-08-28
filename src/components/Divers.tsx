@@ -13,7 +13,7 @@ function extractApeCode(rawApe: string | null): string {
 
 // Base URL du backend (si vide => même origine)
 const BACKEND_BASE =
-  (import.meta as any)?.env?.VITE_BACKEND_BASE?.replace(/\/+$/, '') || ""
+  (import.meta as any)?.env?.VITE_API_URL?.replace(/\/+$/, '') || ""
 
 type IdccItem = {
   siret: string
