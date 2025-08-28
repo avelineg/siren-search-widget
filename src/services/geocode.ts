@@ -1,6 +1,6 @@
 /**
  * Géocode une adresse en utilisant d'abord api-adresse.data.gouv.fr (BAN),
- * puis en fallback Photon si besoin.
+ * puis en fallback Nominatim si besoin.
  * Retourne également l'adresse trouvée, la source, et si la ville attendue correspond.
  */
 export async function geocodeAdresse(
@@ -33,26 +33,23 @@ export async function geocodeAdresse(
     // continue to fallback
   }
 
-  // 2. Fallback Photon
-  const urlPhoton = `https://photon.komoot.io/api/?q=${encodeURIComponent(adresse)}&limit=1`;
+  // 2. Fallback Nominatim
+  const urlNominatim = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(adresse)}`;
   try {
-    const resp = await fetch(urlPhoton, { headers: { 'User-Agent': 'siren-search-widget' } });
+    const resp = await fetch(urlNominatim, { headers: { 'User-Agent': 'siren-search-widget' } });
     const data = await resp.json();
-    if (data && data.features && data.features.length > 0) {
-      const f = data.features[0];
-      const foundAddress = f.properties.label || f.properties.name || f.properties.street || f.properties.city || f.properties.country;
+    if (data && data.length > 0) {
+      const found = data[0];
+      const foundAddress = found.display_name;
       const cityMatch = expectedCity
-        ? (
-            (f.properties.city && f.properties.city.toUpperCase().includes(expectedCity.toUpperCase())) ||
-            (foundAddress && foundAddress.toUpperCase().includes(expectedCity.toUpperCase()))
-          )
+        ? foundAddress && foundAddress.toUpperCase().includes(expectedCity.toUpperCase())
         : undefined;
       return {
-        lat: f.geometry.coordinates[1],
-        lng: f.geometry.coordinates[0],
+        lat: parseFloat(found.lat),
+        lng: parseFloat(found.lon),
         foundAddress,
         cityMatch,
-        source: "photon"
+        source: "nominatim"
       };
     }
   } catch (e) {
