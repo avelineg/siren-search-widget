@@ -113,13 +113,15 @@ export default function LabelsCertifications({ data }: { data: any }) {
       }
     }
 
+    // Correction ici : nettoyer l'IDCC pour enlever les zéros initiaux
     const fetchLegifranceHtml = async (idcc: string) => {
-      if (!idcc || !/^\d+$/.test(idcc)) return
+      const idccClean = String(idcc).replace(/^0+/, '');
+      if (!idccClean || !/^\d+$/.test(idccClean)) return
       setIdccHtmlLoading(true)
       setIdccHtml(null)
       setIdccHtmlError(null)
       try {
-        const res = await fetch(`https://hubshare-cmexpert.fr/legifrance/convention/html/${idcc}`)
+        const res = await fetch(`https://hubshare-cmexpert.fr/legifrance/convention/html/${idccClean}`)
         if (!res.ok) throw new Error('Erreur lors de la récupération du détail Légifrance')
         const data = await res.json()
         if (cancelled) return
@@ -290,7 +292,7 @@ export default function LabelsCertifications({ data }: { data: any }) {
               {renderAllConventionsLegifrance(idccHtml.conventions)}
               <button
                 className="mt-8 px-6 py-3 bg-green-700 text-white rounded hover:bg-green-800 text-lg font-semibold shadow"
-                onClick={() => idccUsed && window.open(`https://hubshare-cmexpert.fr/legifrance/convention/html/${idccUsed}/pdf`, '_blank')}
+                onClick={() => idccUsed && window.open(`https://hubshare-cmexpert.fr/legifrance/convention/html/${String(idccUsed).replace(/^0+/, '')}/pdf`, '_blank')}
               >
                 Télécharger ce détail au format PDF
               </button>
