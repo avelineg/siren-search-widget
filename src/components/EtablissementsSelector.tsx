@@ -124,7 +124,7 @@ const EtablissementsSelector: React.FC<Props> = ({
     ? [first.lat!, first.lng!]
     : [48.8566, 2.3522];
 
-  const zoom = selectedEtab || principal ? 13 : 6;
+  const zoom = selectedEtab || principal ? 10 : 5;
 
   if (!etablissements || etablissements.length === 0) {
     return <div>Aucun établissement référencé.</div>;
