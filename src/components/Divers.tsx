@@ -1,22 +1,10 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 
-/* ========================
-   Utilitaires
-======================== */
-function truncate(str: string, n: number) {
-  return str && str.length > n ? str.substr(0, n - 1) + '…' : str
-}
+/* ========= Utils ========= */
 function extractApeCode(rawApe: string | null): string {
   if (!rawApe) return ''
   return String(rawApe).trim().split(/[ (]/)[0].toUpperCase()
 }
-
-/** ======================================================
- *  BASE BACKEND
- *  - priorité à VITE_API_URL (build-time)
- *  - fallback runtime : si on est sur onrender.com, utiliser ton domaine
- *  - sinon chemins relatifs (même origine)
- *  ====================================================== */
 const ENV_BASE = (((import.meta as any) ?? {}).env?.VITE_API_URL as string | undefined) || ''
 const RUNTIME_FALLBACK =
   typeof window !== 'undefined' &&
@@ -24,94 +12,83 @@ const RUNTIME_FALLBACK =
     ? 'https://hubshare-cmexpert.fr'
     : ''
 const BACKEND_BASE = (ENV_BASE || RUNTIME_FALLBACK).replace(/\/+$/, '')
-if (typeof window !== 'undefined') {
-  console.info('[CC] BACKEND_BASE =', BACKEND_BASE || '(même origine)')
-}
+if (typeof window !== 'undefined') console.info('[CC] BACKEND_BASE =', BACKEND_BASE || '(même origine)')
 
-/* ========================
-   Types
-======================== */
-type IdccItem = {
-  siret: string
-  idcc: string
-  libelle?: string | null
-  periode?: string | null
-  source?: string | null
-  source_updated_at?: string | null
-}
-type IdccResponse = {
-  siret: string
-  count: number
-  items: IdccItem[]
-}
+/* ========= Types ========= */
+type IdccItem = { siret: string; idcc: string; libelle?: string|null; periode?: string|null; source?: string|null; source_updated_at?: string|null }
+type IdccResponse = { siret: string; count: number; items: IdccItem[] }
+type ApeIdccItem = { idcc: string; libelle?: string|null; match?: string|null }
+type ApeIdccResponse = { ape: string; count: number; items: ApeIdccItem[] }
 
-/* ========================
-   Composant principal
-======================== */
+/* ========= Component ========= */
 export default function LabelsCertifications({ data }: { data: any }) {
   const labels = data.labels || []
   const divers = data.divers || []
-
   const siret = data.siret || data.etablissements?.[0]?.siret || null
 
-  // Conserve ce que tu utilises ailleurs
   const apeFull =
-    data.code_ape ||
-    data.ape ||
-    data.naf ||
-    data.etablissements?.[0]?.ape ||
-    data.etablissements?.[0]?.naf ||
-    null
+    data.code_ape || data.ape || data.naf || data.etablissements?.[0]?.ape || data.etablissements?.[0]?.naf || null
   const ape = extractApeCode(apeFull)
 
-  // Etats IDCC (via API tabulaire)
+  // SIRET -> IDCC
   const [idccApi, setIdccApi] = useState<IdccResponse | null>(null)
   const [idccApiLoaded, setIdccApiLoaded] = useState(false)
   const [idccApiError, setIdccApiError] = useState<string | null>(null)
 
-  // Etats Légifrance (détail affichage)
+  // Fallback APE -> IDCC
+  const [apeCandidates, setApeCandidates] = useState<ApeIdccItem[]>([])
+  const [apeLoaded, setApeLoaded] = useState(false)
+  const [apeError, setApeError] = useState<string | null>(null)
+
+  // Légifrance
   const [idccUsed, setIdccUsed] = useState<string | null>(null)
   const [idccHtml, setIdccHtml] = useState<any>(null)
   const [idccHtmlLoading, setIdccHtmlLoading] = useState(false)
   const [idccHtmlError, setIdccHtmlError] = useState<string | null>(null)
 
+  // Scrollspy
+  const articleRefs = useRef<Record<string, HTMLElement | null>>({})
+  const [activeAnchor, setActiveAnchor] = useState<string | null>(null)
+
+  /* ------------ Data fetching ------------ */
   useEffect(() => {
     let cancelled = false
-    setIdccApi(null)
-    setIdccApiLoaded(false)
-    setIdccApiError(null)
-    setIdccUsed(null)
-    setIdccHtml(null)
-    setIdccHtmlError(null)
-    setIdccHtmlLoading(false)
+    setIdccApi(null); setIdccApiLoaded(false); setIdccApiError(null)
+    setApeCandidates([]); setApeLoaded(false); setApeError(null)
+    setIdccUsed(null); setIdccHtml(null); setIdccHtmlError(null); setIdccHtmlLoading(false)
 
     const fetchIdccBySiret = async () => {
-      if (!siret) {
-        setIdccApiLoaded(true)
-        return
-      }
+      if (!siret) { setIdccApiLoaded(true); tryApeFallback(); return }
       const siretKey = String(siret).padStart(14, '0')
       const url = `${BACKEND_BASE}/api/idcc/${encodeURIComponent(siretKey)}`
       try {
         const res = await fetch(url)
-        if (!res.ok) {
-          setIdccApiLoaded(true)
-          setIdccApiError(`HTTP ${res.status} sur ${url}`)
-          return
-        }
+        if (!res.ok) { setIdccApiLoaded(true); setIdccApiError(`HTTP ${res.status} sur ${url}`); tryApeFallback(); return }
         const json: IdccResponse = await res.json()
         if (cancelled) return
-        setIdccApi(json)
-        setIdccApiLoaded(true)
+        setIdccApi(json); setIdccApiLoaded(true)
 
         const idcc = json?.items?.[0]?.idcc
-        if (idcc) {
-          setIdccUsed(String(idcc))
-          fetchLegifranceHtml(String(idcc))
-        }
+        if (idcc) { setIdccUsed(String(idcc)); fetchLegifranceHtml(String(idcc)) }
+        else { tryApeFallback() }
       } catch (e: any) {
-        setIdccApiLoaded(true)
-        setIdccApiError(e?.message || 'Erreur réseau')
+        setIdccApiLoaded(true); setIdccApiError(e?.message || 'Erreur réseau'); tryApeFallback()
+      }
+    }
+
+    const tryApeFallback = async () => {
+      if (!ape) { setApeLoaded(true); return }
+      const url = `${BACKEND_BASE}/api/idcc/by-ape/${encodeURIComponent(ape)}`
+      try {
+        const res = await fetch(url)
+        if (!res.ok) { setApeLoaded(true); setApeError(`HTTP ${res.status} sur ${url}`); return }
+        const json: ApeIdccResponse = await res.json()
+        if (cancelled) return
+        setApeCandidates(json.items || []); setApeLoaded(true)
+        const first = json.items?.[0]?.idcc
+        if (!idccUsed && first) { setIdccUsed(String(first)); fetchLegifranceHtml(String(first)) }
+      } catch (e: any) {
+        setApeLoaded(true); setApeError(e?.message || 'Erreur réseau (APE)')
       }
     }
 
@@ -119,231 +96,228 @@ export default function LabelsCertifications({ data }: { data: any }) {
       const idccClean = String(idcc).replace(/^0+/, '')
       if (!/^\d+$/.test(idccClean)) return
       const url = `${BACKEND_BASE}/legifrance/convention/html/${idccClean}`
-      setIdccHtmlLoading(true)
-      setIdccHtml(null)
-      setIdccHtmlError(null)
+      setIdccHtmlLoading(true); setIdccHtml(null); setIdccHtmlError(null)
       try {
         const res = await fetch(url)
         if (!res.ok) throw new Error(`HTTP ${res.status} sur ${url}`)
         const d = await res.json()
         if (cancelled) return
-        setIdccHtml(d)
-        setIdccHtmlLoading(false)
+        setIdccHtml(d); setIdccHtmlLoading(false)
       } catch (e: any) {
         setIdccHtmlError(e?.message || 'Erreur lors de la récupération du détail Légifrance')
-        setIdccHtmlLoading(false)
-        setIdccHtml(null)
+        setIdccHtmlLoading(false); setIdccHtml(null)
       }
     }
 
     fetchIdccBySiret()
-    return () => {
-      cancelled = true
-    }
+    return () => { cancelled = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [siret])
+  }, [siret, ape])
 
-  /* ========================
-     Rendus Légifrance
-  ======================== */
-  function renderSommaire(articles: any[]) {
-    if (!articles?.length) return null
-    return (
-      <nav style={{ borderBottom: '1px solid #ddd', marginBottom: 24, paddingBottom: 8, fontSize: 16 }}>
-        <b>Sommaire : </b>
-        {articles.map((a, i) => (
-          <a
-            key={a.id || a.num || i}
-            href={`#article-${a.id || a.num || i}`}
-            style={{ marginRight: 16, color: '#0053b3', textDecoration: 'underline' }}
-          >
-            {a.num ? `Article ${a.num}` : 'Article'}
-          </a>
-        ))}
-      </nav>
+  /* ------------ Navigation améliorée ------------ */
+  // construit une liste d’ancres à partir des articles des conventions
+  const anchors = useMemo(() => {
+    const out: { id: string; label: string }[] = []
+    if (!idccHtml?.conventions) return out
+    idccHtml.conventions.forEach((conv: any, ci: number) => {
+      ;(conv.articles || []).forEach((a: any, ai: number) => {
+        const id = `c${ci}-a${ai}`
+        const label = a.num ? `Article ${a.num}` : a.title || `Article ${ai + 1}`
+        out.push({ id, label })
+      })
+    })
+    return out
+  }, [idccHtml])
+
+  useEffect(() => {
+    const obs = new IntersectionObserver(
+      (entries) => {
+        const visible = entries
+          .filter(e => e.isIntersecting)
+          .sort((a,b) => a.boundingClientRect.top - b.boundingClientRect.top)
+        if (visible[0]) setActiveAnchor(visible[0].target.id)
+      },
+      { rootMargin: '0px 0px -70% 0px' } // déclenche quand ~haut de l’article atteint 30% de la fenêtre
     )
+    anchors.forEach(a => {
+      const el = articleRefs.current[a.id]
+      if (el) obs.observe(el)
+    })
+    return () => obs.disconnect()
+  }, [anchors])
+
+  const scrollTo = (id: string) => {
+    const el = articleRefs.current[id]
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
 
-  function renderArticleLegifrance(a: any, i: number) {
-    const articleId = a.id || a.num || `${i}`
-    return (
+  const expandAll = () => {
+    document.querySelectorAll('[data-collapsible]').forEach(el => el.setAttribute('open', 'true'))
+  }
+  const collapseAll = () => {
+    document.querySelectorAll('[data-collapsible]').forEach(el => el.removeAttribute('open'))
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  /* ------------ Rendus Légifrance ------------ */
+  const renderArticle = (a: any, key: string) => (
+    <details
+      key={key}
+      id={key}
+      ref={(el) => (articleRefs.current[key] = el)}
+      data-collapsible
+      className="mb-6 bg-[#fafafc] border border-[#e1e1ea] rounded-lg"
+      open
+    >
+      <summary className="cursor-pointer px-4 py-3 text-[17px] font-semibold text-[#0b2353]">
+        {a.num ? `Article ${a.num}` : 'Article'} {a.title ? `: ${a.title}` : ''}
+      </summary>
       <div
-        key={articleId}
-        id={`article-${articleId}`}
-        style={{
-          background: '#fafafc',
-          border: '1px solid #e1e1ea',
-          borderRadius: 8,
-          marginBottom: 32,
-          padding: '18px 24px',
-        }}
-      >
-        <h3 style={{ fontWeight: 'bold', color: '#0b2353', fontSize: 20, marginBottom: 8 }}>
-          {a.num ? `Article ${a.num}` : 'Article'} : {a.title || ''}
-        </h3>
-        <div
-          style={{ color: '#222', fontSize: 17, lineHeight: 1.7 }}
-          dangerouslySetInnerHTML={{ __html: a.content || a.texteHtml || '' }}
-        />
-      </div>
-    )
-  }
+        className="px-5 pb-5 text-[16px] leading-7 text-[#222]"
+        dangerouslySetInnerHTML={{ __html: a.content || a.texteHtml || '' }}
+      />
+    </details>
+  )
 
-  function renderSectionsLegifrance(sections: any[]) {
-    return (sections || []).map((s, i) => (
-      <section key={s.id || i} className="mb-8">
-        <h3
-          style={{
-            fontWeight: 'bold',
-            fontSize: 18,
-            marginTop: 32,
-            marginBottom: 16,
-            color: '#0053b3',
-            borderBottom: '1px solid #e1e1ea',
-            paddingBottom: 4,
-          }}
-        >
-          {s.title || ''}
-        </h3>
-        {(s.articles || []).map((a: any, idx: number) => renderArticleLegifrance(a, idx))}
-        {renderSectionsLegifrance(s.sections)}
-      </section>
-    ))
-  }
-
-  function renderAllConventionsLegifrance(convs: any[]) {
-    return (convs || []).map((conv, idx) => (
-      <div key={conv.id || idx} className="my-10 border-t pt-6">
-        {/* Grand titre à la Legifrance */}
-        <div
-          style={{
-            fontSize: 25,
-            fontWeight: 'bolder',
-            color: '#002752',
-            textAlign: 'center',
-            margin: '30px 0 10px 0',
-            borderBottom: '4px solid #b50910',
-            paddingBottom: 6,
-          }}
-        >
+  const renderConventions = () => (
+    (idccHtml?.conventions || []).map((conv: any, ci: number) => (
+      <div key={conv.id || ci} className="mb-10">
+        <h2 className="text-2xl font-extrabold text-[#002752] text-center mb-6 border-b-4 border-[#b50910] pb-2">
           {conv.titre || ''}
-        </div>
-
-        {/* Intro/résumé */}
+        </h2>
         {conv.descriptionFusionHtml && (
           <div
-            style={{ fontSize: 18, color: '#222', marginBottom: 24 }}
+            className="text-[18px] text-[#222] mb-4"
             dangerouslySetInnerHTML={{ __html: conv.descriptionFusionHtml }}
           />
         )}
-
-        {/* Sommaire */}
-        {renderSommaire(conv.articles)}
-
-        {/* Articles ouverts */}
-        {(conv.articles || []).map((a: any, i: number) => renderArticleLegifrance(a, i))}
-
-        {/* Sections éventuelles */}
-        {renderSectionsLegifrance(conv.sections)}
+        {(conv.articles || []).map((a: any, ai: number) => renderArticle(a, `c${ci}-a${ai}`))}
       </div>
     ))
-  }
+  )
 
-  /* ========================
-     Données d'en-tête
-  ======================== */
-  const conventionName =
-    idccHtml?.conventions?.[0]?.titre || idccApi?.items?.[0]?.libelle || ''
-
+  /* ------------ En-tête / Méta ------------ */
+  const mainLibelle = idccHtml?.conventions?.[0]?.titre || idccApi?.items?.[0]?.libelle || ''
   const meta = idccApi?.items?.[0]
   const moisRef = meta?.periode || undefined
   const majSource = meta?.source_updated_at || undefined
 
-  /* ========================
-     Rendu
-  ======================== */
   return (
     <div className="space-y-6">
+      {/* Blocs existants */}
       <div className="bg-white p-4 rounded shadow">
         <h3 className="font-semibold mb-2 text-indigo-900">Labels & certifications</h3>
-        {labels.map((l: any, i: number) => (
-          <p key={i}>{l}</p>
-        ))}
-        {labels.length === 0 && <p>Aucun label.</p>}
+        {labels.length ? labels.map((l: any, i: number) => <p key={i}>{l}</p>) : <p>Aucun label.</p>}
       </div>
 
       <div className="bg-white p-4 rounded shadow">
         <h3 className="font-semibold mb-2 text-indigo-900">Divers</h3>
-        {divers.map((d: any, i: number) => (
-          <p key={i}>{d}</p>
-        ))}
-        {divers.length === 0 && <p>Rien à afficher.</p>}
+        {divers.length ? divers.map((d: any, i: number) => <p key={i}>{d}</p>) : <p>Rien à afficher.</p>}
       </div>
 
-      <div className="bg-white p-6 rounded shadow border border-indigo-100">
-        <h3 className="font-bold text-2xl mb-4 text-indigo-900 border-b-2 border-indigo-200 pb-2 flex items-center">
-          Convention collective&nbsp;
-          {conventionName && <span className="text-indigo-700 ml-1">« {conventionName} »</span>}
-        </h3>
+      {/* Convention collective */}
+      <div className="bg-white p-0 rounded shadow border border-indigo-100 overflow-hidden">
+        {/* Barre d’entête */}
+        <div className="px-6 pt-5 pb-3 border-b">
+          <h3 className="font-bold text-2xl text-indigo-900 flex items-center gap-2">
+            Convention collective
+            {mainLibelle && <span className="text-indigo-700">« {mainLibelle} »</span>}
+          </h3>
 
-        {!idccApiLoaded && <p>Chargement…</p>}
-        {idccApiError && (
-          <p className="text-red-700 mb-2">
-            Erreur lors de la récupération de l’IDCC : {idccApiError}
-          </p>
-        )}
-
-        {idccApiLoaded && idccApi && idccApi.count > 0 && (
-          <div className="mb-4 text-base">
-            <span className="inline-block mr-4 font-semibold text-gray-900">
-              IDCC&nbsp;:{' '}
-              <span className="font-bold">{idccApi.items[0].idcc}</span>
-              {idccApi.items[0].libelle ? (
-                <span className="ml-1 text-gray-700">({idccApi.items[0].libelle})</span>
-              ) : null}
-            </span>
-            {moisRef && (
-              <span className="inline-block mr-4 text-gray-700">
-                Mois référence&nbsp;: <span className="font-bold">{moisRef}</span>
-              </span>
-            )}
-            {majSource && (
-              <span className="inline-block text-gray-700">
-                Date MAJ (source)&nbsp;:{' '}
-                <span className="font-bold">
-                  {new Date(majSource).toLocaleDateString('fr-FR')}
-                </span>
-              </span>
+          {/* Infos synthèse */}
+          <div className="mt-2 text-[15px] text-gray-800 flex flex-wrap gap-x-6 gap-y-2">
+            {idccApiLoaded && idccApi?.count! > 0 && (
+              <>
+                <div><b>IDCC :</b> {idccApi!.items[0].idcc}</div>
+                {moisRef && <div><b>Mois référence :</b> {moisRef}</div>}
+                {majSource && <div><b>Date MAJ (source) :</b> {new Date(majSource).toLocaleDateString('fr-FR')}</div>}
+              </>
             )}
           </div>
-        )}
 
-        {idccApiLoaded && (!idccApi || idccApi.count === 0) && !idccApiError && (
-          <p className="text-gray-600">
-            Aucune information sur la convention collective n’est disponible pour cet établissement.
-          </p>
-        )}
-
-        <div className="my-10">
-          {idccHtmlLoading && <p>Chargement du contenu détaillé…</p>}
-          {idccHtmlError && <p className="text-red-700">{idccHtmlError}</p>}
-          {idccHtml?.conventions?.length > 0 && (
-            <>
-              {renderAllConventionsLegifrance(idccHtml.conventions)}
+          {/* Actions lecture */}
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button className="px-3 py-1.5 bg-indigo-600 text-white rounded hover:bg-indigo-700" onClick={expandAll}>Tout déplier</button>
+            <button className="px-3 py-1.5 bg-gray-100 text-gray-900 rounded hover:bg-gray-200" onClick={collapseAll}>Tout replier</button>
+            {idccUsed && (
               <button
-                className="mt-8 px-6 py-3 bg-green-700 text-white rounded hover:bg-green-800 text-lg font-semibold shadow"
-                onClick={() =>
-                  idccUsed &&
-                  window.open(
-                    `${BACKEND_BASE}/legifrance/convention/html/${String(idccUsed).replace(/^0+/, '')}/pdf`,
-                    '_blank'
-                  )
-                }
+                className="px-3 py-1.5 bg-green-700 text-white rounded hover:bg-green-800"
+                onClick={() => window.open(`${BACKEND_BASE}/legifrance/convention/html/${String(idccUsed).replace(/^0+/, '')}/pdf`, '_blank')}
               >
-                Télécharger ce détail au format PDF
+                Télécharger en PDF
               </button>
-            </>
-          )}
+            )}
+          </div>
+        </div>
+
+        {/* Corps : layout à 2 colonnes */}
+        <div className="grid grid-cols-12 gap-6 p-6">
+          {/* Sommaire latéral */}
+          <aside className="col-span-12 lg:col-span-3">
+            <div className="sticky top-4 max-h-[80vh] overflow-auto border rounded-lg p-3">
+              <div className="font-semibold mb-2">Sommaire</div>
+              {anchors.length === 0 && <div className="text-sm text-gray-500">—</div>}
+              <ul className="space-y-1">
+                {anchors.map(a => (
+                  <li key={a.id}>
+                    <button
+                      onClick={() => scrollTo(a.id)}
+                      className={`text-left text-sm underline-offset-2 hover:underline ${
+                        activeAnchor === a.id ? 'text-indigo-700 font-semibold' : 'text-indigo-600'
+                      }`}
+                    >
+                      {a.label}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            {/* Fallback APE (si pas d’IDCC SIRET) */}
+            {idccApiLoaded && (!idccApi || idccApi.count === 0) && (
+              <div className="mt-6 border rounded-lg p-3">
+                <div className="font-semibold mb-1">Pas d’IDCC via SIRET</div>
+                {ape && <div className="text-sm mb-2">Suggestions basées sur l’APE <b>{ape}</b> :</div>}
+                {!apeLoaded && <div className="text-sm text-gray-500">Recherche…</div>}
+                {apeError && <div className="text-sm text-red-700">{apeError}</div>}
+                {apeLoaded && !apeCandidates.length && !apeError && (
+                  <div className="text-sm text-gray-500">Aucune suggestion APE.</div>
+                )}
+                <ul className="space-y-2">
+                  {apeCandidates.map(c => (
+                    <li key={`${c.idcc}-${c.match}`} className="text-sm">
+                      <div className="font-medium">{c.idcc} {c.libelle ? `— ${c.libelle}` : ''}</div>
+                      <button
+                        className="mt-1 px-2 py-1 bg-indigo-600 text-white rounded hover:bg-indigo-700"
+                        onClick={() => { setIdccUsed(c.idcc); /* recharge le détail */ 
+                          fetch(`${BACKEND_BASE}/legifrance/convention/html/${c.idcc.replace(/^0+/, '')}`)
+                            .then(r => r.json()).then(setIdccHtml).catch(()=>{}) }}
+                      >
+                        Voir le détail
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </aside>
+
+          {/* Contenu principal */}
+          <main className="col-span-12 lg:col-span-9">
+            {(!idccApiLoaded || idccHtmlLoading) && <p>Chargement…</p>}
+            {idccApiError && <p className="text-red-700 mb-3">Erreur IDCC : {idccApiError}</p>}
+            {idccHtmlError && <p className="text-red-700 mb-3">{idccHtmlError}</p>}
+
+            {idccHtml?.conventions?.length > 0 ? (
+              renderConventions()
+            ) : (
+              idccApiLoaded && (!idccApi || idccApi.count === 0) && !apeCandidates.length && !idccApiError && (
+                <p className="text-gray-600">
+                  Aucune information sur la convention collective n’est disponible pour cet établissement.
+                </p>
+              )
+            )}
+          </main>
         </div>
       </div>
     </div>
