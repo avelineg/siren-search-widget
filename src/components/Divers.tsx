@@ -1,20 +1,36 @@
-import React, { useState, useEffect } from 'react'
+import React, { useEffect, useState } from 'react'
 
-// Utilitaire pour tronquer du texte (pour aperçu article)
+/* ========================
+   Utilitaires
+======================== */
 function truncate(str: string, n: number) {
   return str && str.length > n ? str.substr(0, n - 1) + '…' : str
 }
-
-// Fonction utilitaire pour extraire le code APE "propre" (juste les 5 caractères)
 function extractApeCode(rawApe: string | null): string {
   if (!rawApe) return ''
   return String(rawApe).trim().split(/[ (]/)[0].toUpperCase()
 }
 
-// Base URL du backend (si vide => même origine)
-const BACKEND_BASE =
-  ((import.meta as any)?.env?.VITE_API_URL as string | undefined)?.replace(/\/+$/, '') || ''
+/** ======================================================
+ *  BASE BACKEND
+ *  - priorité à VITE_API_URL (build-time)
+ *  - fallback runtime : si on est sur onrender.com, utiliser ton domaine
+ *  - sinon chemins relatifs (même origine)
+ *  ====================================================== */
+const ENV_BASE = (((import.meta as any) ?? {}).env?.VITE_API_URL as string | undefined) || ''
+const RUNTIME_FALLBACK =
+  typeof window !== 'undefined' &&
+  /siren-search-widget\.onrender\.com$/i.test(window.location.hostname)
+    ? 'https://hubshare-cmexpert.fr'
+    : ''
+const BACKEND_BASE = (ENV_BASE || RUNTIME_FALLBACK).replace(/\/+$/, '')
+if (typeof window !== 'undefined') {
+  console.info('[CC] BACKEND_BASE =', BACKEND_BASE || '(même origine)')
+}
 
+/* ========================
+   Types
+======================== */
 type IdccItem = {
   siret: string
   idcc: string
@@ -29,12 +45,16 @@ type IdccResponse = {
   items: IdccItem[]
 }
 
+/* ========================
+   Composant principal
+======================== */
 export default function LabelsCertifications({ data }: { data: any }) {
   const labels = data.labels || []
   const divers = data.divers || []
+
   const siret = data.siret || data.etablissements?.[0]?.siret || null
 
-  // garde ce qui existe déjà si tu l’affiches ailleurs
+  // Conserve ce que tu utilises ailleurs
   const apeFull =
     data.code_ape ||
     data.ape ||
@@ -44,9 +64,12 @@ export default function LabelsCertifications({ data }: { data: any }) {
     null
   const ape = extractApeCode(apeFull)
 
+  // Etats IDCC (via API tabulaire)
   const [idccApi, setIdccApi] = useState<IdccResponse | null>(null)
   const [idccApiLoaded, setIdccApiLoaded] = useState(false)
+  const [idccApiError, setIdccApiError] = useState<string | null>(null)
 
+  // Etats Légifrance (détail affichage)
   const [idccUsed, setIdccUsed] = useState<string | null>(null)
   const [idccHtml, setIdccHtml] = useState<any>(null)
   const [idccHtmlLoading, setIdccHtmlLoading] = useState(false)
@@ -56,6 +79,7 @@ export default function LabelsCertifications({ data }: { data: any }) {
     let cancelled = false
     setIdccApi(null)
     setIdccApiLoaded(false)
+    setIdccApiError(null)
     setIdccUsed(null)
     setIdccHtml(null)
     setIdccHtmlError(null)
@@ -67,10 +91,12 @@ export default function LabelsCertifications({ data }: { data: any }) {
         return
       }
       const siretKey = String(siret).padStart(14, '0')
+      const url = `${BACKEND_BASE}/api/idcc/${encodeURIComponent(siretKey)}`
       try {
-        const res = await fetch(`${BACKEND_BASE}/api/idcc/${encodeURIComponent(siretKey)}`)
+        const res = await fetch(url)
         if (!res.ok) {
           setIdccApiLoaded(true)
+          setIdccApiError(`HTTP ${res.status} sur ${url}`)
           return
         }
         const json: IdccResponse = await res.json()
@@ -83,20 +109,22 @@ export default function LabelsCertifications({ data }: { data: any }) {
           setIdccUsed(String(idcc))
           fetchLegifranceHtml(String(idcc))
         }
-      } catch {
+      } catch (e: any) {
         setIdccApiLoaded(true)
+        setIdccApiError(e?.message || 'Erreur réseau')
       }
     }
 
     const fetchLegifranceHtml = async (idcc: string) => {
       const idccClean = String(idcc).replace(/^0+/, '')
       if (!/^\d+$/.test(idccClean)) return
+      const url = `${BACKEND_BASE}/legifrance/convention/html/${idccClean}`
       setIdccHtmlLoading(true)
       setIdccHtml(null)
       setIdccHtmlError(null)
       try {
-        const res = await fetch(`${BACKEND_BASE}/legifrance/convention/html/${idccClean}`)
-        if (!res.ok) throw new Error('Erreur lors de la récupération du détail Légifrance')
+        const res = await fetch(url)
+        if (!res.ok) throw new Error(`HTTP ${res.status} sur ${url}`)
         const d = await res.json()
         if (cancelled) return
         setIdccHtml(d)
@@ -115,7 +143,9 @@ export default function LabelsCertifications({ data }: { data: any }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [siret])
 
-  // Affichage sommaire façon Legifrance
+  /* ========================
+     Rendus Légifrance
+  ======================== */
   function renderSommaire(articles: any[]) {
     if (!articles?.length) return null
     return (
@@ -134,7 +164,6 @@ export default function LabelsCertifications({ data }: { data: any }) {
     )
   }
 
-  // Affichage article ouvert façon Legifrance
   function renderArticleLegifrance(a: any, i: number) {
     const articleId = a.id || a.num || `${i}`
     return (
@@ -199,6 +228,7 @@ export default function LabelsCertifications({ data }: { data: any }) {
         >
           {conv.titre || ''}
         </div>
+
         {/* Intro/résumé */}
         {conv.descriptionFusionHtml && (
           <div
@@ -206,27 +236,32 @@ export default function LabelsCertifications({ data }: { data: any }) {
             dangerouslySetInnerHTML={{ __html: conv.descriptionFusionHtml }}
           />
         )}
+
         {/* Sommaire */}
         {renderSommaire(conv.articles)}
+
         {/* Articles ouverts */}
         {(conv.articles || []).map((a: any, i: number) => renderArticleLegifrance(a, i))}
+
         {/* Sections éventuelles */}
         {renderSectionsLegifrance(conv.sections)}
       </div>
     ))
   }
 
-  // Nom de la convention collective (affichage dans l'en-tête)
+  /* ========================
+     Données d'en-tête
+  ======================== */
   const conventionName =
-    idccHtml && idccHtml.conventions && idccHtml.conventions.length > 0
-      ? idccHtml.conventions[0].titre
-      : idccApi?.items?.[0]?.libelle || ''
+    idccHtml?.conventions?.[0]?.titre || idccApi?.items?.[0]?.libelle || ''
 
-  // Détails “métadonnées” IDCC (si dispo dans la 1ère ligne)
   const meta = idccApi?.items?.[0]
   const moisRef = meta?.periode || undefined
   const majSource = meta?.source_updated_at || undefined
 
+  /* ========================
+     Rendu
+  ======================== */
   return (
     <div className="space-y-6">
       <div className="bg-white p-4 rounded shadow">
@@ -252,6 +287,11 @@ export default function LabelsCertifications({ data }: { data: any }) {
         </h3>
 
         {!idccApiLoaded && <p>Chargement…</p>}
+        {idccApiError && (
+          <p className="text-red-700 mb-2">
+            Erreur lors de la récupération de l’IDCC : {idccApiError}
+          </p>
+        )}
 
         {idccApiLoaded && idccApi && idccApi.count > 0 && (
           <div className="mb-4 text-base">
@@ -278,7 +318,7 @@ export default function LabelsCertifications({ data }: { data: any }) {
           </div>
         )}
 
-        {idccApiLoaded && (!idccApi || idccApi.count === 0) && (
+        {idccApiLoaded && (!idccApi || idccApi.count === 0) && !idccApiError && (
           <p className="text-gray-600">
             Aucune information sur la convention collective n’est disponible pour cet établissement.
           </p>
@@ -287,7 +327,7 @@ export default function LabelsCertifications({ data }: { data: any }) {
         <div className="my-10">
           {idccHtmlLoading && <p>Chargement du contenu détaillé…</p>}
           {idccHtmlError && <p className="text-red-700">{idccHtmlError}</p>}
-          {idccHtml && idccHtml.conventions && idccHtml.conventions.length > 0 && (
+          {idccHtml?.conventions?.length > 0 && (
             <>
               {renderAllConventionsLegifrance(idccHtml.conventions)}
               <button
