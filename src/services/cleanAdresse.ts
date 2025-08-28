@@ -5,7 +5,7 @@
  * - Retire les compléments inutiles (résidence, bâtiment, etc.)
  * - Remplace des abréviations courantes par leur forme complète
  * - Supprime les espaces multiples
- * - Corrige et enrichit les noms de rues et de villes fréquemment mal orthographiés
+ * - Corrige et simplifie certains noms de rues pour maximiser la compatibilité avec les géocodeurs
  */
 export function cleanAdresse(adresse: string): string {
   if (!adresse) return "";
@@ -24,7 +24,6 @@ export function cleanAdresse(adresse: string): string {
   // Corrige quelques abréviations courantes
   cleaned = cleaned.replace(/PRESIDT/gi, "PRÉSIDENT");
   cleaned = cleaned.replace(/PRESIDENT/gi, "PRÉSIDENT");
-  cleaned = cleaned.replace(/RAY POINCARE/gi, "RAYMOND POINCARÉ");
   cleaned = cleaned.replace(/AV /gi, "AVENUE ");
   cleaned = cleaned.replace(/BD /gi, "BOULEVARD ");
   cleaned = cleaned.replace(/STE /gi, "SAINTE ");
@@ -32,6 +31,16 @@ export function cleanAdresse(adresse: string): string {
 
   // Corrige quelques noms de villes (exemple)
   cleaned = cleaned.replace(/\bSELESTAT\b/gi, "Sélestat");
+
+  // Simplifie certains noms de rues pour améliorer le géocodage (cas Président Raymond Poincaré)
+  // Remplace "Président Raymond Poincaré"/"Président R. Poincaré" par "Président Poincaré"
+  cleaned = cleaned.replace(/PRÉSIDENT\s+RAYMOND\s+POINCARÉ/gi, "PRÉSIDENT POINCARÉ");
+  cleaned = cleaned.replace(/PRÉSIDENT\s+RAYMOND\s+POINCARE/gi, "PRÉSIDENT POINCARÉ");
+  cleaned = cleaned.replace(/PRÉSIDENT\s+R\.?\s*POINCARÉ/gi, "PRÉSIDENT POINCARÉ");
+  cleaned = cleaned.replace(/PRÉSIDENT\s+R\.?\s*POINCARE/gi, "PRÉSIDENT POINCARÉ");
+  // Générique : tout prénom entre "PRÉSIDENT" et "POINCARÉ" ou "POINCARE"
+  cleaned = cleaned.replace(/PRÉSIDENT\s+\w+\s+POINCARÉ/gi, "PRÉSIDENT POINCARÉ");
+  cleaned = cleaned.replace(/PRÉSIDENT\s+\w+\s+POINCARE/gi, "PRÉSIDENT POINCARÉ");
 
   // Supprime les mots inutiles
   toRemove.forEach(regex => {
