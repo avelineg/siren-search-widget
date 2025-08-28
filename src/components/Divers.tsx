@@ -19,6 +19,55 @@ type IdccItem = { siret: string; idcc: string; libelle?: string|null; periode?: 
 type IdccResponse = { siret: string; count: number; items: IdccItem[] }
 type ApeIdccItem = { idcc: string; libelle?: string|null; match?: string|null }
 type ApeIdccResponse = { ape: string; count: number; items: ApeIdccItem[] }
+type SearchHit = {
+  conventionId: string
+  conventionTitre: string
+  articleId: string | null
+  articleNum: string | null
+  articleTitre: string | null
+  snippet: string
+}
+
+/* ========= Helpers: highlighter ========= */
+// Surligne q dans un snippet textuel simple (HTML-safe minimal)
+function highlightSnippet(text: string, q: string) {
+  if (!q) return text
+  const safeQ = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  return text.replace(new RegExp(`(${safeQ})`, 'ig'), '<mark>$1</mark>')
+}
+
+// Surligne q dans un élément DOM en parcourant ses TextNodes (sans casser le HTML)
+function highlightInElement(el: HTMLElement, q: string) {
+  if (!el || !q) return
+  const walk = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, null)
+  const texts: Text[] = []
+  let n: Node | null
+  while ((n = walk.nextNode())) {
+    if (n.nodeType === Node.TEXT_NODE && n.nodeValue && n.nodeValue.trim()) {
+      texts.push(n as Text)
+    }
+  }
+  const re = new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'ig')
+  texts.forEach(t => {
+    const parent = t.parentElement
+    if (!parent) return
+    const html = t.nodeValue || ''
+    if (!re.test(html)) return
+    const frag = document.createElement('span')
+    frag.innerHTML = html.replace(re, '<mark>$&</mark>')
+    parent.replaceChild(frag, t)
+    // fusionner les nœuds (évite empilement de spans)
+    while (frag.firstChild) parent.insertBefore(frag.firstChild, frag)
+    parent.removeChild(frag)
+  })
+}
+
+// Défilement fluide + flash visuel
+function scrollToAndFlash(el: HTMLElement | null) {
+  if (!el) return
+  el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  el.animate([{ boxShadow: '0 0 0 0 rgba(34,197,94,0.0)' }, { boxShadow: '0 0 0 6px rgba(34,197,94,0.35)' }, { boxShadow: '0 0 0 0 rgba(34,197,94,0.0)' }], { duration: 1200, easing: 'ease-out' })
+}
 
 /* ========= Component ========= */
 export default function LabelsCertifications({ data }: { data: any }) {
@@ -50,12 +99,19 @@ export default function LabelsCertifications({ data }: { data: any }) {
   const articleRefs = useRef<Record<string, HTMLElement | null>>({})
   const [activeAnchor, setActiveAnchor] = useState<string | null>(null)
 
+  // Search UI
+  const [q, setQ] = useState('')
+  const [hits, setHits] = useState<SearchHit[]>([])
+  const [searching, setSearching] = useState(false)
+  const [searchError, setSearchError] = useState<string | null>(null)
+
   /* ------------ Data fetching ------------ */
   useEffect(() => {
     let cancelled = false
     setIdccApi(null); setIdccApiLoaded(false); setIdccApiError(null)
     setApeCandidates([]); setApeLoaded(false); setApeError(null)
     setIdccUsed(null); setIdccHtml(null); setIdccHtmlError(null); setIdccHtmlLoading(false)
+    setQ(''); setHits([]); setSearching(false); setSearchError(null)
 
     const fetchIdccBySiret = async () => {
       if (!siret) { setIdccApiLoaded(true); tryApeFallback(); return }
@@ -104,7 +160,7 @@ export default function LabelsCertifications({ data }: { data: any }) {
         if (cancelled) return
         setIdccHtml(d); setIdccHtmlLoading(false)
       } catch (e: any) {
-        setIdccHtmlError(e?.message || 'Erreur lors de la récupération du détail Légifrance')
+        setIdccHtmlError(e?.message || 'Erreur lors du détail Légifrance')
         setIdccHtmlLoading(false); setIdccHtml(null)
       }
     }
@@ -114,8 +170,66 @@ export default function LabelsCertifications({ data }: { data: any }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [siret, ape])
 
+  /* ------------ Recherche dans la convention ------------ */
+  const canSearch = !!idccUsed
+  async function runSearch(term: string) {
+    setSearchError(null)
+    setSearching(true)
+    setHits([])
+    try {
+      const url = `${BACKEND_BASE}/legifrance/convention/search/${String(idccUsed).replace(/^0+/, '')}?q=${encodeURIComponent(term)}`
+      const res = await fetch(url)
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const data = await res.json()
+      setHits(data?.items || [])
+    } catch (e: any) {
+      setSearchError(e?.message || 'Erreur recherche')
+    } finally {
+      setSearching(false)
+    }
+  }
+  function onSubmitSearch(e: React.FormEvent) {
+    e.preventDefault()
+    const term = q.trim()
+    if (!term) return
+    runSearch(term)
+  }
+
+  // ancrage + surlignage dans l’article après clic d’un résultat
+  function openHit(hit: SearchHit) {
+    // l’id rendu dans la page = index basé sur l’ordre d’affichage (cX-aY)
+    // on va chercher par numéro d’article si disponible, sinon on essaie via titre
+    let targetEl: HTMLElement | null = null
+    // 1) essayer via data-article-num
+    if (hit.articleNum) {
+      targetEl = document.querySelector(`[data-article-num="${CSS.escape(hit.articleNum)}"]`) as HTMLElement | null
+    }
+    // 2) fallback: premier details qui contient l’ID visible dans son header
+    if (!targetEl && hit.articleId) {
+      targetEl = document.querySelector(`#article-${CSS.escape(hit.articleId)}`) as HTMLElement | null
+    }
+    // 3) sinon, tente un titre approché
+    if (!targetEl && hit.articleTitre) {
+      const all = Array.from(document.querySelectorAll('details[data-collapsible] summary')) as HTMLElement[]
+      targetEl = (all.find(s => s.textContent?.toLowerCase().includes(String(hit.articleTitre).toLowerCase())) || null)?.closest('details') as HTMLElement | null
+    }
+    if (targetEl) {
+      // surligne dans le contenu de l’article
+      const body = targetEl.querySelector('div')
+      if (body) {
+        // reset des surlignages précédents
+        body.querySelectorAll('mark').forEach(m => {
+          const t = document.createTextNode(m.textContent || '')
+          m.replaceWith(t)
+        })
+        highlightInElement(body as HTMLElement, q)
+      }
+    }
+    scrollToAndFlash(targetEl)
+    if (targetEl && !targetEl.hasAttribute('open')) targetEl.setAttribute('open','true')
+  }
+
   /* ------------ Navigation améliorée ------------ */
-  // construit une liste d’ancres à partir des articles des conventions
   const anchors = useMemo(() => {
     const out: { id: string; label: string }[] = []
     if (!idccHtml?.conventions) return out
@@ -137,7 +251,7 @@ export default function LabelsCertifications({ data }: { data: any }) {
           .sort((a,b) => a.boundingClientRect.top - b.boundingClientRect.top)
         if (visible[0]) setActiveAnchor(visible[0].target.id)
       },
-      { rootMargin: '0px 0px -70% 0px' } // déclenche quand ~haut de l’article atteint 30% de la fenêtre
+      { rootMargin: '0px 0px -70% 0px' }
     )
     anchors.forEach(a => {
       const el = articleRefs.current[a.id]
@@ -168,6 +282,7 @@ export default function LabelsCertifications({ data }: { data: any }) {
       data-collapsible
       className="mb-6 bg-[#fafafc] border border-[#e1e1ea] rounded-lg"
       open
+      {...(a.num ? { 'data-article-num': a.num } : {})}
     >
       <summary className="cursor-pointer px-4 py-3 text-[17px] font-semibold text-[#0b2353]">
         {a.num ? `Article ${a.num}` : 'Article'} {a.title ? `: ${a.title}` : ''}
@@ -248,12 +363,32 @@ export default function LabelsCertifications({ data }: { data: any }) {
               </button>
             )}
           </div>
+
+          {/* Barre de recherche */}
+          <form className="mt-3 flex gap-2" onSubmit={onSubmitSearch}>
+            <input
+              type="search"
+              placeholder="Rechercher dans la convention (ex: licenciement, durée du travail)…"
+              className="flex-1 border rounded px-3 py-2"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              disabled={!canSearch}
+            />
+            <button
+              type="submit"
+              disabled={!canSearch || !q.trim() || searching}
+              className="px-3 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 disabled:opacity-60"
+            >
+              {searching ? 'Recherche…' : 'Rechercher'}
+            </button>
+          </form>
+          {searchError && <div className="text-red-700 text-sm mt-2">{searchError}</div>}
         </div>
 
         {/* Corps : layout à 2 colonnes */}
         <div className="grid grid-cols-12 gap-6 p-6">
           {/* Sommaire latéral */}
-          <aside className="col-span-12 lg:col-span-3">
+          <aside className="col-span-12 lg:col-span-3 space-y-6">
             <div className="sticky top-4 max-h-[80vh] overflow-auto border rounded-lg p-3">
               <div className="font-semibold mb-2">Sommaire</div>
               {anchors.length === 0 && <div className="text-sm text-gray-500">—</div>}
@@ -273,9 +408,35 @@ export default function LabelsCertifications({ data }: { data: any }) {
               </ul>
             </div>
 
+            {/* Résultats recherche */}
+            {!!q.trim() && (
+              <div className="border rounded-lg p-3">
+                <div className="font-semibold mb-2">Résultats pour « {q} »</div>
+                {!searching && hits.length === 0 && <div className="text-sm text-gray-500">Aucun résultat</div>}
+                {searching && <div className="text-sm text-gray-500">Recherche…</div>}
+                <ul className="space-y-3">
+                  {hits.slice(0, 100).map((h, i) => (
+                    <li key={i} className="text-sm">
+                      <button
+                        className="text-indigo-700 hover:underline font-medium"
+                        onClick={() => openHit(h)}
+                        title={h.articleTitre || ''}
+                      >
+                        {h.articleNum ? `Article ${h.articleNum}` : 'Article'}{h.articleTitre ? ` — ${h.articleTitre}` : ''}
+                      </button>
+                      <div
+                        className="text-[13px] text-gray-700 mt-1"
+                        dangerouslySetInnerHTML={{ __html: highlightSnippet(h.snippet, q) }}
+                      />
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
             {/* Fallback APE (si pas d’IDCC SIRET) */}
             {idccApiLoaded && (!idccApi || idccApi.count === 0) && (
-              <div className="mt-6 border rounded-lg p-3">
+              <div className="border rounded-lg p-3">
                 <div className="font-semibold mb-1">Pas d’IDCC via SIRET</div>
                 {ape && <div className="text-sm mb-2">Suggestions basées sur l’APE <b>{ape}</b> :</div>}
                 {!apeLoaded && <div className="text-sm text-gray-500">Recherche…</div>}
@@ -289,9 +450,13 @@ export default function LabelsCertifications({ data }: { data: any }) {
                       <div className="font-medium">{c.idcc} {c.libelle ? `— ${c.libelle}` : ''}</div>
                       <button
                         className="mt-1 px-2 py-1 bg-indigo-600 text-white rounded hover:bg-indigo-700"
-                        onClick={() => { setIdccUsed(c.idcc); /* recharge le détail */ 
+                        onClick={() => {
+                          setIdccUsed(c.idcc)
                           fetch(`${BACKEND_BASE}/legifrance/convention/html/${c.idcc.replace(/^0+/, '')}`)
-                            .then(r => r.json()).then(setIdccHtml).catch(()=>{}) }}
+                            .then(r => r.json())
+                            .then(setIdccHtml)
+                            .catch(()=>{})
+                        }}
                       >
                         Voir le détail
                       </button>
@@ -309,7 +474,38 @@ export default function LabelsCertifications({ data }: { data: any }) {
             {idccHtmlError && <p className="text-red-700 mb-3">{idccHtmlError}</p>}
 
             {idccHtml?.conventions?.length > 0 ? (
-              renderConventions()
+              (idccHtml.conventions || []).map((conv: any, ci: number) => (
+                <div key={conv.id || ci} className="mb-10">
+                  <h2 className="text-2xl font-extrabold text-[#002752] text-center mb-6 border-b-4 border-[#b50910] pb-2">
+                    {conv.titre || ''}
+                  </h2>
+                  {conv.descriptionFusionHtml && (
+                    <div
+                      className="text-[18px] text-[#222] mb-4"
+                      dangerouslySetInnerHTML={{ __html: conv.descriptionFusionHtml }}
+                    />
+                  )}
+                  {(conv.articles || []).map((a: any, ai: number) =>
+                    <details
+                      key={`c${ci}-a${ai}`}
+                      id={`c${ci}-a${ai}`}
+                      ref={(el) => (articleRefs.current[`c${ci}-a${ai}`] = el)}
+                      data-collapsible
+                      className="mb-6 bg-[#fafafc] border border-[#e1e1ea] rounded-lg"
+                      open
+                      {...(a.num ? { 'data-article-num': a.num } : {})}
+                    >
+                      <summary className="cursor-pointer px-4 py-3 text-[17px] font-semibold text-[#0b2353]">
+                        {a.num ? `Article ${a.num}` : 'Article'} {a.title ? `: ${a.title}` : ''}
+                      </summary>
+                      <div
+                        className="px-5 pb-5 text-[16px] leading-7 text-[#222]"
+                        dangerouslySetInnerHTML={{ __html: a.content || a.texteHtml || '' }}
+                      />
+                    </details>
+                  )}
+                </div>
+              ))
             ) : (
               idccApiLoaded && (!idccApi || idccApi.count === 0) && !apeCandidates.length && !idccApiError && (
                 <p className="text-gray-600">
