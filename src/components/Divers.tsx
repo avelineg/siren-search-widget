@@ -33,7 +33,7 @@ type SearchHit = {
   snippet: string
 }
 
-/* ========= Helpers: highlighter ========= */
+/* ========= Highlighter helpers ========= */
 function highlightSnippet(text: string, q: string) {
   if (!q) return text
   const safeQ = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
@@ -78,6 +78,7 @@ export default function LabelsCertifications({ data }: { data: any }) {
   const labels = data.labels || []
   const divers = data.divers || []
 
+  // SIRET normalisé (évite 400 backend)
   const siretRaw = data.siret || data.etablissements?.[0]?.siret || null
   const siret = siretRaw ? normSiret(siretRaw) : null
 
@@ -114,44 +115,59 @@ export default function LabelsCertifications({ data }: { data: any }) {
 
   /* ------------ Fallback APE robuste ------------ */
   const fetchApeCandidates = async (): Promise<ApeIdccItem[]> => {
-    setApeLoaded(false); setApeError(null)
+    setApeLoaded(false); setApeError(null);
 
-    const raw = (ape || '').trim().toUpperCase()         // "6202A" | "62.02A"
-    const digits = raw.replace(/\D/g, '')                 // "6202"
-    const letter = (raw.match(/[A-Z]$/)?.[0] || '')       // "A" | ""
-    const withDot = digits.length >= 4 ? `${digits.slice(0,2)}.${digits.slice(2,4)}${letter}` : raw
-    const noDot = `${digits}${letter}`                    // "6202A"
-    const base4 = digits.slice(0,4)                       // "6202"
-    const baseWithDot = base4.length === 4 ? `${base4.slice(0,2)}.${base4.slice(2,4)}` : base4
+    const raw = (ape || '').trim().toUpperCase();        // "6202A" | "62.02A"
+    const digits = raw.replace(/\D/g, '');                // "6202"
+    const letter = (raw.match(/[A-Z]$/)?.[0] || '');      // "A" | ""
+    const withDot = digits.length >= 4 ? `${digits.slice(0,2)}.${digits.slice(2,4)}${letter}` : raw;
+    const noDot   = `${digits}${letter}`;                 // "6202A"
+    const base4   = digits.slice(0,4);                    // "6202"
+    const baseDot = base4.length === 4 ? `${base4.slice(0,2)}.${base4.slice(2,4)}` : base4;
 
-    const variants = Array.from(new Set([raw, noDot, withDot, base4, baseWithDot].filter(Boolean)))
-    const seen = new Set<string>()
-    const out: ApeIdccItem[] = []
+    const variants = Array.from(new Set([raw, noDot, withDot, base4, baseDot].filter(Boolean)));
 
+    // on tente 2 schémas d’API : /by-ape/:ape ET /by-ape?ape=...
+    const urls: string[] = [];
     for (const v of variants) {
-      try {
-        const url = `${BACKEND_BASE}/api/idcc/by-ape/${encodeURIComponent(v)}`
-        const res = await fetch(url)
-        if (!res.ok) continue
-        const json: ApeIdccResponse = await res.json()
-        for (const it of (json.items || [])) {
-          const n = String(it.idcc || '').trim()
-          if (!/^\d+$/.test(n)) continue
-          const id = n.replace(/^0+/, '')
-          if (!seen.has(id)) {
-            seen.add(id)
-            out.push({ idcc: id, libelle: it.libelle || null })
-          }
-        }
-        if (out.length) break
-      } catch {/* ignore */}
+      urls.push(`${BACKEND_BASE}/api/idcc/by-ape/${encodeURIComponent(v)}`);
+      urls.push(`${BACKEND_BASE}/api/idcc/by-ape?ape=${encodeURIComponent(v)}`);
     }
 
-    setApeCandidates(out)
-    setApeLoaded(true)
-    if (!out.length) setApeError('Aucune suggestion APE exploitable.')
-    return out
-  }
+    const seen = new Set<string>();
+    const out: ApeIdccItem[] = [];
+    const statuses: string[] = [];
+
+    await Promise.allSettled(
+      urls.map(async (u) => {
+        try {
+          const r = await fetch(u);
+          statuses.push(`${r.status}@${u.split('/api/')[1]}`);
+          if (!r.ok) return;
+          const j = await r.json();
+          const items = (j?.items || []) as any[];
+          for (const it of items) {
+            const rawIdcc = String(it.idcc ?? it.IDCC ?? '').trim();
+            if (!/^\d+$/.test(rawIdcc)) continue;
+            const id = rawIdcc.replace(/^0+/, '');
+            if (!seen.has(id)) {
+              seen.add(id);
+              out.push({ idcc: id, libelle: (it.libelle ?? it.LIBELLE ?? null) });
+            }
+          }
+        } catch {
+          statuses.push(`ERR@${u.split('/api/')[1]}`);
+        }
+      })
+    );
+
+    out.sort((a,b) => Number(a.idcc!) - Number(b.idcc!));
+
+    setApeCandidates(out);
+    setApeLoaded(true);
+    if (!out.length) setApeError(`Aucune suggestion APE exploitable.`);
+    return out;
+  };
 
   /* ------------ Data fetching ------------ */
   useEffect(() => {
@@ -162,14 +178,14 @@ export default function LabelsCertifications({ data }: { data: any }) {
     setQ(''); setHits([]); setSearching(false); setSearchError(null)
 
     const fetchIdccBySiret = async () => {
-      if (!siret) { setIdccApiLoaded(true); await tryApeFallback(); return }
+      if (!siret) { setIdccApiLoaded(true); fetchApeCandidates(); return }
       try {
         const url = `${BACKEND_BASE}/api/idcc/${encodeURIComponent(siret)}`
         const res = await fetch(url)
         if (!res.ok) {
           setIdccApiLoaded(true)
           setIdccApiError(`HTTP ${res.status} sur ${url}`)
-          await tryApeFallback()
+          fetchApeCandidates()
           return
         }
         const json: IdccResponse = await res.json()
@@ -178,17 +194,10 @@ export default function LabelsCertifications({ data }: { data: any }) {
 
         const idcc = json?.items?.[0]?.idcc
         if (idcc) { setIdccUsed(String(idcc)); fetchLegifranceHtml(String(idcc)) }
-        else { await tryApeFallback() }
+        else { fetchApeCandidates() }
       } catch (e: any) {
-        setIdccApiLoaded(true); setIdccApiError(e?.message || 'Erreur réseau'); await tryApeFallback()
+        setIdccApiLoaded(true); setIdccApiError(e?.message || 'Erreur réseau'); fetchApeCandidates()
       }
-    }
-
-    const tryApeFallback = async () => {
-      if (!ape) { setApeLoaded(true); return }
-      const list = await fetchApeCandidates()
-      const first = list.find(x => !!x.idcc)?.idcc
-      if (!idccUsed && first) { setIdccUsed(String(first)); fetchLegifranceHtml(String(first)) }
     }
 
     const fetchLegifranceHtml = async (idcc: string) => {
@@ -213,7 +222,7 @@ export default function LabelsCertifications({ data }: { data: any }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [siret, ape])
 
-  /* ------------ Recherche dans la convention ------------ */
+  /* ------------ Recherche ------------ */
   const canSearch = !!idccUsed
   async function runSearch(term: string) {
     setSearchError(null)
@@ -260,7 +269,7 @@ export default function LabelsCertifications({ data }: { data: any }) {
     if (targetEl && !targetEl.hasAttribute('open')) targetEl.setAttribute('open','true')
   }
 
-  /* ------------ Navigation améliorée ------------ */
+  /* ------------ Navigation ------------ */
   const anchors = useMemo(() => {
     const out: { id: string; label: string }[] = []
     if (!idccHtml?.conventions) return out
@@ -337,13 +346,12 @@ export default function LabelsCertifications({ data }: { data: any }) {
     ))
   )
 
-  /* ------------ En-tête / Méta ------------ */
+  /* ------------ En-tête / Méta & PDF ------------ */
   const mainLibelle = idccHtml?.conventions?.[0]?.titre || idccApi?.items?.[0]?.libelle || ''
   const meta = idccApi?.items?.[0]
   const moisRef = meta?.periode || undefined
   const majSource = meta?.source_updated_at || undefined
 
-  /* ------------ PDF URL ------------ */
   const pdfUrl = idccUsed
     ? `${BACKEND_BASE}/legifrance/convention/html/${String(idccUsed).replace(/^0+/, '')}/pdf${q.trim() ? `?q=${encodeURIComponent(q.trim())}${pdfOnlySelection ? '&sel=1' : ''}` : ''}`
     : null
@@ -363,14 +371,11 @@ export default function LabelsCertifications({ data }: { data: any }) {
 
       {/* Convention collective */}
       <div className="bg-white p-0 rounded shadow border border-indigo-100 overflow-hidden">
-        {/* Barre d’entête */}
         <div className="px-6 pt-5 pb-3 border-b">
           <h3 className="font-bold text-2xl text-indigo-900 flex items-center gap-2">
-            Convention collective
-            {mainLibelle && <span className="text-indigo-700">« {mainLibelle} »</span>}
+            Convention collective {mainLibelle && <span className="text-indigo-700">« {mainLibelle} »</span>}
           </h3>
 
-          {/* Infos synthèse */}
           <div className="mt-2 text-[15px] text-gray-800 flex flex-wrap gap-x-6 gap-y-2">
             {idccApiLoaded && idccApi?.count! > 0 && (
               <>
@@ -381,7 +386,6 @@ export default function LabelsCertifications({ data }: { data: any }) {
             )}
           </div>
 
-          {/* Actions lecture */}
           <div className="mt-3 flex flex-wrap gap-2 items-center">
             <button className="px-3 py-1.5 bg-indigo-600 text-white rounded hover:bg-indigo-700" onClick={expandAll}>Tout déplier</button>
             <button className="px-3 py-1.5 bg-gray-100 text-gray-900 rounded hover:bg-gray-200" onClick={collapseAll}>Tout replier</button>
@@ -406,7 +410,7 @@ export default function LabelsCertifications({ data }: { data: any }) {
             )}
           </div>
 
-          {/* Barre de recherche + résultats sous la barre */}
+          {/* Recherche + résultats sous la barre */}
           <form className="mt-3 flex gap-2" onSubmit={onSubmitSearch}>
             <input
               type="search"
@@ -454,7 +458,6 @@ export default function LabelsCertifications({ data }: { data: any }) {
 
         {/* Corps : layout à 2 colonnes */}
         <div className="grid grid-cols-12 gap-6 p-6">
-          {/* Sommaire latéral */}
           <aside className="col-span-12 lg:col-span-3">
             <div className="sticky top-4 max-h-[80vh] overflow-auto border rounded-lg p-3">
               <div className="font-semibold mb-2">Sommaire</div>
@@ -475,7 +478,7 @@ export default function LabelsCertifications({ data }: { data: any }) {
               </ul>
             </div>
 
-            {/* Fallback APE (si pas d’IDCC SIRET) */}
+            {/* Fallback APE */}
             {idccApiLoaded && (!idccApi || idccApi.count === 0) && (
               <div className="mt-6 border rounded-lg p-3">
                 <div className="font-semibold mb-1">Pas d’IDCC via SIRET</div>
@@ -510,7 +513,6 @@ export default function LabelsCertifications({ data }: { data: any }) {
             )}
           </aside>
 
-          {/* Contenu principal */}
           <main className="col-span-12 lg:col-span-9">
             {(!idccApiLoaded || idccHtmlLoading) && <p>Chargement…</p>}
             {idccApiError && <p className="text-red-700 mb-3">Erreur IDCC : {idccApiError}</p>}
