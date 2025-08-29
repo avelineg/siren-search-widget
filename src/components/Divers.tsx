@@ -6,7 +6,6 @@ function extractApeCode(rawApe: string | null): string {
   return String(rawApe).trim().split(/[ (]/)[0].toUpperCase()
 }
 function normSiret(raw: any): string {
-  // garde uniquement les chiffres, pad à 14, tronque à 14
   const digits = String(raw ?? '').replace(/\D/g, '')
   return digits.padStart(14, '0').slice(0, 14)
 }
@@ -79,7 +78,6 @@ export default function LabelsCertifications({ data }: { data: any }) {
   const labels = data.labels || []
   const divers = data.divers || []
 
-  // on normalise immédiatement le SIRET pour éviter le 400 backend
   const siretRaw = data.siret || data.etablissements?.[0]?.siret || null
   const siret = siretRaw ? normSiret(siretRaw) : null
 
@@ -122,6 +120,45 @@ export default function LabelsCertifications({ data }: { data: any }) {
     setIdccUsed(null); setIdccHtml(null); setIdccHtmlError(null); setIdccHtmlLoading(false)
     setQ(''); setHits([]); setSearching(false); setSearchError(null)
 
+    const fetchLegifranceHtml = async (idcc: string) => {
+      const idccClean = String(idcc).replace(/^0+/, '')
+      if (!/^\d+$/.test(idccClean)) return
+      const url = `${BACKEND_BASE}/legifrance/convention/html/${idccClean}`
+      setIdccHtmlLoading(true); setIdccHtml(null); setIdccHtmlError(null)
+      try {
+        const res = await fetch(url)
+        if (!res.ok) throw new Error(`HTTP ${res.status} sur ${url}`)
+        const d = await res.json()
+        if (cancelled) return
+        setIdccHtml(d); setIdccHtmlLoading(false)
+      } catch (e: any) {
+        setIdccHtmlError(e?.message || 'Erreur lors du détail Légifrance')
+        setIdccHtmlLoading(false); setIdccHtml(null)
+      }
+    }
+
+    const tryApeFallback = async () => {
+      if (!ape) { setApeLoaded(true); return }
+      const url = `${BACKEND_BASE}/api/idcc/by-ape/${encodeURIComponent(ape)}`
+      try {
+        const res = await fetch(url)
+        if (!res.ok) { setApeLoaded(true); setApeError(`HTTP ${res.status} sur ${url}`); return }
+        const json: ApeIdccResponse = await res.json()
+        if (cancelled) return
+        setApeCandidates(json.items || []); setApeLoaded(true)
+
+        // auto-chargement du 1er IDCC valide (évite “Autre”)
+        const first = (json.items || []).find(x => !!x.idcc)?.idcc
+        if (!idccUsed && first) {
+          const idccStr = String(first)
+          setIdccUsed(idccStr)
+          fetchLegifranceHtml(idccStr)
+        }
+      } catch (e: any) {
+        setApeLoaded(true); setApeError(e?.message || 'Erreur réseau (APE)')
+      }
+    }
+
     const fetchIdccBySiret = async () => {
       if (!siret) { setIdccApiLoaded(true); tryApeFallback(); return }
       try {
@@ -138,43 +175,10 @@ export default function LabelsCertifications({ data }: { data: any }) {
         setIdccApi(json); setIdccApiLoaded(true)
 
         const idcc = json?.items?.[0]?.idcc
-        if (idcc) { setIdccUsed(String(idcc)); fetchLegifranceHtml(String(idcc)) }
+        if (idcc) { const s = String(idcc); setIdccUsed(s); fetchLegifranceHtml(s) }
         else { tryApeFallback() }
       } catch (e: any) {
         setIdccApiLoaded(true); setIdccApiError(e?.message || 'Erreur réseau'); tryApeFallback()
-      }
-    }
-
-    const tryApeFallback = async () => {
-      if (!ape) { setApeLoaded(true); return }
-      const url = `${BACKEND_BASE}/api/idcc/by-ape/${encodeURIComponent(ape)}`
-      try {
-        const res = await fetch(url)
-        if (!res.ok) { setApeLoaded(true); setApeError(`HTTP ${res.status} sur ${url}`); return }
-        const json: ApeIdccResponse = await res.json()
-        if (cancelled) return
-        setApeCandidates(json.items || []); setApeLoaded(true)
-        const first = json.items?.find(x => !!x.idcc)?.idcc
-        if (!idccUsed && first) { setIdccUsed(String(first)); fetchLegifranceHtml(String(first)) }
-      } catch (e: any) {
-        setApeLoaded(true); setApeError(e?.message || 'Erreur réseau (APE)')
-      }
-    }
-
-    const fetchLegifranceHtml = async (idcc: string) => {
-      const idccClean = String(idcc).replace(/^0+/, '')
-      if (!/^\d+$/.test(idccClean)) return
-      const url = `${BACKEND_BASE}/legifrance/convention/html/${idccClean}`
-      setIdccHtmlLoading(true); setIdccHtml(null); setIdccHtmlError(null)
-      try {
-        const res = await fetch(url)
-        if (!res.ok) throw new Error(`HTTP ${res.status} sur ${url}`)
-        const d = await res.json()
-        if (cancelled) return
-        setIdccHtml(d); setIdccHtmlLoading(false)
-      } catch (e: any) {
-        setIdccHtmlError(e?.message || 'Erreur lors du détail Légifrance')
-        setIdccHtmlLoading(false); setIdccHtml(null)
       }
     }
 
@@ -357,7 +361,6 @@ export default function LabelsCertifications({ data }: { data: any }) {
             <button className="px-3 py-1.5 bg-indigo-600 text-white rounded hover:bg-indigo-700" onClick={expandAll}>Tout déplier</button>
             <button className="px-3 py-1.5 bg-gray-100 text-gray-900 rounded hover:bg-gray-200" onClick={collapseAll}>Tout replier</button>
 
-            {/* case à cocher pour PDF filtré */}
             <label className="ml-2 inline-flex items-center gap-2 text-sm text-gray-800">
               <input
                 type="checkbox"
@@ -464,18 +467,24 @@ export default function LabelsCertifications({ data }: { data: any }) {
                       <div className="font-medium">
                         {c.idcc ? c.idcc : '—'} {c.libelle ? `— ${c.libelle}` : ''}
                       </div>
-                      {c.idcc && (
-                        <button
-                          className="mt-1 px-2 py-1 bg-indigo-600 text-white rounded hover:bg-indigo-700"
-                          onClick={() => {
-                            setIdccUsed(c.idcc!)
-                            fetch(`${BACKEND_BASE}/legifrance/convention/html/${c.idcc!.replace(/^0+/, '')}`)
-                              .then(r => r.json()).then(setIdccHtml).catch(()=>{})
-                          }}
-                        >
-                          Voir le détail
-                        </button>
-                      )}
+                      <button
+                        className="mt-1 px-2 py-1 bg-indigo-600 text-white rounded hover:bg-indigo-700 disabled:opacity-60"
+                        disabled={!c.idcc}
+                        onClick={() => {
+                          if (!c.idcc) return
+                          const idccStr = String(c.idcc).replace(/^0+/, '')
+                          setIdccUsed(idccStr)
+                          setIdccHtmlLoading(true)
+                          setIdccHtmlError(null)
+                          fetch(`${BACKEND_BASE}/legifrance/convention/html/${encodeURIComponent(idccStr)}`)
+                            .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json() })
+                            .then(setIdccHtml)
+                            .catch(e => setIdccHtmlError(e.message || 'Erreur détail Légifrance'))
+                            .finally(() => setIdccHtmlLoading(false))
+                        }}
+                      >
+                        Voir le détail
+                      </button>
                     </li>
                   ))}
                 </ul>
