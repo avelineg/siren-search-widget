@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 
-/* ========= Utils ========= */
 function extractApeCode(rawApe: string | null): string {
   if (!rawApe) return ''
   return String(rawApe).trim().split(/[ (]/)[0].toUpperCase()
@@ -13,21 +12,12 @@ const RUNTIME_FALLBACK =
     : ''
 const BACKEND_BASE = (ENV_BASE || RUNTIME_FALLBACK).replace(/\/+$/, '')
 
-/* ========= Types ========= */
 type IdccItem = { siret: string; idcc: string; libelle?: string|null; periode?: string|null; source?: string|null; source_updated_at?: string|null }
 type IdccResponse = { siret: string; count: number; items: IdccItem[] }
 type ApeIdccItem = { idcc: string; libelle?: string|null; match?: string|null }
 type ApeIdccResponse = { ape: string; count: number; items: ApeIdccItem[] }
-type SearchHit = {
-  conventionId: string
-  conventionTitre: string
-  articleId: string | null
-  articleNum: string | null
-  articleTitre: string | null
-  snippet: string
-}
+type SearchHit = { conventionId: string; conventionTitre: string; articleId: string|null; articleNum: string|null; articleTitre: string|null; snippet: string }
 
-/* ========= Helpers ========= */
 function highlightSnippet(text: string, q: string) {
   if (!q) return text
   const safeQ = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
@@ -67,8 +57,7 @@ function scrollToAndFlash(el: HTMLElement | null) {
   )
 }
 
-/* ========= Component ========= */
-export default function LabelsCertifications({ data }: { data: any }) {
+export default function ConventionCollective({ data }: { data: any }) {
   const labels = data.labels || []
   const divers = data.divers || []
   const siret = data.siret || data.etablissements?.[0]?.siret || null
@@ -76,11 +65,9 @@ export default function LabelsCertifications({ data }: { data: any }) {
     data.code_ape || data.ape || data.naf || data.etablissements?.[0]?.ape || data.etablissements?.[0]?.naf || null
   const ape = extractApeCode(apeFull)
 
-  // States données
   const [idccApi, setIdccApi] = useState<IdccResponse | null>(null)
   const [idccApiLoaded, setIdccApiLoaded] = useState(false)
   const [idccApiError, setIdccApiError] = useState<string | null>(null)
-
   const [apeCandidates, setApeCandidates] = useState<ApeIdccItem[]>([])
   const [apeLoaded, setApeLoaded] = useState(false)
   const [apeError, setApeError] = useState<string | null>(null)
@@ -90,16 +77,15 @@ export default function LabelsCertifications({ data }: { data: any }) {
   const [idccHtmlLoading, setIdccHtmlLoading] = useState(false)
   const [idccHtmlError, setIdccHtmlError] = useState<string | null>(null)
 
-  // Scrollspy + recherche
   const articleRefs = useRef<Record<string, HTMLElement | null>>({})
   const [activeAnchor, setActiveAnchor] = useState<string | null>(null)
+
   const [q, setQ] = useState('')
   const [hits, setHits] = useState<SearchHit[]>([])
   const [searching, setSearching] = useState(false)
   const [searchError, setSearchError] = useState<string | null>(null)
   const [pdfFiltered, setPdfFiltered] = useState(false)
 
-  /* ------------ Fetch ------------ */
   useEffect(() => {
     let cancelled = false
     setIdccApi(null); setIdccApiLoaded(false); setIdccApiError(null)
@@ -163,7 +149,6 @@ export default function LabelsCertifications({ data }: { data: any }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [siret, ape])
 
-  /* ------------ Recherche ------------ */
   const idccForUrl = idccUsed ? String(idccUsed).replace(/^0+/, '') : null
 
   async function runSearch(term: string) {
@@ -207,7 +192,6 @@ export default function LabelsCertifications({ data }: { data: any }) {
     if (targetEl && !targetEl.hasAttribute('open')) targetEl.setAttribute('open','true')
   }
 
-  /* ------------ Sommaire & spy ------------ */
   const anchors = useMemo(() => {
     const out: { id: string; label: string }[] = []
     if (!idccHtml?.conventions) return out
@@ -242,7 +226,6 @@ export default function LabelsCertifications({ data }: { data: any }) {
   const expandAll   = () => document.querySelectorAll('[data-collapsible]').forEach(el => el.setAttribute('open','true'))
   const collapseAll = () => { document.querySelectorAll('[data-collapsible]').forEach(el => el.removeAttribute('open')); window.scrollTo({ top: 0, behavior: 'smooth' }) }
 
-  /* ------------ URLs PDF ------------ */
   const pdfUrlFull = idccForUrl ? `${BACKEND_BASE}/legifrance/convention/html/${idccForUrl}/pdf` : ''
   const pdfUrlFiltered = (() => {
     if (!idccForUrl) return ''
@@ -255,16 +238,13 @@ export default function LabelsCertifications({ data }: { data: any }) {
   })()
   const pdfUrlToUse = pdfFiltered ? pdfUrlFiltered : pdfUrlFull
 
-  /* ------------ Méta ------------ */
   const mainLibelle = idccHtml?.conventions?.[0]?.titre || idccApi?.items?.[0]?.libelle || ''
   const meta = idccApi?.items?.[0]
   const moisRef = meta?.periode || undefined
   const majSource = meta?.source_updated_at || undefined
 
-  /* ------------ Rendu ------------ */
   return (
     <div className="space-y-6">
-      {/* === Labels & divers (rétablis) === */}
       <div className="bg-white p-4 rounded shadow">
         <h3 className="font-semibold mb-2 text-indigo-900">Labels & certifications</h3>
         {labels.length ? labels.map((l: any, i: number) => <p key={i}>{l}</p>) : <p>Aucun label.</p>}
@@ -274,9 +254,7 @@ export default function LabelsCertifications({ data }: { data: any }) {
         {divers.length ? divers.map((d: any, i: number) => <p key={i}>{d}</p>) : <p>Rien à afficher.</p>}
       </div>
 
-      {/* === Convention collective (complet) === */}
       <div className="bg-white p-0 rounded shadow border border-indigo-100 overflow-hidden">
-        {/* En-tête */}
         <div className="px-6 pt-5 pb-3 border-b">
           <h3 className="font-bold text-2xl text-indigo-900 flex items-center gap-2">
             Convention collective
@@ -293,7 +271,6 @@ export default function LabelsCertifications({ data }: { data: any }) {
             )}
           </div>
 
-          {/* Actions */}
           <div className="mt-3 flex flex-wrap gap-2">
             <button className="px-3 py-1.5 bg-indigo-600 text-white rounded hover:bg-indigo-700" onClick={expandAll}>Tout déplier</button>
             <button className="px-3 py-1.5 bg-gray-100 text-gray-900 rounded hover:bg-gray-200" onClick={collapseAll}>Tout replier</button>
@@ -306,19 +283,14 @@ export default function LabelsCertifications({ data }: { data: any }) {
                   Télécharger en PDF {pdfFiltered && '(filtré)'}
                 </button>
                 <label className="flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={pdfFiltered}
-                    onChange={(e) => setPdfFiltered(e.target.checked)}
-                  />
+                  <input type="checkbox" checked={pdfFiltered} onChange={(e) => setPdfFiltered(e.target.checked)} />
                   Limiter le PDF aux résultats de recherche
                 </label>
               </>
             )}
           </div>
 
-          {/* Barre de recherche */}
-          <form className="mt-3 flex gap-2" onSubmit={onSubmitSearch}>
+          <form className="mt-3 flex gap-2" onSubmit={(e)=>{e.preventDefault(); if(q.trim()) runSearch(q.trim())}}>
             <input
               type="search"
               placeholder="Rechercher dans la convention (ex: licenciement, durée du travail)…"
@@ -338,21 +310,26 @@ export default function LabelsCertifications({ data }: { data: any }) {
           {searchError && <div className="text-red-700 text-sm mt-2">{searchError}</div>}
         </div>
 
-        {/* Corps : 2 colonnes */}
         <div className="grid grid-cols-12 gap-6 p-6">
-          {/* Sommaire + résultats */}
           <aside className="col-span-12 lg:col-span-3 space-y-6">
             <div className="sticky top-4 max-h-[80vh] overflow-auto border rounded-lg p-3">
               <div className="font-semibold mb-2">Sommaire</div>
-              {anchors.length === 0 && <div className="text-sm text-gray-500">—</div>}
+              {!idccHtml?.conventions?.length && <div className="text-sm text-gray-500">—</div>}
               <ul className="space-y-1">
-                {anchors.map(a => (
+                {useMemo(() => {
+                  const out: { id: string; label: string }[] = []
+                  if (!idccHtml?.conventions) return out
+                  idccHtml.conventions.forEach((conv: any, ci: number) =>
+                    (conv.articles || []).forEach((a: any, ai: number) => {
+                      out.push({ id: `c${ci}-a${ai}`, label: a.num ? `Article ${a.num}` : a.title || `Article ${ai + 1}` })
+                    })
+                  )
+                  return out
+                }, [idccHtml]).map(a => (
                   <li key={a.id}>
                     <button
                       onClick={() => scrollTo(a.id)}
-                      className={`text-left text-sm underline-offset-2 hover:underline ${
-                        activeAnchor === a.id ? 'text-indigo-700 font-semibold' : 'text-indigo-600'
-                      }`}
+                      className={`text-left text-sm underline-offset-2 hover:underline ${activeAnchor === a.id ? 'text-indigo-700 font-semibold' : 'text-indigo-600'}`}
                     >
                       {a.label}
                     </button>
@@ -367,35 +344,25 @@ export default function LabelsCertifications({ data }: { data: any }) {
                 {!searching && hits.length === 0 && <div className="text-sm text-gray-500">Aucun résultat</div>}
                 {searching && <div className="text-sm text-gray-500">Recherche…</div>}
                 <ul className="space-y-3">
-                  {hits.slice(0, 100).map((h, i) => (
+                  {hits.slice(0,100).map((h,i)=>(
                     <li key={i} className="text-sm">
-                      <button
-                        className="text-indigo-700 hover:underline font-medium"
-                        onClick={() => openHit(h)}
-                        title={h.articleTitre || ''}
-                      >
+                      <button className="text-indigo-700 hover:underline font-medium" onClick={() => openHit(h)}>
                         {h.articleNum ? `Article ${h.articleNum}` : 'Article'}{h.articleTitre ? ` — ${h.articleTitre}` : ''}
                       </button>
-                      <div
-                        className="text-[13px] text-gray-700 mt-1"
-                        dangerouslySetInnerHTML={{ __html: highlightSnippet(h.snippet, q) }}
-                      />
+                      <div className="text-[13px] text-gray-700 mt-1" dangerouslySetInnerHTML={{ __html: highlightSnippet(h.snippet, q) }} />
                     </li>
                   ))}
                 </ul>
               </div>
             )}
 
-            {/* Fallback APE si pas d’IDCC via SIRET */}
             {idccApiLoaded && (!idccApi || idccApi.count === 0) && (
               <div className="border rounded-lg p-3">
                 <div className="font-semibold mb-1">Pas d’IDCC via SIRET</div>
                 {ape && <div className="text-sm mb-2">Suggestions basées sur l’APE <b>{ape}</b> :</div>}
                 {!apeLoaded && <div className="text-sm text-gray-500">Recherche…</div>}
                 {apeError && <div className="text-sm text-red-700">{apeError}</div>}
-                {apeLoaded && !apeCandidates.length && !apeError && (
-                  <div className="text-sm text-gray-500">Aucune suggestion APE.</div>
-                )}
+                {apeLoaded && !apeCandidates.length && !apeError && (<div className="text-sm text-gray-500">Aucune suggestion APE.</div>)}
                 <ul className="space-y-2">
                   {apeCandidates.map(c => (
                     <li key={`${c.idcc}-${c.match}`} className="text-sm">
@@ -417,26 +384,22 @@ export default function LabelsCertifications({ data }: { data: any }) {
             )}
           </aside>
 
-          {/* Contenu principal */}
           <main className="col-span-12 lg:col-span-9">
             {(!idccApiLoaded || idccHtmlLoading) && <p>Chargement…</p>}
             {idccApiError && <p className="text-red-700 mb-3">Erreur IDCC : {idccApiError}</p>}
             {idccHtmlError && <p className="text-red-700 mb-3">{idccHtmlError}</p>}
 
-            {idccHtml?.conventions?.length > 0 ? (
-              (idccHtml.conventions || []).map((conv: any, ci: number) => (
+            {idccHtml?.conventions?.length ? (
+              idccHtml.conventions.map((conv: any, ci: number) => (
                 <div key={conv.id || ci} className="mb-10">
                   <h2 className="text-2xl font-extrabold text-[#002752] text-center mb-6 border-b-4 border-[#b50910] pb-2">
                     {conv.titre || ''}
                   </h2>
                   {conv.descriptionFusionHtml && (
-                    <div
-                      className="text-[18px] text-[#222] mb-4"
-                      dangerouslySetInnerHTML={{ __html: conv.descriptionFusionHtml }}
-                    />
+                    <div className="text-[18px] text-[#222] mb-4" dangerouslySetInnerHTML={{ __html: conv.descriptionFusionHtml }} />
                   )}
                   {(conv.articles || []).map((a: any, ai: number) => {
-                    const articleAnchor = (a.id || a.num || `c${ci}-a${ai}`).toString()
+                    const anchor = (a.id || a.num || `c${ci}-a${ai}`).toString()
                     return (
                       <details
                         key={`c${ci}-a${ai}`}
@@ -447,15 +410,11 @@ export default function LabelsCertifications({ data }: { data: any }) {
                         open
                         {...(a.num ? { 'data-article-num': a.num } : {})}
                       >
-                        {/* ancre exacte pour les liens de recherche */}
-                        <span id={`article-${articleAnchor}`} style={{ position:'relative', top:'-90px' }} />
+                        <span id={`article-${anchor}`} style={{ position:'relative', top:'-90px' }} />
                         <summary className="cursor-pointer px-4 py-3 text-[17px] font-semibold text-[#0b2353]">
                           {a.num ? `Article ${a.num}` : 'Article'} {a.title ? `: ${a.title}` : ''}
                         </summary>
-                        <div
-                          className="px-5 pb-5 text-[16px] leading-7 text-[#222]"
-                          dangerouslySetInnerHTML={{ __html: a.content || a.texteHtml || '' }}
-                        />
+                        <div className="px-5 pb-5 text-[16px] leading-7 text-[#222]" dangerouslySetInnerHTML={{ __html: a.content || a.texteHtml || '' }} />
                       </details>
                     )
                   })}
@@ -463,9 +422,7 @@ export default function LabelsCertifications({ data }: { data: any }) {
               ))
             ) : (
               idccApiLoaded && (!idccApi || idccApi.count === 0) && !apeCandidates.length && !idccApiError && (
-                <p className="text-gray-600">
-                  Aucune information sur la convention collective n’est disponible pour cet établissement.
-                </p>
+                <p className="text-gray-600">Aucune information sur la convention collective n’est disponible pour cet établissement.</p>
               )
             )}
           </main>
