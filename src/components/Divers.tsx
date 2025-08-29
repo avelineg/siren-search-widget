@@ -17,7 +17,6 @@ const RUNTIME_FALLBACK =
     ? 'https://hubshare-cmexpert.fr'
     : ''
 const BACKEND_BASE = (ENV_BASE || RUNTIME_FALLBACK).replace(/\/+$/, '')
-if (typeof window !== 'undefined') console.info('[CC] BACKEND_BASE =', BACKEND_BASE || '(même origine)')
 
 /* ========= Types ========= */
 type IdccItem = { siret: string; idcc: string; libelle?: string|null; periode?: string|null; source?: string|null; source_updated_at?: string|null }
@@ -112,39 +111,49 @@ export default function LabelsCertifications({ data }: { data: any }) {
   const [searchError, setSearchError] = useState<string | null>(null)
   const [pdfOnlySelection, setPdfOnlySelection] = useState(false)
 
-  /* ------------ loader centralisé avec chainage en cas de 404 ------------ */
-  const loadConventionForIdcc = async (idccStr: string, tried: Set<string> = new Set()) => {
+  /* ------------ Chargeur central: renvoie true si succès ------------ */
+  const loadConventionForIdcc = async (idccStr: string): Promise<boolean> => {
     const id = String(idccStr).replace(/^0+/, '')
-    if (tried.has(id)) return
-    tried.add(id)
-
     setIdccUsed(id)
     setIdccHtmlLoading(true)
     setIdccHtmlError(null)
     setIdccHtml(null)
-
     try {
       const res = await fetch(`${BACKEND_BASE}/legifrance/convention/html/${encodeURIComponent(id)}`)
       if (res.status === 404) {
-        // tente le prochain candidat APE si disponible
-        const next = apeCandidates.find(c => c.idcc && String(c.idcc).replace(/^0+/, '') !== id)
-        if (next?.idcc) {
-          await loadConventionForIdcc(String(next.idcc), tried)
-          return
-        }
-        throw Object.assign(new Error('Aucune convention trouvée pour cet IDCC'), { status: 404 })
+        setIdccHtmlError('Aucune convention trouvée pour cet IDCC.')
+        setIdccHtml(null)
+        return false
       }
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const d = await res.json()
       setIdccHtml(d)
+      return true
     } catch (e: any) {
       setIdccHtmlError(e?.message || 'Erreur lors de la récupération du détail Légifrance')
+      return false
     } finally {
       setIdccHtmlLoading(false)
     }
   }
 
-  /* ------------ Data fetching ------------ */
+  /* ------------ Essaie séquentiel de la liste APE ------------ */
+  const tryCandidatesSequentially = async (cands: ApeIdccItem[]) => {
+    for (const c of cands) {
+      if (!c.idcc) continue
+      const ok = await loadConventionForIdcc(String(c.idcc))
+      if (ok) return true
+    }
+    // rien trouvé
+    if (!cands.some(c => c.idcc)) {
+      setIdccHtmlError("Aucune suggestion APE exploitable.")
+    } else {
+      setIdccHtmlError("Aucune convention trouvée parmi les suggestions APE.")
+    }
+    return false
+  }
+
+  /* ------------ Data fetching orchestré ------------ */
   useEffect(() => {
     let cancelled = false
     setIdccApi(null); setIdccApiLoaded(false); setIdccApiError(null)
@@ -152,50 +161,56 @@ export default function LabelsCertifications({ data }: { data: any }) {
     setIdccUsed(null); setIdccHtml(null); setIdccHtmlError(null); setIdccHtmlLoading(false)
     setQ(''); setHits([]); setSearching(false); setSearchError(null)
 
-    const tryApeFallback = async () => {
-      if (!ape) { setApeLoaded(true); return }
+    const fetchApeCandidates = async (): Promise<ApeIdccItem[]> => {
+      if (!ape) { setApeLoaded(true); return [] }
       const url = `${BACKEND_BASE}/api/idcc/by-ape/${encodeURIComponent(ape)}`
       try {
         const res = await fetch(url)
-        if (!res.ok) { setApeLoaded(true); setApeError(`HTTP ${res.status} sur ${url}`); return }
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
         const json: ApeIdccResponse = await res.json()
-        if (cancelled) return
+        if (cancelled) return []
         const items = (json.items || []).filter(it => it && (it.idcc || it.autre))
         setApeCandidates(items)
         setApeLoaded(true)
-
-        // auto-essai du 1er IDCC valide
-        const first = items.find(x => !!x.idcc)?.idcc
-        if (!idccUsed && first) loadConventionForIdcc(String(first))
+        return items
       } catch (e: any) {
         setApeLoaded(true); setApeError(e?.message || 'Erreur réseau (APE)')
+        return []
       }
     }
 
-    const fetchIdccBySiret = async () => {
-      if (!siret) { setIdccApiLoaded(true); tryApeFallback(); return }
-      try {
-        const url = `${BACKEND_BASE}/api/idcc/${encodeURIComponent(siret)}`
-        const res = await fetch(url)
-        if (!res.ok) {
-          setIdccApiLoaded(true)
-          setIdccApiError(`HTTP ${res.status} sur ${url}`)
-          tryApeFallback()
-          return
+    const run = async () => {
+      // 1) tente par SIRET
+      if (siret) {
+        try {
+          const url = `${BACKEND_BASE}/api/idcc/${encodeURIComponent(siret)}`
+          const res = await fetch(url)
+          if (!res.ok) {
+            setIdccApiLoaded(true)
+            setIdccApiError(`HTTP ${res.status} sur ${url}`)
+          } else {
+            const json: IdccResponse = await res.json()
+            if (cancelled) return
+            setIdccApi(json); setIdccApiLoaded(true)
+            const idcc = json?.items?.[0]?.idcc
+            if (idcc) {
+              const ok = await loadConventionForIdcc(String(idcc))
+              if (ok) return // succès, stop
+            }
+          }
+        } catch (e: any) {
+          setIdccApiLoaded(true); setIdccApiError(e?.message || 'Erreur réseau')
         }
-        const json: IdccResponse = await res.json()
-        if (cancelled) return
-        setIdccApi(json); setIdccApiLoaded(true)
-
-        const idcc = json?.items?.[0]?.idcc
-        if (idcc) loadConventionForIdcc(String(idcc))
-        else tryApeFallback()
-      } catch (e: any) {
-        setIdccApiLoaded(true); setIdccApiError(e?.message || 'Erreur réseau'); tryApeFallback()
+      } else {
+        setIdccApiLoaded(true)
       }
+
+      // 2) fallback APE: charger la liste puis tenter séquentiellement
+      const cands = await fetchApeCandidates()
+      await tryCandidatesSequentially(cands)
     }
 
-    fetchIdccBySiret()
+    run()
     return () => { cancelled = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [siret, ape])
@@ -248,7 +263,7 @@ export default function LabelsCertifications({ data }: { data: any }) {
     if (targetEl && !targetEl.hasAttribute('open')) targetEl.setAttribute('open','true')
   }
 
-  /* ------------ Navigation améliorée ------------ */
+  /* ------------ Navigation ------------ */
   const anchors = useMemo(() => {
     const out: { id: string; label: string }[] = []
     if (!idccHtml?.conventions) return out
@@ -289,7 +304,7 @@ export default function LabelsCertifications({ data }: { data: any }) {
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
-  /* ------------ Rendus Légifrance ------------ */
+  /* ------------ Rendu conv ------------ */
   const renderConventions = () => (
     (idccHtml?.conventions || []).map((conv: any, ci: number) => (
       <div key={conv.id || ci} className="mb-10">
@@ -338,7 +353,6 @@ export default function LabelsCertifications({ data }: { data: any }) {
 
   return (
     <div className="space-y-6">
-      {/* Blocs existants */}
       <div className="bg-white p-4 rounded shadow">
         <h3 className="font-semibold mb-2 text-indigo-900">Labels & certifications</h3>
         {labels.length ? labels.map((l: any, i: number) => <p key={i}>{l}</p>) : <p>Aucun label.</p>}
@@ -349,16 +363,13 @@ export default function LabelsCertifications({ data }: { data: any }) {
         {divers.length ? divers.map((d: any, i: number) => <p key={i}>{d}</p>) : <p>Rien à afficher.</p>}
       </div>
 
-      {/* Convention collective */}
       <div className="bg-white p-0 rounded shadow border border-indigo-100 overflow-hidden">
-        {/* Barre d’entête */}
         <div className="px-6 pt-5 pb-3 border-b">
           <h3 className="font-bold text-2xl text-indigo-900 flex items-center gap-2">
             Convention collective
             {mainLibelle && <span className="text-indigo-700">« {mainLibelle} »</span>}
           </h3>
 
-          {/* Infos synthèse */}
           <div className="mt-2 text-[15px] text-gray-800 flex flex-wrap gap-x-6 gap-y-2">
             {idccApiLoaded && idccApi?.count! > 0 && (
               <>
@@ -369,7 +380,6 @@ export default function LabelsCertifications({ data }: { data: any }) {
             )}
           </div>
 
-          {/* Actions lecture */}
           <div className="mt-3 flex flex-wrap gap-2 items-center">
             <button className="px-3 py-1.5 bg-indigo-600 text-white rounded hover:bg-indigo-700" onClick={expandAll}>Tout déplier</button>
             <button className="px-3 py-1.5 bg-gray-100 text-gray-900 rounded hover:bg-gray-200" onClick={collapseAll}>Tout replier</button>
@@ -393,7 +403,6 @@ export default function LabelsCertifications({ data }: { data: any }) {
             </button>
           </div>
 
-          {/* Barre de recherche + résultats juste dessous */}
           <form className="mt-3 flex gap-2" onSubmit={onSubmitSearch}>
             <input
               type="search"
@@ -415,9 +424,7 @@ export default function LabelsCertifications({ data }: { data: any }) {
           {idccHtmlError && <div className="text-red-700 text-sm mt-2">{idccHtmlError}</div>}
         </div>
 
-        {/* Corps : layout à 2 colonnes */}
         <div className="grid grid-cols-12 gap-6 p-6">
-          {/* Sommaire latéral */}
           <aside className="col-span-12 lg:col-span-3">
             <div className="sticky top-4 max-h-[80vh] overflow-auto border rounded-lg p-3">
               <div className="font-semibold mb-2">Sommaire</div>
@@ -438,7 +445,6 @@ export default function LabelsCertifications({ data }: { data: any }) {
               </ul>
             </div>
 
-            {/* Fallback APE (si pas d’IDCC SIRET) */}
             {idccApiLoaded && (!idccApi || idccApi.count === 0) && (
               <div className="mt-6 border rounded-lg p-3">
                 <div className="font-semibold mb-1">Pas d’IDCC via SIRET</div>
@@ -468,7 +474,6 @@ export default function LabelsCertifications({ data }: { data: any }) {
             )}
           </aside>
 
-          {/* Contenu principal */}
           <main className="col-span-12 lg:col-span-9">
             {(!idccApiLoaded || idccHtmlLoading) && <p>Chargement…</p>}
             {idccApiError && <p className="text-red-700 mb-3">Erreur IDCC : {idccApiError}</p>}
