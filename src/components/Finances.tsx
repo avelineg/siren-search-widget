@@ -549,4 +549,115 @@ export default function FinancialData({ data }: { data?: { siren?: string } }) {
         </>
       )}
 
-      {/* Documents téléchargeables
+      {/* Documents téléchargeables via backend */}
+      <div className="mt-10">
+        <h4 className="font-semibold mb-3 text-lg border-b pb-1 mb-4">Documents téléchargeables</h4>
+        {loadingDocs ? (
+          <div>Chargement des documents…</div>
+        ) : Array.isArray(documents) && documents.length ? (
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-sm">
+              <thead>
+                <tr className="border-b">
+                  <th className="px-2 py-1 text-left">Titre</th>
+                  <th className="px-2 py-1 text-left">Type</th>
+                  <th className="px-2 py-1 text-left">Source</th>
+                  <th className="px-2 py-1 text-left">Date du document</th>
+                  <th className="px-2 py-1 text-left">Date de dépôt (parution)</th>
+                  <th className="px-2 py-1 text-left">Aperçu</th>
+                  <th className="px-2 py-1 text-left">Télécharger</th>
+                </tr>
+              </thead>
+              <tbody>
+                {documents.map((doc, i) => {
+                  const pdfUrl = getDocPdfUrl(doc)!; // endpoint backend
+                  const docDateFR = formatDocDate(doc.dateDocument);
+                  const depotDateFR = formatDocDate(doc.dateDepot);
+
+                  return (
+                    <tr key={(doc.url ?? "doc") + "-" + i} className="border-b hover:bg-gray-50">
+                      <td className="px-2 py-1" title={doc.originalName || ""}>{doc.titre || "Document"}</td>
+                      <td className="px-2 py-1">{doc.type || "—"}</td>
+                      <td className="px-2 py-1 text-gray-500">{doc.source || "—"}</td>
+                      <td className="px-2 py-1" title={doc.dateDocument || ""}>{docDateFR}</td>
+                      <td className="px-2 py-1" title={doc.dateDepot || ""}>{depotDateFR}</td>
+                      <td className="px-2 py-1">
+                        <button
+                          className="px-3 py-1 rounded text-white text-sm font-medium transition bg-indigo-600 hover:bg-indigo-700"
+                          onClick={() => openPreview(doc)}
+                          title="Voir l’aperçu du PDF"
+                        >
+                          Aperçu
+                        </button>
+                      </td>
+                      <td className="px-2 py-1">
+                        <a
+                          href={pdfUrl}
+                          download={doc.suggestedFilename || undefined}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="px-3 py-1 rounded text-white text-sm font-medium transition bg-blue-600 hover:bg-blue-700"
+                          title={doc.originalName || "Télécharger le PDF"}
+                        >
+                          Télécharger
+                        </a>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="text-gray-500 italic">Aucun document téléchargeable.</div>
+        )}
+      </div>
+
+      {/* Modal d’aperçu PDF */}
+      {previewBlobUrl && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center"
+          style={{ background: "rgba(0,0,0,0.6)" }}
+          onClick={closePreview}
+        >
+          <div
+            className="bg-white rounded shadow-lg max-w-5xl w-[90%] h-[80%] flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="px-4 py-3 border-b flex items-center justify-between">
+              <h5 className="font-semibold">{previewTitle}</h5>
+              <div className="flex items-center gap-2">
+                {previewOriginalUrl && (
+                  <a
+                    href={previewOriginalUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-3 py-1 rounded bg-blue-600 text-white text-sm hover:bg-blue-700"
+                  >
+                    Ouvrir dans un nouvel onglet
+                  </a>
+                )}
+                <button
+                  className="px-3 py-1 rounded bg-gray-200 text-gray-800 text-sm hover:bg-gray-300"
+                  onClick={closePreview}
+                >
+                  Fermer
+                </button>
+              </div>
+            </div>
+            <div className="flex-1">
+              <object data={previewBlobUrl} type="application/pdf" className="w-full h-full">
+                <iframe
+                  src={previewBlobUrl}
+                  title="Aperçu PDF"
+                  className="w-full h-full"
+                  style={{ border: "none" }}
+                />
+              </object>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
