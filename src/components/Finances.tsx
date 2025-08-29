@@ -45,6 +45,10 @@ type DossierDoc = {
 
   dateDepot?: string;     // date de dépôt/publication (parution)
   dateDocument?: string;  // date du document (ex: date de clôture pour bilans)
+
+  // Nouveaux champs pour l’affichage et le téléchargement
+  originalName?: string;      // nom de fichier/libellé “brut” provenant de l’INPI
+  suggestedFilename?: string; // nom de fichier proposé à l’utilisateur lors du téléchargement
 };
 
 function coalesce<T>(...vals: T[]): T | undefined {
@@ -161,6 +165,41 @@ function extractNumbersFromBilansSaisis(d: AnyObj) {
   };
 }
 
+// Helpers pour titres lisibles et noms de fichiers
+function safeFileName(s: string): string {
+  if (!s) return "document.pdf";
+  const noAccents = s.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  return noAccents
+    .replace(/[^\w\s\-.()]/g, "") // garder lettres/chiffres/underscore/espace/-.()
+    .replace(/\s+/g, "_");
+}
+
+function buildBilanTitle(b: AnyObj): { title: string; suggested: string } {
+  const dClot = (b?.dateCloture || b?.dateDocument) as string | undefined;
+  const year = yearFromDateStr(dClot);
+  const parts: string[] = ["Comptes annuels"];
+  if (year) parts.push(year);
+  if (dClot) parts.push(`clôture ${formatDateFR(String(dClot).slice(0, 10))}`);
+  const title = parts.join(" — ");
+  return {
+    title,
+    suggested: safeFileName(`${title}.pdf`),
+  };
+}
+
+function buildActeTitle(a: ActeLike): { title: string; suggested: string } {
+  const t = a?.typeRdd?.[0]?.typeActe || a?.libelle || a?.description || "Acte";
+  const decision = a?.typeRdd?.[0]?.decision;
+  const dateRef = (a?.dateDocument || a?.dateDepot) as string | undefined;
+  const datePart = dateRef ? ` (${formatDateFR(String(dateRef).slice(0, 10))})` : "";
+  const labelCore = [t, decision].filter(Boolean).join(" — ") || "Acte";
+  const title = `${labelCore}${datePart}`;
+  return {
+    title,
+    suggested: safeFileName(`${labelCore}${datePart}.pdf`),
+  };
+}
+
 export default function FinancialData({ data }: { data?: { siren?: string } }) {
   const siren = data?.siren;
   const [finances, setFinances] = useState<FinanceRow[]>([]);
@@ -245,10 +284,9 @@ export default function FinancialData({ data }: { data?: { siren?: string } }) {
         for (const b of bilansRaw) {
           const id =
             coalesce(b?.id, b?.bilanId, b?.documentId, b?.uuid) as string | undefined;
-          const titre =
+          const originalName =
             (b?.nomDocument as string | undefined) ||
-            (b?.libelle as string | undefined) ||
-            "Bilan déposé (PDF)";
+            (b?.libelle as string | undefined);
           const dateDepot = coalesce(b?.dateDepot, b?.date_depot);
           const dateDocument = coalesce(
             b?.dateCloture,
@@ -256,10 +294,14 @@ export default function FinancialData({ data }: { data?: { siren?: string } }) {
             b?.dateDocument
           );
 
+          const { title, suggested } = buildBilanTitle(b);
+
           if (id) {
             coll.push({
               id,
-              titre,
+              titre: title,
+              originalName,
+              suggestedFilename: suggested,
               type: "bilan",
               source: "INPI",
               url: `${API_BASE}/download/bilan/${encodeURIComponent(id)}`,
@@ -275,14 +317,18 @@ export default function FinancialData({ data }: { data?: { siren?: string } }) {
         const actesRaw: ActeLike[] = Array.isArray(payload.actes) ? payload.actes : [];
         for (const a of actesRaw) {
           const id = (a as AnyObj)?.id || (a as AnyObj)?.documentId;
-          const titre = a?.nomDocument || a?.libelle || "Acte (PDF)";
+          const originalName = a?.nomDocument || a?.libelle;
           const dateDepot = a?.dateDepot;
           const dateDocument = coalesce((a as AnyObj)?.dateDocument, (a as AnyObj)?.dateActe);
+
+          const { title, suggested } = buildActeTitle(a);
 
           if (id) {
             coll.push({
               id,
-              titre,
+              titre: title,
+              originalName,
+              suggestedFilename: suggested,
               type: "acte",
               source: "INPI",
               url: `${API_BASE}/download/acte/${encodeURIComponent(id)}`,
@@ -503,114 +549,4 @@ export default function FinancialData({ data }: { data?: { siren?: string } }) {
         </>
       )}
 
-      {/* Documents téléchargeables via backend */}
-      <div className="mt-10">
-        <h4 className="font-semibold mb-3 text-lg border-b pb-1 mb-4">Documents téléchargeables</h4>
-        {loadingDocs ? (
-          <div>Chargement des documents…</div>
-        ) : Array.isArray(documents) && documents.length ? (
-          <div className="overflow-x-auto">
-            <table className="min-w-full text-sm">
-              <thead>
-                <tr className="border-b">
-                  <th className="px-2 py-1 text-left">Titre</th>
-                  <th className="px-2 py-1 text-left">Type</th>
-                  <th className="px-2 py-1 text-left">Source</th>
-                  <th className="px-2 py-1 text-left">Date du document</th>
-                  <th className="px-2 py-1 text-left">Date de dépôt (parution)</th>
-                  <th className="px-2 py-1 text-left">Aperçu</th>
-                  <th className="px-2 py-1 text-left">Télécharger</th>
-                </tr>
-              </thead>
-              <tbody>
-                {documents.map((doc, i) => {
-                  const pdfUrl = getDocPdfUrl(doc)!; // endpoint backend
-                  const docDateFR = formatDocDate(doc.dateDocument);
-                  const depotDateFR = formatDocDate(doc.dateDepot);
-
-                  return (
-                    <tr key={(doc.url ?? "doc") + "-" + i} className="border-b hover:bg-gray-50">
-                      <td className="px-2 py-1">{doc.titre || "Document"}</td>
-                      <td className="px-2 py-1">{doc.type || "—"}</td>
-                      <td className="px-2 py-1 text-gray-500">{doc.source || "—"}</td>
-                      <td className="px-2 py-1" title={doc.dateDocument || ""}>{docDateFR}</td>
-                      <td className="px-2 py-1" title={doc.dateDepot || ""}>{depotDateFR}</td>
-                      <td className="px-2 py-1">
-                        <button
-                          className="px-3 py-1 rounded text-white text-sm font-medium transition bg-indigo-600 hover:bg-indigo-700"
-                          onClick={() => openPreview(doc)}
-                          title="Voir l’aperçu du PDF"
-                        >
-                          Aperçu
-                        </button>
-                      </td>
-                      <td className="px-2 py-1">
-                        <a
-                          href={pdfUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="px-3 py-1 rounded text-white text-sm font-medium transition bg-blue-600 hover:bg-blue-700"
-                          title="Télécharger le PDF"
-                        >
-                          Télécharger
-                        </a>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        ) : (
-          <div className="text-gray-500 italic">Aucun document téléchargeable.</div>
-        )}
-      </div>
-
-      {/* Modal d’aperçu PDF */}
-      {previewBlobUrl && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center"
-          style={{ background: "rgba(0,0,0,0.6)" }}
-          onClick={closePreview}
-        >
-          <div
-            className="bg-white rounded shadow-lg max-w-5xl w-[90%] h-[80%] flex flex-col"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="px-4 py-3 border-b flex items-center justify-between">
-              <h5 className="font-semibold">{previewTitle}</h5>
-              <div className="flex items-center gap-2">
-                {previewOriginalUrl && (
-                  <a
-                    href={previewOriginalUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="px-3 py-1 rounded bg-blue-600 text-white text-sm hover:bg-blue-700"
-                  >
-                    Ouvrir dans un nouvel onglet
-                  </a>
-                )}
-                <button
-                  className="px-3 py-1 rounded bg-gray-200 text-gray-800 text-sm hover:bg-gray-300"
-                  onClick={closePreview}
-                >
-                  Fermer
-                </button>
-              </div>
-            </div>
-            <div className="flex-1">
-              <object data={previewBlobUrl} type="application/pdf" className="w-full h-full">
-                <iframe
-                  src={previewBlobUrl}
-                  title="Aperçu PDF"
-                  className="w-full h-full"
-                  style={{ border: "none" }}
-                />
-              </object>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
+      {/* Documents téléchargeables
