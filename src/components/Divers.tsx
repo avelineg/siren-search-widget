@@ -17,7 +17,6 @@ const RUNTIME_FALLBACK =
     ? 'https://hubshare-cmexpert.fr'
     : ''
 const BACKEND_BASE = (ENV_BASE || RUNTIME_FALLBACK).replace(/\/+$/, '')
-if (typeof window !== 'undefined') console.info('[CC] BACKEND_BASE =', BACKEND_BASE || '(même origine)')
 
 /* ========= Types ========= */
 type IdccItem = { siret: string; idcc: string; libelle?: string|null; periode?: string|null; source?: string|null; source_updated_at?: string|null }
@@ -33,7 +32,7 @@ type SearchHit = {
   snippet: string
 }
 
-/* ========= Highlighter helpers ========= */
+/* ========= Highlight helpers ========= */
 function highlightSnippet(text: string, q: string) {
   if (!q) return text
   const safeQ = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
@@ -78,7 +77,6 @@ export default function LabelsCertifications({ data }: { data: any }) {
   const labels = data.labels || []
   const divers = data.divers || []
 
-  // SIRET normalisé (évite 400 backend)
   const siretRaw = data.siret || data.etablissements?.[0]?.siret || null
   const siret = siretRaw ? normSiret(siretRaw) : null
 
@@ -106,70 +104,92 @@ export default function LabelsCertifications({ data }: { data: any }) {
   const articleRefs = useRef<Record<string, HTMLElement | null>>({})
   const [activeAnchor, setActiveAnchor] = useState<string | null>(null)
 
-  // Search UI
+  // Search
   const [q, setQ] = useState('')
   const [hits, setHits] = useState<SearchHit[]>([])
   const [searching, setSearching] = useState(false)
   const [searchError, setSearchError] = useState<string | null>(null)
   const [pdfOnlySelection, setPdfOnlySelection] = useState(false)
 
-  /* ------------ Fallback APE robuste ------------ */
-  const fetchApeCandidates = async (): Promise<ApeIdccItem[]> => {
-    setApeLoaded(false); setApeError(null);
+  /* ------- Légifrance fetch (réutilisable par le fallback) ------- */
+  const fetchLegifranceHtml = async (idcc: string) => {
+    const idccClean = String(idcc).replace(/^0+/, '')
+    if (!/^\d+$/.test(idccClean)) return
+    const url = `${BACKEND_BASE}/legifrance/convention/html/${idccClean}`
+    setIdccHtmlLoading(true); setIdccHtml(null); setIdccHtmlError(null)
+    try {
+      const res = await fetch(url)
+      if (!res.ok) throw new Error(`HTTP ${res.status} sur ${url}`)
+      const d = await res.json()
+      setIdccHtml(d); setIdccHtmlLoading(false)
+    } catch (e: any) {
+      setIdccHtmlError(e?.message || 'Erreur lors du détail Légifrance')
+      setIdccHtmlLoading(false); setIdccHtml(null)
+    }
+  }
 
-    const raw = (ape || '').trim().toUpperCase();        // "6202A" | "62.02A"
-    const digits = raw.replace(/\D/g, '');                // "6202"
-    const letter = (raw.match(/[A-Z]$/)?.[0] || '');      // "A" | ""
-    const withDot = digits.length >= 4 ? `${digits.slice(0,2)}.${digits.slice(2,4)}${letter}` : raw;
-    const noDot   = `${digits}${letter}`;                 // "6202A"
-    const base4   = digits.slice(0,4);                    // "6202"
-    const baseDot = base4.length === 4 ? `${base4.slice(0,2)}.${base4.slice(2,4)}` : base4;
+  /* ---------------- Fallback APE robuste ---------------- */
+  const fetchApeCandidates = async () => {
+    setApeLoaded(false); setApeError(null)
 
-    const variants = Array.from(new Set([raw, noDot, withDot, base4, baseDot].filter(Boolean)));
+    const raw = (ape || '').trim().toUpperCase()
+    const digits = raw.replace(/\D/g, '')
+    const letter = (raw.match(/[A-Z]$/)?.[0] || '')
+    const withDot = digits.length >= 4 ? `${digits.slice(0,2)}.${digits.slice(2,4)}${letter}` : raw
+    const noDot   = `${digits}${letter}`
+    const base4   = digits.slice(0,4)
+    const baseDot = base4.length === 4 ? `${base4.slice(0,2)}.${base4.slice(2,4)}` : base4
 
-    // on tente 2 schémas d’API : /by-ape/:ape ET /by-ape?ape=...
-    const urls: string[] = [];
+    const variants = Array.from(new Set([raw, noDot, withDot, base4, baseDot].filter(Boolean)))
+
+    const urls: string[] = []
     for (const v of variants) {
-      urls.push(`${BACKEND_BASE}/api/idcc/by-ape/${encodeURIComponent(v)}`);
-      urls.push(`${BACKEND_BASE}/api/idcc/by-ape?ape=${encodeURIComponent(v)}`);
+      urls.push(`${BACKEND_BASE}/api/idcc/by-ape/${encodeURIComponent(v)}`)
+      urls.push(`${BACKEND_BASE}/api/idcc/by-ape?ape=${encodeURIComponent(v)}`)
+      urls.push(`${BACKEND_BASE}/api/dares/by-ape/${encodeURIComponent(v)}`)
+      urls.push(`${BACKEND_BASE}/api/dares/by-ape?ape=${encodeURIComponent(v)}`)
+      urls.push(`${BACKEND_BASE}/api/idcc/dares/by-ape/${encodeURIComponent(v)}`)
+      urls.push(`${BACKEND_BASE}/api/idcc/dares/by-ape?ape=${encodeURIComponent(v)}`)
     }
 
-    const seen = new Set<string>();
-    const out: ApeIdccItem[] = [];
-    const statuses: string[] = [];
+    const seen = new Set<string>()
+    const out: ApeIdccItem[] = []
 
-    await Promise.allSettled(
-      urls.map(async (u) => {
-        try {
-          const r = await fetch(u);
-          statuses.push(`${r.status}@${u.split('/api/')[1]}`);
-          if (!r.ok) return;
-          const j = await r.json();
-          const items = (j?.items || []) as any[];
-          for (const it of items) {
-            const rawIdcc = String(it.idcc ?? it.IDCC ?? '').trim();
-            if (!/^\d+$/.test(rawIdcc)) continue;
-            const id = rawIdcc.replace(/^0+/, '');
-            if (!seen.has(id)) {
-              seen.add(id);
-              out.push({ idcc: id, libelle: (it.libelle ?? it.LIBELLE ?? null) });
-            }
+    for (const u of urls) {
+      try {
+        const r = await fetch(u)
+        if (!r.ok) continue
+        const j = await r.json()
+
+        const list: any[] = j?.items || j?.results || j || []
+        for (const it of list) {
+          const rawId = String(it?.idcc ?? it?.IDCC ?? it?.IDCC_num ?? it?.code ?? '').trim()
+          const id = /^\d+$/.test(rawId) ? rawId.replace(/^0+/, '') : null
+          const lib = it?.libelle ?? it?.LIBELLE ?? null
+          if (id && !seen.has(id)) {
+            seen.add(id)
+            out.push({ idcc: id, libelle: lib })
           }
-        } catch {
-          statuses.push(`ERR@${u.split('/api/')[1]}`);
         }
-      })
-    );
+        if (out.length) break // on garde la 1ère source trouvée
+      } catch {/* ignore */}
+    }
 
-    out.sort((a,b) => Number(a.idcc!) - Number(b.idcc!));
+    out.sort((a,b) => Number(a.idcc!) - Number(b.idcc!))
+    setApeCandidates(out)
+    setApeLoaded(true)
+    if (!out.length) {
+      setApeError('Aucune suggestion APE exploitable.')
+      return
+    }
+    // auto-sélection de la 1ère suggestion
+    if (!idccUsed && out[0]?.idcc) {
+      setIdccUsed(out[0].idcc!)
+      fetchLegifranceHtml(out[0].idcc!)
+    }
+  }
 
-    setApeCandidates(out);
-    setApeLoaded(true);
-    if (!out.length) setApeError(`Aucune suggestion APE exploitable.`);
-    return out;
-  };
-
-  /* ------------ Data fetching ------------ */
+  /* ----------------- Chargement principal ----------------- */
   useEffect(() => {
     let cancelled = false
     setIdccApi(null); setIdccApiLoaded(false); setIdccApiError(null)
@@ -200,29 +220,12 @@ export default function LabelsCertifications({ data }: { data: any }) {
       }
     }
 
-    const fetchLegifranceHtml = async (idcc: string) => {
-      const idccClean = String(idcc).replace(/^0+/, '')
-      if (!/^\d+$/.test(idccClean)) return
-      const url = `${BACKEND_BASE}/legifrance/convention/html/${idccClean}`
-      setIdccHtmlLoading(true); setIdccHtml(null); setIdccHtmlError(null)
-      try {
-        const res = await fetch(url)
-        if (!res.ok) throw new Error(`HTTP ${res.status} sur ${url}`)
-        const d = await res.json()
-        if (cancelled) return
-        setIdccHtml(d); setIdccHtmlLoading(false)
-      } catch (e: any) {
-        setIdccHtmlError(e?.message || 'Erreur lors du détail Légifrance')
-        setIdccHtmlLoading(false); setIdccHtml(null)
-      }
-    }
-
     fetchIdccBySiret()
     return () => { cancelled = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [siret, ape])
 
-  /* ------------ Recherche ------------ */
+  /* ------------------ Recherche ------------------ */
   const canSearch = !!idccUsed
   async function runSearch(term: string) {
     setSearchError(null)
@@ -269,7 +272,7 @@ export default function LabelsCertifications({ data }: { data: any }) {
     if (targetEl && !targetEl.hasAttribute('open')) targetEl.setAttribute('open','true')
   }
 
-  /* ------------ Navigation ------------ */
+  /* ------------------ Navigation ------------------ */
   const anchors = useMemo(() => {
     const out: { id: string; label: string }[] = []
     if (!idccHtml?.conventions) return out
@@ -310,7 +313,7 @@ export default function LabelsCertifications({ data }: { data: any }) {
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
-  /* ------------ Rendus Légifrance ------------ */
+  /* ------------------ Rendus ------------------ */
   const renderConventions = () => (
     (idccHtml?.conventions || []).map((conv: any, ci: number) => (
       <div key={conv.id || ci} className="mb-10">
@@ -346,7 +349,6 @@ export default function LabelsCertifications({ data }: { data: any }) {
     ))
   )
 
-  /* ------------ En-tête / Méta & PDF ------------ */
   const mainLibelle = idccHtml?.conventions?.[0]?.titre || idccApi?.items?.[0]?.libelle || ''
   const meta = idccApi?.items?.[0]
   const moisRef = meta?.periode || undefined
@@ -358,7 +360,6 @@ export default function LabelsCertifications({ data }: { data: any }) {
 
   return (
     <div className="space-y-6">
-      {/* Blocs existants */}
       <div className="bg-white p-4 rounded shadow">
         <h3 className="font-semibold mb-2 text-indigo-900">Labels & certifications</h3>
         {labels.length ? labels.map((l: any, i: number) => <p key={i}>{l}</p>) : <p>Aucun label.</p>}
@@ -369,7 +370,6 @@ export default function LabelsCertifications({ data }: { data: any }) {
         {divers.length ? divers.map((d: any, i: number) => <p key={i}>{d}</p>) : <p>Rien à afficher.</p>}
       </div>
 
-      {/* Convention collective */}
       <div className="bg-white p-0 rounded shadow border border-indigo-100 overflow-hidden">
         <div className="px-6 pt-5 pb-3 border-b">
           <h3 className="font-bold text-2xl text-indigo-900 flex items-center gap-2">
@@ -391,26 +391,17 @@ export default function LabelsCertifications({ data }: { data: any }) {
             <button className="px-3 py-1.5 bg-gray-100 text-gray-900 rounded hover:bg-gray-200" onClick={collapseAll}>Tout replier</button>
 
             <label className="ml-2 inline-flex items-center gap-2 text-sm text-gray-800">
-              <input
-                type="checkbox"
-                className="h-4 w-4"
-                checked={pdfOnlySelection}
-                onChange={(e)=>setPdfOnlySelection(e.target.checked)}
-              />
+              <input type="checkbox" className="h-4 w-4" checked={pdfOnlySelection} onChange={(e)=>setPdfOnlySelection(e.target.checked)} />
               Limiter le PDF aux résultats de recherche
             </label>
 
             {pdfUrl && (
-              <button
-                className="ml-2 px-3 py-1.5 bg-green-700 text-white rounded hover:bg-green-800"
-                onClick={() => window.open(pdfUrl!, '_blank')}
-              >
+              <button className="ml-2 px-3 py-1.5 bg-green-700 text-white rounded hover:bg-green-800" onClick={() => window.open(pdfUrl!, '_blank')}>
                 Télécharger en PDF
               </button>
             )}
           </div>
 
-          {/* Recherche + résultats sous la barre */}
           <form className="mt-3 flex gap-2" onSubmit={onSubmitSearch}>
             <input
               type="search"
@@ -418,45 +409,15 @@ export default function LabelsCertifications({ data }: { data: any }) {
               className="flex-1 border rounded px-3 py-2"
               value={q}
               onChange={(e) => setQ(e.target.value)}
-              disabled={!canSearch}
+              disabled={!idccUsed}
             />
-            <button
-              type="submit"
-              disabled={!canSearch || !q.trim() || searching}
-              className="px-3 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 disabled:opacity-60"
-            >
+            <button type="submit" disabled={!idccUsed || !q.trim() || searching} className="px-3 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 disabled:opacity-60">
               {searching ? 'Recherche…' : 'Rechercher'}
             </button>
           </form>
           {searchError && <div className="text-red-700 text-sm mt-2">{searchError}</div>}
-
-          {!!q.trim() && (
-            <div className="mt-3 border rounded p-3 bg-white">
-              <div className="font-semibold mb-2">Résultats pour « {q} »</div>
-              {!searching && hits.length === 0 && <div className="text-sm text-gray-500">Aucun résultat</div>}
-              {searching && <div className="text-sm text-gray-500">Recherche…</div>}
-              <ul className="space-y-3 max-h-[40vh] overflow-auto pr-1">
-                {hits.slice(0, 200).map((h, i) => (
-                  <li key={i} className="text-sm">
-                    <button
-                      className="text-indigo-700 hover:underline font-medium"
-                      onClick={() => openHit(h)}
-                      title={h.articleTitre || ''}
-                    >
-                      {h.articleNum ? `Article ${h.articleNum}` : 'Article'}{h.articleTitre ? ` — ${h.articleTitre}` : ''}
-                    </button>
-                    <div
-                      className="text-[13px] text-gray-700 mt-1"
-                      dangerouslySetInnerHTML={{ __html: highlightSnippet(h.snippet, q) }}
-                    />
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
         </div>
 
-        {/* Corps : layout à 2 colonnes */}
         <div className="grid grid-cols-12 gap-6 p-6">
           <aside className="col-span-12 lg:col-span-3">
             <div className="sticky top-4 max-h-[80vh] overflow-auto border rounded-lg p-3">
@@ -467,9 +428,7 @@ export default function LabelsCertifications({ data }: { data: any }) {
                   <li key={a.id}>
                     <button
                       onClick={() => scrollTo(a.id)}
-                      className={`text-left text-sm underline-offset-2 hover:underline ${
-                        activeAnchor === a.id ? 'text-indigo-700 font-semibold' : 'text-indigo-600'
-                      }`}
+                      className={`text-left text-sm underline-offset-2 hover:underline ${activeAnchor === a.id ? 'text-indigo-700 font-semibold' : 'text-indigo-600'}`}
                     >
                       {a.label}
                     </button>
@@ -478,7 +437,6 @@ export default function LabelsCertifications({ data }: { data: any }) {
               </ul>
             </div>
 
-            {/* Fallback APE */}
             {idccApiLoaded && (!idccApi || idccApi.count === 0) && (
               <div className="mt-6 border rounded-lg p-3">
                 <div className="font-semibold mb-1">Pas d’IDCC via SIRET</div>
@@ -497,11 +455,7 @@ export default function LabelsCertifications({ data }: { data: any }) {
                       {c.idcc && (
                         <button
                           className="mt-1 px-2 py-1 bg-indigo-600 text-white rounded hover:bg-indigo-700"
-                          onClick={() => {
-                            setIdccUsed(c.idcc!)
-                            fetch(`${BACKEND_BASE}/legifrance/convention/html/${c.idcc!.replace(/^0+/, '')}`)
-                              .then(r => r.json()).then(setIdccHtml).catch(()=>{})
-                          }}
+                          onClick={() => { setIdccUsed(c.idcc!); fetchLegifranceHtml(c.idcc!) }}
                         >
                           Voir le détail
                         </button>
