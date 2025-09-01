@@ -74,12 +74,9 @@ function scrollToAndFlash(el: HTMLElement | null) {
 
 /* ========= Component ========= */
 export default function LabelsCertifications({ data }: { data: any }) {
-  const labels = data.labels || []
-  const divers = data.divers || []
-
+  // Données établissement
   const siretRaw = data.siret || data.etablissements?.[0]?.siret || null
   const siret = siretRaw ? normSiret(siretRaw) : null
-
   const apeFull =
     data.code_ape || data.ape || data.naf || data.etablissements?.[0]?.ape || data.etablissements?.[0]?.naf || null
   const ape = extractApeCode(apeFull)
@@ -171,7 +168,7 @@ export default function LabelsCertifications({ data }: { data: any }) {
             out.push({ idcc: id, libelle: lib })
           }
         }
-        if (out.length) break // on garde la 1ère source trouvée
+        if (out.length) break
       } catch {/* ignore */}
     }
 
@@ -182,7 +179,6 @@ export default function LabelsCertifications({ data }: { data: any }) {
       setApeError('Aucune suggestion APE exploitable.')
       return
     }
-    // auto-sélection de la 1ère suggestion
     if (!idccUsed && out[0]?.idcc) {
       setIdccUsed(out[0].idcc!)
       fetchLegifranceHtml(out[0].idcc!)
@@ -317,7 +313,7 @@ export default function LabelsCertifications({ data }: { data: any }) {
   const renderConventions = () => (
     (idccHtml?.conventions || []).map((conv: any, ci: number) => (
       <div key={conv.id || ci} className="mb-10">
-        <h2 className="text-2xl font-extrabold text-[#002752] text-center mb-6 border-b-4 border-[#b50910] pb-2">
+        <h2 className="text-2xl font-extrabold text-[var(--cm-accent)] text-center mb-6 border-b-4 border-[var(--cm-accent)] pb-2">
           {conv.titre || ''}
         </h2>
         {conv.descriptionFusionHtml && (
@@ -336,7 +332,7 @@ export default function LabelsCertifications({ data }: { data: any }) {
             open
             {...(a.num ? { 'data-article-num': a.num } : {})}
           >
-            <summary className="cursor-pointer px-4 py-3 text-[17px] font-semibold text-[#0b2353]">
+            <summary className="cursor-pointer px-4 py-3 text-[17px] font-semibold text-[var(--cm-accent)]">
               {a.num ? `Article ${a.num}` : 'Article'} {a.title ? `: ${a.title}` : ''}
             </summary>
             <div
@@ -360,20 +356,11 @@ export default function LabelsCertifications({ data }: { data: any }) {
 
   return (
     <div className="space-y-6">
-      <div className="bg-white p-4 rounded shadow">
-        <h3 className="font-semibold mb-2 text-indigo-900">Labels & certifications</h3>
-        {labels.length ? labels.map((l: any, i: number) => <p key={i}>{l}</p>) : <p>Aucun label.</p>}
-      </div>
-
-      <div className="bg-white p-4 rounded shadow">
-        <h3 className="font-semibold mb-2 text-indigo-900">Divers</h3>
-        {divers.length ? divers.map((d: any, i: number) => <p key={i}>{d}</p>) : <p>Rien à afficher.</p>}
-      </div>
-
+      {/* Carte Convention collective uniquement */}
       <div className="bg-white p-0 rounded shadow border border-indigo-100 overflow-hidden">
         <div className="px-6 pt-5 pb-3 border-b">
-          <h3 className="font-bold text-2xl text-indigo-900 flex items-center gap-2">
-            Convention collective {mainLibelle && <span className="text-indigo-700">« {mainLibelle} »</span>}
+          <h3 className="font-bold text-2xl text-[var(--cm-accent)] flex items-center gap-2">
+            Convention collective {mainLibelle && <span className="text-[var(--cm-accent)]">« {mainLibelle} »</span>}
           </h3>
 
           <div className="mt-2 text-[15px] text-gray-800 flex flex-wrap gap-x-6 gap-y-2">
@@ -387,7 +374,7 @@ export default function LabelsCertifications({ data }: { data: any }) {
           </div>
 
           <div className="mt-3 flex flex-wrap gap-2 items-center">
-            <button className="px-3 py-1.5 bg-indigo-600 text-white rounded hover:bg-indigo-700" onClick={expandAll}>Tout déplier</button>
+            <button className="px-3 py-1.5 bg-[var(--cm-accent)] text-white rounded hover:brightness-95" onClick={expandAll}>Tout déplier</button>
             <button className="px-3 py-1.5 bg-gray-100 text-gray-900 rounded hover:bg-gray-200" onClick={collapseAll}>Tout replier</button>
 
             <label className="ml-2 inline-flex items-center gap-2 text-sm text-gray-800">
@@ -411,7 +398,11 @@ export default function LabelsCertifications({ data }: { data: any }) {
               onChange={(e) => setQ(e.target.value)}
               disabled={!idccUsed}
             />
-            <button type="submit" disabled={!idccUsed || !q.trim() || searching} className="px-3 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 disabled:opacity-60">
+            <button
+              type="submit"
+              disabled={!idccUsed || !q.trim() || searching}
+              className="px-3 py-2 bg-[var(--cm-accent)] text-white rounded hover:brightness-95 disabled:opacity-60"
+            >
               {searching ? 'Recherche…' : 'Rechercher'}
             </button>
           </form>
@@ -428,7 +419,7 @@ export default function LabelsCertifications({ data }: { data: any }) {
                   <li key={a.id}>
                     <button
                       onClick={() => scrollTo(a.id)}
-                      className={`text-left text-sm underline-offset-2 hover:underline ${activeAnchor === a.id ? 'text-indigo-700 font-semibold' : 'text-indigo-600'}`}
+                      className={`text-left text-sm underline-offset-2 hover:underline ${activeAnchor === a.id ? 'text-[var(--cm-accent)] font-semibold' : 'text-[var(--cm-accent)]/80'}`}
                     >
                       {a.label}
                     </button>
@@ -454,7 +445,7 @@ export default function LabelsCertifications({ data }: { data: any }) {
                       </div>
                       {c.idcc && (
                         <button
-                          className="mt-1 px-2 py-1 bg-indigo-600 text-white rounded hover:bg-indigo-700"
+                          className="mt-1 px-2 py-1 bg-[var(--cm-accent)] text-white rounded hover:brightness-95"
                           onClick={() => { setIdccUsed(c.idcc!); fetchLegifranceHtml(c.idcc!) }}
                         >
                           Voir le détail
