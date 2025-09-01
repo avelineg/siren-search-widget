@@ -78,7 +78,9 @@ export default function App() {
   return (
     <div className="wrap">
       <section className="frame">
-        <h1 className="m-0 mb-4 text-[22px] font-bold">Recherche d'entreprises</h1>
+         <h1 className="m-0 mb-4 text-[22px] font-bold text-[var(--cm-accent)]">
+           Recherche d'entreprises
+        </h1>
 
         <form className="flex items-center gap-3 mb-5" onSubmit={handleSearch} autoComplete="off">
           <input
@@ -101,7 +103,7 @@ export default function App() {
           <ul>
             {safeResults.map((r: any, idx: number) => (
               <li key={idx} className="mb-6 flex flex-col gap-2 bg-[var(--cm-soft)] border border-[var(--cm-border)] rounded-lg p-3 shadow-card max-w-card mx-auto">
-                <span className="font-bold text-[17px]">
+                <span className="font-bold text-[17px] text-[var(--cm-accent)]">
                   {r.displayName} — SIREN: {r.siren}
                   <span
                     className="ml-2 px-2 py-1 rounded text-xs"
@@ -135,7 +137,7 @@ export default function App() {
                   <ul className="ml-1 mt-2 space-y-2">
                     {r.matching_etablissements.map((etab: any, eidx: number) => (
                       <li key={eidx} className="flex flex-wrap items-center gap-2 border-b pb-1">
-                        <span className="font-bold">{etab.displayName}</span>
+                        <span className="font-bold text-[var(--cm-accent)]">{etab.displayName}</span>
                         <span>— SIRET: {etab.siret}</span>
                         <span className="text-xs text-gray-600 ml-1">
                           {getEtablissementAdresse(etab) ? `— ${getEtablissementAdresse(etab)}` : ""}
@@ -174,8 +176,11 @@ export default function App() {
         {data && (
           <div className="max-w-none">
             <div className="bg-[var(--cm-soft)] border border-[var(--cm-border)] rounded-lg p-4 shadow-card max-w-none">
+              <div className="text-[var(--cm-accent)] font-bold text-xl mb-2">
+              {data.displayName}
+              </div>
               <CompanyHeader {...data} />
-            </div>
+              </div>
 
             {siretAffiche && (
               <div className="mb-4 mt-3">
