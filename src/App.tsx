@@ -8,18 +8,13 @@ import Dirigeants from "./components/Dirigeants";
 import Finances from "./components/Finances";
 import Divers from "./components/Divers";
 import { formatDateFR } from "./services/mapping";
+
+/** Section RSS stylée CMExpert */
 import Frame from "./components/Frame";
 import { Subtitle } from "./components/Subtitle";
 import RssList from "./components/RssList";
 
-export default function App() {
-return (
-<Frame>
-<Subtitle>Derniers articles publiés</Subtitle>
-<RssList />
-</Frame>
-);
-}
+/* ===== Helpers d’affichage ===== */
 
 // Fallback robuste pour toutes les formes d'entreprise (EI/personne morale)
 function fallbackDisplayName(obj: any, parentName?: string): string {
@@ -89,6 +84,8 @@ function getEtablissementAdresse(etab: any): string {
   );
 }
 
+/* ===== App principale ===== */
+
 function App() {
   const [search, setSearch] = useState("");
   const [selectedCode, setSelectedCode] = useState("");
@@ -137,15 +134,29 @@ function App() {
     : [];
 
   // Le SIRET à utiliser pour l'avis de situation SIRENE est celui de l'établissement affiché (ou sélectionné)
-  const siretAffiche = data?.siret || selectedCode || data?.etablissements?.[0]?.siret;
+  const siretAffiche =
+    data?.siret || selectedCode || data?.etablissements?.[0]?.siret;
 
   // Clé unique pour la recherche courante (SIREN principal)
   const searchKey = data?.siren || "";
+
+  // Afficher la section RSS en page d’accueil (avant recherche)
+  const showRss =
+    !search && !selectedCode && !loading && !error && safeResults.length === 0 && !data;
 
   // Vue liste de résultats lorsqu'aucun établissement n'est sélectionné
   if (!selectedCode && safeResults.length > 0) {
     return (
       <div className="max-w-5xl mx-auto mt-5 p-4">
+        {showRss && (
+          <div className="mb-8">
+            <Frame>
+              <Subtitle>Derniers articles publiés</Subtitle>
+              <RssList />
+            </Frame>
+          </div>
+        )}
+
         <h1 className="text-2xl font-bold mb-6">Recherche d'entreprises</h1>
         <form
           className="flex items-center gap-3 mb-7"
@@ -176,7 +187,10 @@ function App() {
         <div>
           <ul>
             {safeResults.map((r: any, idx: number) => (
-              <li key={idx} className="mb-6 flex flex-col gap-1 bg-white border rounded p-3 shadow-sm">
+              <li
+                key={idx}
+                className="mb-6 flex flex-col gap-1 bg-white border rounded p-3 shadow-sm"
+              >
                 <span style={{ fontWeight: "bold", fontSize: "1.1em" }}>
                   {r.displayName} — SIREN: {r.siren}
                   <span
@@ -187,7 +201,11 @@ function App() {
                       fontWeight: 600,
                       marginLeft: 8,
                     }}
-                    title={r.statut === "ferme" ? "Établissement fermé" : "Établissement actif"}
+                    title={
+                      r.statut === "ferme"
+                        ? "Établissement fermé"
+                        : "Établissement actif"
+                    }
                   >
                     {r.statut === "ferme" ? "Fermé" : "Actif"}
                     {r.statut === "ferme" && r.date_fermeture && (
@@ -198,79 +216,82 @@ function App() {
                   </span>
                 </span>
 
-                {Array.isArray(r.matching_etablissements) && r.matching_etablissements.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setOpenEtabs((prev) => ({
-                        ...prev,
-                        [r.siren]: !prev[r.siren],
-                      }))
-                    }
-                    className="mt-2 mb-1 px-3 py-1 rounded border bg-gray-100 hover:bg-gray-200 text-sm self-start"
-                  >
-                    {openEtabs[r.siren]
-                      ? "Cacher les établissements"
-                      : `Afficher les établissements (${r.matching_etablissements.length})`}
-                  </button>
-                )}
+                {Array.isArray(r.matching_etablissements) &&
+                  r.matching_etablissements.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setOpenEtabs((prev) => ({
+                          ...prev,
+                          [r.siren]: !prev[r.siren],
+                        }))
+                      }
+                      className="mt-2 mb-1 px-3 py-1 rounded border bg-gray-100 hover:bg-gray-200 text-sm self-start"
+                    >
+                      {openEtabs[r.siren]
+                        ? "Cacher les établissements"
+                        : `Afficher les établissements (${r.matching_etablissements.length})`}
+                    </button>
+                  )}
 
                 {openEtabs[r.siren] &&
                   Array.isArray(r.matching_etablissements) && (
                     <ul className="ml-4 mt-2 space-y-2">
-                      {r.matching_etablissements.map((etab: any, eidx: number) => (
-                        <li
-                          key={eidx}
-                          className="flex flex-wrap items-center gap-2 border-b pb-1"
-                          style={{ alignItems: "flex-start" }}
-                        >
-                          <span style={{ fontWeight: "bold" }}>
-                            {etab.displayName}
-                          </span>
-                          <span style={{ fontWeight: 400 }}>
-                            — SIRET: {etab.siret}
-                          </span>
-                          <span className="text-xs text-gray-600 ml-1">
-                            {getEtablissementAdresse(etab)
-                              ? `— ${getEtablissementAdresse(etab)}`
-                              : ""}
-                          </span>
-                          <span
-                            className="px-2 py-1 rounded text-xs"
-                            style={{
-                              background:
-                                etab.statut === "ferme"
-                                  ? "#fde8ea"
-                                  : "#e6faea",
-                              color:
-                                etab.statut === "ferme"
-                                  ? "#b71c1c"
-                                  : "#208b42",
-                              fontWeight: 600,
-                            }}
-                            title={
-                              etab.statut === "ferme"
-                                ? "Établissement fermé"
-                                : "Établissement actif"
-                            }
+                      {r.matching_etablissements.map(
+                        (etab: any, eidx: number) => (
+                          <li
+                            key={eidx}
+                            className="flex flex-wrap items-center gap-2 border-b pb-1"
+                            style={{ alignItems: "flex-start" }}
                           >
-                            {etab.statut === "ferme" ? "Fermé" : "Actif"}
-                            {etab.statut === "ferme" &&
-                              etab.date_fermeture && (
-                                <span className="ml-1 text-xs text-gray-500">
-                                  (le {formatDateFR(etab.date_fermeture)})
-                                </span>
-                              )}
-                          </span>
-                          <button
-                            className="ml-2 px-2 py-1 bg-green-600 text-white rounded hover:bg-green-700 text-xs"
-                            style={{ marginTop: 0 }}
-                            onClick={() => setSelectedCode(etab.siret)}
-                          >
-                            Voir établissement
-                          </button>
-                        </li>
-                      ))}
+                            <span style={{ fontWeight: "bold" }}>
+                              {etab.displayName}
+                            </span>
+                            <span style={{ fontWeight: 400 }}>
+                              — SIRET: {etab.siret}
+                            </span>
+                            <span className="text-xs text-gray-600 ml-1">
+                              {getEtablissementAdresse(etab)
+                                ? `— ${getEtablissementAdresse(etab)}`
+                                : ""}
+                            </span>
+                            <span
+                              className="px-2 py-1 rounded text-xs"
+                              style={{
+                                background:
+                                  etab.statut === "ferme"
+                                    ? "#fde8ea"
+                                    : "#e6faea",
+                                color:
+                                  etab.statut === "ferme"
+                                    ? "#b71c1c"
+                                    : "#208b42",
+                                fontWeight: 600,
+                              }}
+                              title={
+                                etab.statut === "ferme"
+                                  ? "Établissement fermé"
+                                  : "Établissement actif"
+                              }
+                            >
+                              {etab.statut === "ferme" ? "Fermé" : "Actif"}
+                              {etab.statut === "ferme" &&
+                                etab.date_fermeture && (
+                                  <span className="ml-1 text-xs text-gray-500">
+                                    (le {formatDateFR(etab.date_fermeture)})
+                                  </span>
+                                )}
+                            </span>
+                            <button
+                              className="ml-2 px-2 py-1 bg-green-600 text-white rounded hover:bg-green-700 text-xs"
+                              style={{ marginTop: 0 }}
+                              onClick={() => setSelectedCode(etab.siret)}
+                            >
+                              Voir établissement
+                            </button>
+                          </li>
+                        )
+                      )}
                     </ul>
                   )}
 
@@ -291,6 +312,15 @@ function App() {
   // Vue fiche entreprise
   return (
     <div className="max-w-5xl mx-auto mt-5 p-4">
+      {showRss && (
+        <div className="mb-8">
+          <Frame>
+            <Subtitle>Derniers articles publiés</Subtitle>
+            <RssList />
+          </Frame>
+        </div>
+      )}
+
       <h1 className="text-2xl font-bold mb-6">Recherche d'entreprises</h1>
 
       <form
@@ -337,8 +367,18 @@ function App() {
                   type="button"
                   title="Télécharger l'avis de situation INSEE (ouvre un PDF officiel)"
                 >
-                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" width={18} height={18}>
-                    <path fillRule="evenodd" d="M9.25 2.75a.75.75 0 0 1 1.5 0v7.69l2.22-2.22a.75.75 0 1 1 1.06 1.06l-3.5 3.5a.75.75 0 0 1-1.06 0l-3.5-3.5a.75.75 0 1 1 1.06-1.06l2.22 2.22V2.75ZM3.75 15a.75.75 0 0 1 0-1.5h12.5a.75.75 0 0 1 0 1.5H3.75Z" clipRule="evenodd" />
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 20 20"
+                    fill="currentColor"
+                    width={18}
+                    height={18}
+                  >
+                    <path
+                      fillRule="evenodd"
+                      d="M9.25 2.75a.75.75 0 0 1 1.5 0v7.69l2.22-2.22a.75.75 0 1 1 1.06 1.06l-3.5 3.5a.75.75 0 0 1-1.06 0l-3.5-3.5a.75.75 0 1 1 1.06-1.06l2.22 2.22V2.75ZM3.75 15a.75.75 0 0 1 0-1.5h12.5a.75.75 0 0 1 0 1.5H3.75Z"
+                      clipRule="evenodd"
+                    />
                   </svg>
                   Télécharger l'avis de situation INSEE (PDF)
                 </button>
@@ -387,21 +427,6 @@ function App() {
             {tabIndex === 3 && <Finances data={data} />}
             {tabIndex === 4 && <Divers data={data} />}
           </div>
-
-          {/* Section JSON brut INPI - désactivée */}
-          {/*
-          {data.inpiRaw && (
-            <details
-              className="mt-10 bg-gray-100 p-4 rounded text-xs overflow-auto"
-              style={{ maxHeight: 400 }}
-            >
-              <summary className="font-semibold cursor-pointer">
-                Détail brut de la requête INPI (JSON)
-              </summary>
-              <pre>{JSON.stringify(data.inpiRaw, null, 2)}</pre>
-            </details>
-          )}
-          */}
         </div>
       )}
 
