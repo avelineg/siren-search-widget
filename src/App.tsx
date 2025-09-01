@@ -56,7 +56,7 @@ export default function App() {
   const handleSearch = (e: React.FormEvent) => { e.preventDefault(); setSelectedCode(""); };
   const handleSelectEtablissement = (siret: string) => { setSearch(siret); setSelectedCode(siret); setTabIndex(0); };
 
-  const tabLabels = ["Identité", "Établissements", "Dirigeants", "Finances", "Divers"];
+  const tabLabels = ["Identité", "Établissements", "Dirigeants", "Finances", "Convention collective"];
 
   const safeResults = Array.isArray(results)
     ? results.map((r) => {
@@ -228,7 +228,7 @@ export default function App() {
               )}
               {tabIndex === 2 && <Dirigeants dirigeants={data.dirigeants || []} />}
               {tabIndex === 3 && <Finances data={data} />}
-              {tabIndex === 4 && <Convention collective data={data} />}
+              {tabIndex === 4 && <Divers data={data} />}
             </div>
           </div>
         )}
