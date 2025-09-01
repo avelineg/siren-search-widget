@@ -2,9 +2,32 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Thème et base typographique */
 :root{
   --cm-primary:#84C598; --cm-accent:#B973AF;
   --cm-soft:#fafdfb; --cm-border:#e6f0ea; --text:#1a1a1a;
+  --card-max: 680px;
 }
-html,body{ margin:0; background:transparent; color:var(--text); font-family:system-ui,Segoe UI,Tahoma,Arial; }
-body{ font-size:14.5px; line-height:1.5; }
+
+html,body{ margin:0; background:transparent; color:var(--text); }
+body{ font:14.5px/1.5 system-ui,Segoe UI,Tahoma,Arial; }
+
+/* Conteneur centré façon “frame” */
+.wrap{ display:flex; justify-content:center; padding:8px 10px; }
+.frame{
+  width:100%; max-width:980px; box-sizing:border-box;
+  padding:14px 16px; background:#fff; border:2px solid var(--cm-primary);
+  border-radius:10px; box-shadow:0 2px 6px rgba(0,0,0,.06);
+}
+
+/* Sous-titre discret */
+.subtitle{ margin:0 0 8px 0; color:#6b7280; font-size:12.5px; }
+
+/* Bouton primaire cohérent partout */
+.btn{
+  display:inline-flex; align-items:center; justify-content:center;
+  background:var(--cm-primary); color:#fff; padding:8px 12px;
+  border-radius:6px; text-decoration:none; font-weight:600;
+  white-space:nowrap; width:max-content;
+}
+.btn:hover{ filter:brightness(0.95); }
