@@ -74,6 +74,8 @@ function scrollToAndFlash(el: HTMLElement | null) {
 
 /* ========= Component ========= */
 export default function LabelsCertifications({ data }: { data: any }) {
+  const labels = data.labels || []
+  const divers = data.divers || []
 
   const siretRaw = data.siret || data.etablissements?.[0]?.siret || null
   const siret = siretRaw ? normSiret(siretRaw) : null
