@@ -8,6 +8,18 @@ import Dirigeants from "./components/Dirigeants";
 import Finances from "./components/Finances";
 import Divers from "./components/Divers";
 import { formatDateFR } from "./services/mapping";
+import Frame from "./components/Frame";
+import { Subtitle } from "./components/Subtitle";
+import RssList from "./components/RssList";
+
+export default function App() {
+return (
+<Frame>
+<Subtitle>Derniers articles publiés</Subtitle>
+<RssList />
+</Frame>
+);
+}
 
 // Fallback robuste pour toutes les formes d'entreprise (EI/personne morale)
 function fallbackDisplayName(obj: any, parentName?: string): string {
