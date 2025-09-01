@@ -228,7 +228,7 @@ export default function App() {
               )}
               {tabIndex === 2 && <Dirigeants dirigeants={data.dirigeants || []} />}
               {tabIndex === 3 && <Finances data={data} />}
-              {tabIndex === 4 && <Divers data={data} />}
+              {tabIndex === 4 && <Convention collective data={data} />}
             </div>
           </div>
         )}
