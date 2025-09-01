@@ -2,4 +2,12 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Personnaliser ici si besoin */
+
+:root{
+--cm-primary:#84C598; --cm-accent:#B973AF;
+--cm-soft:#fafdfb; --cm-border:#e6f0ea; --text:#1a1a1a;
+}
+
+
+html,body{ @apply m-0 bg-transparent text-text font-sans; }
+body{ font-size:14.5px; line-height:1.5; }
