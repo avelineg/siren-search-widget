@@ -56,7 +56,7 @@ export default function App() {
   const handleSearch = (e: React.FormEvent) => { e.preventDefault(); setSelectedCode(""); };
   const handleSelectEtablissement = (siret: string) => { setSearch(siret); setSelectedCode(siret); setTabIndex(0); };
 
-  const tabLabels = ["Identité", "Établissements", "Dirigeants", "Finances", "Convention collective"];
+  const tabLabels = ["Identité", "Établissements", "Dirigeants", "Données financières et documents", "Convention collective"];
 
   const safeResults = Array.isArray(results)
     ? results.map((r) => {
